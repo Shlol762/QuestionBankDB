@@ -15,7 +15,12 @@ class UserBase(SQLModel):
 
 class UserCreate(UserBase):
     """Schema for creating a new User"""
-    pass
+    password: str  # Plain password for registration (write-only)
+
+
+class Token(SQLModel):
+    access_token: str
+    token_type: str
 
 
 class UserUpdate(SQLModel):
