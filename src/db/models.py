@@ -105,7 +105,7 @@ class Users(SQLModel, table=True):
     email: str = Field(unique=True, index=True)
     department: str  # e.g., "Science"
     is_admin: bool = Field(default=False)
-    hashed_password: str  # NEW: Hashed password for authentication
+    
     # Relationship: One Teacher writes many Questions
     questions: List["QuestionBank"] = Relationship(back_populates="teacher")
 
