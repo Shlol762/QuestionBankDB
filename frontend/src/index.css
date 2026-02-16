@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+  --color-academy-50: #f0f4f8;
+  --color-academy-100: #d9e2ec;
+  --color-academy-200: #bcccdc;
+  --color-academy-300: #9fb3c8;
+  --color-academy-400: #829ab1;
+  --color-academy-500: #627d98;
+  --color-academy-600: #486581;
+  --color-academy-700: #334e68;
+  --color-academy-800: #243b53;
+  --color-academy-900: #102a43;
+}
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+    margin: 0;
+    min-height: 100vh;
+  }
+}
+
+/* Custom transitions for the "Fusion" feel */
+.transition-all {
+  transition-duration: 300ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}

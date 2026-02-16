@@ -17,6 +17,15 @@ class QuestionType(str, Enum):
     LONG_ANSWER = "Long Answer"
 
 # ==========================================
+# LINK TABLE: TEACHER <-> SUBJECT
+# ==========================================
+class UserSubjectLink(SQLModel, table=True):
+    __tablename__ = "user_subject_link"
+    
+    user_id: int = Field(foreign_key="users.user_id", primary_key=True)
+    subject_id: int = Field(foreign_key="subjects.subject_id", primary_key=True)
+
+# ==========================================
 # LEVEL 1: THE CONTEXT (Syllabus & Year)
 # ==========================================
 class SyllabusMaster(SQLModel, table=True):
@@ -30,7 +39,6 @@ class SyllabusMaster(SQLModel, table=True):
     grades: List["GradeConfig"] = Relationship(back_populates="syllabus")
 
     def __repr__(self):
-        # Safe: Prints only what is in this table
         return f"<SyllabusMaster(id={self.syllabus_id}, name='{self.syllabus_name}', year='{self.academic_year}')>"
 
 # ==========================================
@@ -51,7 +59,6 @@ class GradeConfig(SQLModel, table=True):
     subjects: List["Subject"] = Relationship(back_populates="grade")
 
     def __repr__(self):
-        # Safe: Prints syllabus_id (int) instead of self.syllabus (object)
         return f"<GradeConfig(id={self.config_id}, grade={self.grade_level}, syllabus_id={self.syllabus_id})>"
 
 # ==========================================
@@ -69,9 +76,11 @@ class Subject(SQLModel, table=True):
     
     # Relationship: One Subject has many Topics
     topics: List["Topic"] = Relationship(back_populates="subject")
+    
+    # Many-to-Many: Subject linked to multiple Teachers
+    teachers: List["Users"] = Relationship(back_populates="subjects", link_model=UserSubjectLink)
 
     def __repr__(self):
-        # Safe: Prints config_id (int) instead of self.grade (object)
         return f"<Subject(id={self.subject_id}, name='{self.subject_name}', config_id={self.config_id})>"
 
 # ==========================================
@@ -91,7 +100,6 @@ class Topic(SQLModel, table=True):
     questions: List["QuestionBank"] = Relationship(back_populates="topic")
 
     def __repr__(self):
-        # Safe: Prints subject_id (int) instead of self.subject (object)
         return f"<Topic(id={self.topic_id}, name='{self.topic_name}', subject_id={self.subject_id})>"
 
 # ==========================================
@@ -103,9 +111,12 @@ class Users(SQLModel, table=True):
     user_id: Optional[int] = Field(default=None, primary_key=True)
     full_name: str
     email: str = Field(unique=True, index=True)
-    password_hash: str = Field(exclude=True)  # Added for security
+    password_hash: str = Field(exclude=True)
     department: str  # e.g., "Science"
     is_admin: bool = Field(default=False)
+    
+    # Many-to-Many: User assigned to multiple Subjects
+    subjects: List[Subject] = Relationship(back_populates="teachers", link_model=UserSubjectLink)
     
     # Relationship: One Teacher writes many Questions
     questions: List["QuestionBank"] = Relationship(back_populates="teacher")
@@ -139,10 +150,9 @@ class QuestionBank(SQLModel, table=True):
     
     # Metadata
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     def __repr__(self):
-        # Safe: Truncates text and prints IDs only
         short_text = (self.question_text[:30] + '..') if len(self.question_text) > 30 else self.question_text
         return (
             f"<Question(id={self.question_id}, "

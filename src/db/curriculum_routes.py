@@ -116,6 +116,13 @@ async def create_topic(data: TopicCreate, session: AsyncSession = Depends(get_se
     await session.refresh(new_item)
     return new_item
 
+@router.get("/topics", response_model=List[TopicRead])
+async def get_all_topics(session: AsyncSession = Depends(get_session)):
+    """Lists every topic in the database (useful for testing/selection)."""
+    statement = select(Topic)
+    result = await session.exec(statement)
+    return result.all()
+
 @router.get("/topics/{subject_id}", response_model=List[TopicRead])
 async def get_topics_by_subject(subject_id: int, session: AsyncSession = Depends(get_session)):
     """Lists all topics for a specific subject."""
