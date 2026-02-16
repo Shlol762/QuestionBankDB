@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from enum import Enum
 from sqlmodel import SQLModel, Field, Relationship
@@ -103,6 +103,7 @@ class Users(SQLModel, table=True):
     user_id: Optional[int] = Field(default=None, primary_key=True)
     full_name: str
     email: str = Field(unique=True, index=True)
+    password_hash: str = Field(exclude=True)  # Added for security
     department: str  # e.g., "Science"
     is_admin: bool = Field(default=False)
     
@@ -138,7 +139,7 @@ class QuestionBank(SQLModel, table=True):
     
     # Metadata
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         # Safe: Truncates text and prints IDs only
