@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import client from '../api/client';
 import QuestionForm from '../components/QuestionForm';
+import CurriculumManager from '../components/CurriculumManager';
 
 const Dashboard: React.FC = () => {
   const [isAdmin] = useState(true);
@@ -50,6 +51,8 @@ const Dashboard: React.FC = () => {
 
   const renderContent = () => {
     switch (activeTab) {
+      case 'subjects':
+        return <CurriculumManager />;
       case 'questions':
         if (isAddingQuestion) {
           return (
