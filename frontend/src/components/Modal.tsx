@@ -6,9 +6,10 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  maxWidth?: string; // Add optional width prop
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
+const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidth = 'max-w-md' }) => {
   // Handle ESC key to close
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -29,7 +30,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
       />
       
       {/* Modal Content */}
-      <div className="relative bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+      <div className={`relative bg-white w-full ${maxWidth} rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300`}>
         <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50">
           <h3 className="text-xl font-bold text-gray-900">{title}</h3>
           <button 

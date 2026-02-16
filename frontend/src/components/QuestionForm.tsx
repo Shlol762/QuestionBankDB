@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Save, 
   Image as ImageIcon, 
   X, 
   Loader2, 
-  CheckCircle2, 
   AlertCircle,
-  Plus
+  Plus,
+  CheckCircle2,
+  BookOpen,
+  Tag
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import client from '../api/client';
 
 interface QuestionFormProps {
@@ -18,8 +21,7 @@ interface QuestionFormProps {
 const QuestionForm: React.FC<QuestionFormProps> = ({ onSuccess, onCancel }) => {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [topics, setTopics] = useState<any[]>([]);
-  const [showTopicModal, setShowTopicModal] = useState(false);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
   
   // Form State
   const [formData, setFormData] = useState({
@@ -29,34 +31,65 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ onSuccess, onCancel }) => {
     image_url: '',
     marks: 5,
     difficulty: 'Medium',
-    q_type: 'MCQ'
+    q_type: 'MCQ',
+    options: { A: '', B: '', C: '', D: '' } as Record<string, string>
   });
 
-  // Load Topics on mount
-  useEffect(() => {
-    fetchTopics();
-  }, []);
+  // 1. Get current user
+  const { data: user } = useQuery({
+    queryKey: ['me'],
+    queryFn: () => client.get('/auth/me').then(r => r.data)
+  });
 
-  const fetchTopics = async () => {
-    try {
-      setLoading(true);
-      const res = await client.get('/curriculum/topics');
-      setTopics(res.data); 
-    } catch (e) {
-      console.error("Error fetching topics", e);
-    } finally {
-      setLoading(false);
+  // 2. Get full hierarchy
+  const { data: rawHierarchy = [] } = useQuery({
+    queryKey: ['curriculum-hierarchy'],
+    queryFn: () => client.get('/curriculum/hierarchy').then(r => r.data)
+  });
+
+  // 3. Extract subjects based on role
+  const availableSubjects = useMemo(() => {
+    if (user?.is_admin) {
+      const subjects: any[] = [];
+      rawHierarchy.forEach((s: any) => {
+        s.grades.forEach((g: any) => {
+          g.subjects.forEach((sub: any) => {
+            subjects.push({ ...sub, display: `${s.syllabus_name} - G${g.grade_level} - ${sub.subject_name}` });
+          });
+        });
+      });
+      return subjects;
+    } else {
+      return user?.subjects?.map((s: any) => ({ ...s, display: s.subject_name })) || [];
     }
+  }, [user, rawHierarchy]);
+
+  // 4. Extract topics for selected subject
+  const availableTopics = useMemo(() => {
+    if (!selectedSubjectId) return [];
+    let foundTopics: any[] = [];
+    rawHierarchy.forEach((s: any) => {
+      s.grades.forEach((g: any) => {
+        const sub = g.subjects.find((sub: any) => sub.subject_id === parseInt(selectedSubjectId));
+        if (sub) foundTopics = sub.topics || [];
+      });
+    });
+    return foundTopics;
+  }, [selectedSubjectId, rawHierarchy]);
+
+  const handleOptionChange = (key: string, value: string) => {
+    setFormData({
+      ...formData,
+      options: { ...formData.options, [key]: value }
+    });
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setUploading(true);
     const uploadData = new FormData();
     uploadData.append('file', file);
-
     try {
       const res = await client.post('/questions/upload-image', uploadData);
       setFormData({ ...formData, image_url: res.data.image_url });
@@ -69,9 +102,16 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ onSuccess, onCancel }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.topic_id) {
-      alert("Please select or create a topic first");
-      return;
+    if (!formData.topic_id) return alert("Please select a topic");
+    
+    if (formData.q_type === 'MCQ') {
+      const emptyOptions = Object.values(formData.options).some(v => !v.trim());
+      if (emptyOptions) return alert("Please fill all 4 options for MCQ");
+      if (!formData.answer_text) return alert("Please select which option is correct");
+    }
+
+    if (formData.q_type === 'True/False' && !formData.answer_text) {
+      return alert("Please select whether the statement is True or False");
     }
 
     setLoading(true);
@@ -79,180 +119,225 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ onSuccess, onCancel }) => {
       await client.post('/questions/', {
         ...formData,
         topic_id: parseInt(formData.topic_id),
-        marks: parseInt(formData.marks.toString())
+        marks: parseInt(formData.marks.toString()),
+        options: formData.q_type === 'MCQ' ? formData.options : null
       });
       onSuccess();
-    } catch (err) {
-      alert("Failed to save question");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Helper to "Seed" a topic for testing if none exist
-  const quickSeedTopic = async () => {
-    if (topics.length > 0) {
-      alert("Topics already exist! Just select one from the list.");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      // Create a dummy hierarchy: CBSE -> Class 10 -> General -> Testing
-      const s = await client.post('/curriculum/syllabuses', { syllabus_name: "General", academic_year: "2025-26" });
-      const g = await client.post('/curriculum/grades', { syllabus_id: s.data.syllabus_id, grade_level: 10 });
-      const sub = await client.post('/curriculum/subjects', { config_id: g.data.config_id, subject_name: "General Science" });
-      const t = await client.post('/curriculum/topics', { subject_id: sub.data.subject_id, topic_name: "General Knowledge" });
-      
-      const newTopic = t.data;
-      setTopics([newTopic]);
-      setFormData({ ...formData, topic_id: newTopic.topic_id.toString() });
-      alert("Test Topic Created! You can now save your question.");
-    } catch (e) {
-      alert("Quick setup failed. Ensure backend is running.");
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "Failed to save question");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+    <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 duration-300 max-w-5xl mx-auto text-gray-900 font-sans">
       <div className="p-8">
         <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-bold text-gray-900">Create New Question</h2>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-academy-600 text-white rounded-xl shadow-lg shadow-academy-600/20">
+              <Plus className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black tracking-tight">Compose Question</h2>
+              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Author: {user?.full_name}</p>
+            </div>
+          </div>
           <button onClick={onCancel} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
             <X className="w-6 h-6" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
             
-            {/* Left Column: Text Content */}
+            {/* Left: Context & Content */}
             <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 text-indigo-900/70 uppercase tracking-wider">Topic Assignment</label>
-                <div className="flex gap-2">
-                  <select 
-                    value={formData.topic_id}
-                    onChange={(e) => setFormData({...formData, topic_id: e.target.value})}
-                    className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-academy-500 outline-none"
-                    required
-                  >
-                    <option value="">Select a Topic...</option>
-                    {topics.map(t => (
-                      <option key={t.topic_id} value={t.topic_id}>{t.topic_name}</option>
-                    ))}
-                  </select>
-                  <button 
-                    type="button"
-                    onClick={quickSeedTopic}
-                    className="px-4 py-3 bg-academy-100 text-academy-700 rounded-xl hover:bg-academy-200 transition-colors flex items-center gap-2 font-medium"
-                    title="Quickly setup a test topic"
-                  >
-                    <Plus className="w-5 h-5" />
-                    Setup
-                  </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1 tracking-widest">1. Select Subject</label>
+                  <div className="relative group">
+                    <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-academy-600" />
+                    <select 
+                      value={selectedSubjectId}
+                      onChange={(e) => { setSelectedSubjectId(e.target.value); setFormData({...formData, topic_id: '', answer_text: ''}); }}
+                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-academy-500 outline-none font-bold"
+                      required
+                    >
+                      <option value="">Choose Subject...</option>
+                      {availableSubjects.map((s: any) => (
+                        <option key={s.subject_id} value={s.subject_id}>{s.display || s.subject_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1 tracking-widest">2. Select Topic</label>
+                  <div className="relative group">
+                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-academy-600" />
+                    <select 
+                      disabled={!selectedSubjectId}
+                      value={formData.topic_id}
+                      onChange={(e) => setFormData({...formData, topic_id: e.target.value})}
+                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-academy-500 outline-none font-bold disabled:opacity-50"
+                      required
+                    >
+                      <option value="">Choose Topic...</option>
+                      {availableTopics.map((t: any) => (
+                        <option key={t.topic_id} value={t.topic_id}>{t.topic_name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 text-indigo-900/70 uppercase tracking-wider">Question Text</label>
+                <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1 tracking-widest">Question Text</label>
                 <textarea 
                   value={formData.question_text}
                   onChange={(e) => setFormData({...formData, question_text: e.target.value})}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-academy-500 outline-none min-h-[120px]"
-                  placeholder="Enter the question here..."
+                  className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-academy-500 outline-none min-h-[120px] text-lg font-bold placeholder:text-gray-300"
+                  placeholder="What is the question?"
                   required
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 text-indigo-900/70 uppercase tracking-wider">Correct Answer</label>
-                <textarea 
-                  value={formData.answer_text}
-                  onChange={(e) => setFormData({...formData, answer_text: e.target.value})}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-academy-500 outline-none min-h-[80px]"
-                  placeholder="Enter the correct answer or solution..."
-                  required
-                />
-              </div>
+              {/* Dynamic Content based on Type */}
+              {formData.q_type === 'MCQ' ? (
+                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1 tracking-widest">Multiple Choice Options</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {['A', 'B', 'C', 'D'].map((key) => (
+                      <div key={key} className="relative">
+                        <span className={`absolute left-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-lg font-black text-xs transition-colors ${formData.answer_text === key ? 'bg-academy-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                          {key}
+                        </span>
+                        <input 
+                          type="text"
+                          value={formData.options[key]}
+                          onChange={(e) => handleOptionChange(key, e.target.value)}
+                          className={`w-full pl-12 pr-4 py-3 bg-gray-50 border rounded-xl outline-none focus:ring-2 focus:ring-academy-500 transition-all font-bold ${formData.answer_text === key ? 'border-academy-500 ring-1 ring-academy-500 bg-white' : 'border-gray-200'}`}
+                          placeholder={`Option ${key}...`}
+                          required
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => setFormData({...formData, answer_text: key})}
+                          className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md transition-colors ${formData.answer_text === key ? 'text-academy-600' : 'text-gray-300 hover:text-gray-400'}`}
+                        >
+                          <CheckCircle2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : formData.q_type === 'True/False' ? (
+                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1 tracking-widest text-center">Correct Answer Selection</label>
+                  <div className="flex gap-4">
+                    {['True', 'False'].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setFormData({...formData, answer_text: val})}
+                        className={`flex-1 py-6 rounded-2xl border-2 font-black text-lg transition-all flex flex-col items-center gap-2
+                          ${formData.answer_text === val 
+                            ? 'bg-academy-600 border-academy-600 text-white shadow-xl shadow-academy-600/20' 
+                            : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-academy-300 hover:text-gray-600'}`}
+                      >
+                        <CheckCircle2 className={`w-6 h-6 ${formData.answer_text === val ? 'opacity-100 scale-110' : 'opacity-0 scale-50'} transition-all`} />
+                        {val}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1 tracking-widest">Correct Solution / Answer Key</label>
+                  <textarea 
+                    value={formData.answer_text}
+                    onChange={(e) => setFormData({...formData, answer_text: e.target.value})}
+                    className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-academy-500 outline-none min-h-[100px] font-bold placeholder:text-gray-300"
+                    placeholder="Provide the answer here..."
+                    required
+                  />
+                </div>
+              )}
             </div>
 
-            {/* Right Column: Config & Media */}
+            {/* Right: Meta & Media */}
             <div className="space-y-6">
-              <div className="grid grid-cols-1 gap-6">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2 text-indigo-900/70 uppercase tracking-wider">Question Type</label>
-                  <select 
-                    value={formData.q_type}
-                    onChange={(e) => setFormData({...formData, q_type: e.target.value})}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-academy-500 outline-none font-medium"
-                  >
-                    <option value="MCQ">Multiple Choice (MCQ)</option>
-                    <option value="True/False">True / False</option>
-                    <option value="Short Answer">Short Answer</option>
-                    <option value="Long Answer">Long Answer</option>
-                    <option value="Match the Following">Match the Following</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
+              <div className="bg-gray-50 rounded-3xl p-6 border border-gray-100">
+                <label className="block text-[10px] font-black text-gray-400 uppercase mb-4 ml-1 tracking-widest text-center">Classification</label>
+                <div className="grid grid-cols-1 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2 text-indigo-900/70 uppercase tracking-wider">Difficulty</label>
+                    <select 
+                      value={formData.q_type}
+                      onChange={(e) => setFormData({...formData, q_type: e.target.value, answer_text: ''})}
+                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-academy-500 outline-none font-bold"
+                    >
+                      <option value="MCQ">Multiple Choice (MCQ)</option>
+                      <option value="True/False">True / False</option>
+                      <option value="Short Answer">Short Answer</option>
+                      <option value="Long Answer">Long Answer</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
                     <select 
                       value={formData.difficulty}
                       onChange={(e) => setFormData({...formData, difficulty: e.target.value})}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-academy-500 outline-none"
+                      className={`w-full px-4 py-3 border border-gray-200 rounded-xl outline-none font-bold bg-white
+                        ${formData.difficulty === 'Easy' ? 'text-emerald-600' : formData.difficulty === 'Medium' ? 'text-amber-600' : 'text-red-600'}`}
                     >
                       <option>Easy</option>
                       <option>Medium</option>
                       <option>Hard</option>
                     </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2 text-indigo-900/70 uppercase tracking-wider">Marks</label>
-                    <input 
-                      type="number"
-                      value={formData.marks}
-                      onChange={(e) => setFormData({...formData, marks: parseInt(e.target.value)})}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-academy-500 outline-none"
-                      min="1"
-                    />
+                    <div className="relative">
+                      <input 
+                        type="number"
+                        value={formData.marks}
+                        onChange={(e) => setFormData({...formData, marks: parseInt(e.target.value)})}
+                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-academy-500 outline-none font-black text-center"
+                        min="1"
+                      />
+                      <span className="absolute -top-2 left-3 px-1 bg-gray-50 text-[8px] font-black text-gray-400 uppercase">Marks</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 text-indigo-900/70 uppercase tracking-wider">Diagram / Image</label>
+                <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1 tracking-widest text-center">Supporting Diagram</label>
                 <div className="relative group">
                   <div className={`
-                    border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center transition-all
-                    ${formData.image_url ? 'border-academy-500 bg-academy-50/30' : 'border-gray-200 bg-gray-50 hover:border-academy-400'}
+                    border-2 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center transition-all min-h-[240px]
+                    ${formData.image_url ? 'border-academy-500 bg-academy-50/20' : 'border-gray-200 bg-gray-50 hover:border-academy-400 hover:bg-white'}
                   `}>
                     {uploading ? (
-                      <Loader2 className="w-10 h-10 text-academy-500 animate-spin" />
+                      <Loader2 className="w-12 h-12 text-academy-500 animate-spin" />
                     ) : formData.image_url ? (
-                      <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-academy-200 shadow-sm">
+                      <div className="relative w-full rounded-2xl overflow-hidden shadow-2xl border border-white">
                         <img 
                           src={`http://localhost:8000${formData.image_url}`} 
                           alt="Preview" 
-                          className="w-full h-full object-contain"
+                          className="w-full max-h-[200px] object-contain"
                         />
                         <button 
-                          onClick={() => setFormData({...formData, image_url: ''})}
-                          className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors"
+                          onClick={(e) => { e.preventDefault(); setFormData({...formData, image_url: ''}); }}
+                          className="absolute top-3 right-3 p-2 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-transform active:scale-90"
                         >
                           <X className="w-4 h-4" />
                         </button>
                       </div>
                     ) : (
                       <>
-                        <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
-                          <ImageIcon className="w-8 h-8 text-academy-500" />
+                        <div className="bg-white p-5 rounded-2xl shadow-sm mb-4 group-hover:scale-110 transition-transform">
+                          <ImageIcon className="w-10 h-10 text-academy-500" />
                         </div>
-                        <p className="text-sm font-medium text-gray-600">Click to upload a diagram</p>
-                        <p className="text-xs text-gray-400 mt-1">PNG, JPG or SVG up to 5MB</p>
+                        <p className="text-sm font-bold text-gray-600">Drop diagram here</p>
+                        <p className="text-[10px] text-gray-400 mt-1 uppercase font-black">or click to browse</p>
                       </>
                     )}
                     <input 
@@ -267,21 +352,21 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ onSuccess, onCancel }) => {
             </div>
           </div>
 
-          <div className="pt-6 border-t border-gray-100 flex items-center justify-end gap-4">
+          <div className="pt-8 border-t border-gray-100 flex items-center justify-end gap-4">
             <button 
               type="button"
               onClick={onCancel}
-              className="px-6 py-3 text-gray-500 font-semibold hover:text-gray-700 transition-colors"
+              className="px-8 py-4 text-gray-400 font-bold hover:text-gray-600 transition-colors uppercase text-xs tracking-widest"
             >
-              Discard
+              Discard Draft
             </button>
             <button 
               type="submit"
               disabled={loading || uploading}
-              className="bg-academy-700 hover:bg-academy-800 text-white px-10 py-3 rounded-xl shadow-lg shadow-academy-700/20 font-bold transition-all flex items-center gap-2 disabled:opacity-50"
+              className="bg-academy-700 hover:bg-academy-800 text-white px-12 py-4 rounded-2xl shadow-xl shadow-academy-700/20 font-black transition-all flex items-center gap-3 disabled:opacity-50 active:scale-95"
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-              Save Question
+              <span>Commit to Question Bank</span>
             </button>
           </div>
         </form>

@@ -57,7 +57,8 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
     
-    statement = select(Users).where(Users.email == email)
+    from sqlalchemy.orm import selectinload
+    statement = select(Users).options(selectinload(Users.subjects)).where(Users.email == email)
     result = await session.exec(statement)
     user = result.first()
     

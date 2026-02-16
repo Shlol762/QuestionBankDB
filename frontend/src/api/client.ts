@@ -13,4 +13,6 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
+export const getMe = () => client.get('/auth/me');
+
 export default client;

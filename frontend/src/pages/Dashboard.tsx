@@ -12,16 +12,17 @@ import {
   User,
   Filter,
   MoreVertical,
-  Plus
+  Plus,
+  Loader2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import client from '../api/client';
 import QuestionForm from '../components/QuestionForm';
 import CurriculumManager from '../components/CurriculumManager';
+import UserManagement from '../components/UserManagement';
 
 const Dashboard: React.FC = () => {
-  const [isAdmin] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isAddingQuestion, setIsAddingQuestion] = useState(false);
   const navigate = useNavigate();
@@ -32,18 +33,43 @@ const Dashboard: React.FC = () => {
     navigate('/login');
   };
 
-  // Fetch real data
+  // 1. Fetch Real Identity
+  const { data: user, isLoading: userLoading } = useQuery({
+    queryKey: ['me'],
+    queryFn: async () => {
+      const res = await client.get('/auth/me');
+      return res.data;
+    }
+  });
+
+  const isAdmin = user?.is_admin || false;
+
+  // 2. Fetch Questions (Filtered if teacher)
   const { data: questions = [], isLoading } = useQuery({
-    queryKey: ['questions'],
+    queryKey: ['questions', user?.user_id],
     queryFn: async () => {
       const res = await client.get('/questions/');
       return res.data;
     }
   });
 
+  // Helper for initials
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+  };
+
+  if (userLoading) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-gray-50">
+        <Loader2 className="w-12 h-12 animate-spin text-academy-600 mb-4" />
+        <p className="text-gray-500 font-medium animate-pulse">Establishing Secure Session...</p>
+      </div>
+    );
+  }
+
   const navItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', role: 'teacher' },
-    { id: 'subjects', icon: BookOpen, label: 'My Subjects', role: 'teacher' },
+    { id: 'subjects', icon: BookOpen, label: isAdmin ? 'Full Curriculum' : 'My Subjects', role: 'teacher' },
     { id: 'questions', icon: PlusCircle, label: 'Question Bank', role: 'teacher' },
     { id: 'users', icon: UsersIcon, label: 'User Management', role: 'admin' },
     { id: 'settings', icon: Settings, label: 'Settings', role: 'teacher' },
@@ -53,6 +79,8 @@ const Dashboard: React.FC = () => {
     switch (activeTab) {
       case 'subjects':
         return <CurriculumManager />;
+      case 'users':
+        return <UserManagement />;
       case 'questions':
         if (isAddingQuestion) {
           return (
@@ -274,11 +302,11 @@ const Dashboard: React.FC = () => {
             
             <div className="flex items-center gap-3">
               <div className="text-right">
-                <p className="text-sm font-bold text-gray-900">Dr. Sarah Wilson</p>
-                <p className="text-xs text-gray-500 capitalize">{isAdmin ? 'Administrator' : 'Teacher'}</p>
+                <p className="text-sm font-bold text-gray-900">{user?.full_name}</p>
+                <p className="text-xs text-gray-500 capitalize">{isAdmin ? 'System Administrator' : `${user?.department} Teacher`}</p>
               </div>
               <div className="h-10 w-10 bg-academy-100 rounded-full flex items-center justify-center text-academy-700 font-bold border-2 border-academy-200">
-                SW
+                {user ? getInitials(user.full_name) : '??'}
               </div>
             </div>
           </div>

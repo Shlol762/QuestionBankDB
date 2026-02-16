@@ -18,6 +18,7 @@ class QuestionCreate(BaseModel):
     topic_id: int
     question_text: str
     answer_text: str
+    options: Optional[dict] = None
     image_url: Optional[str] = None
     marks: int
     difficulty: DifficultyLevel = DifficultyLevel.MEDIUM
@@ -71,11 +72,20 @@ async def create_question(
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
-    """Creates a new question in the bank."""
-    # Verify topic exists
+    """Creates a new question. Verifies topic ownership/assignment."""
+    # 1. Fetch the topic and its parent subject
     topic = await session.get(Topic, data.topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
+    
+    # 2. Permission Check: Admin can do anything, Teachers only assigned subjects
+    if not current_user.is_admin:
+        assigned_subject_ids = [s.subject_id for s in current_user.subjects]
+        if topic.subject_id not in assigned_subject_ids:
+            raise HTTPException(
+                status_code=403, 
+                detail="You are not authorized to add questions to this subject"
+            )
     
     new_question = QuestionBank(
         **data.model_dump(),

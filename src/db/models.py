@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional, List, Dict
 from enum import Enum
 from sqlmodel import SQLModel, Field, Relationship
+from sqlalchemy import JSON, Column
 
-# --- ENUMS (Dropdown Options) ---
+# --- ENUMS ---
 class DifficultyLevel(str, Enum):
     EASY = "Easy"
     MEDIUM = "Medium"
@@ -22,88 +23,80 @@ class QuestionType(str, Enum):
 class UserSubjectLink(SQLModel, table=True):
     __tablename__ = "user_subject_link"
     
-    user_id: int = Field(foreign_key="users.user_id", primary_key=True)
-    subject_id: int = Field(foreign_key="subjects.subject_id", primary_key=True)
+    user_id: int = Field(foreign_key="users.user_id", primary_key=True, ondelete="CASCADE")
+    subject_id: int = Field(foreign_key="subjects.subject_id", primary_key=True, ondelete="CASCADE")
 
 # ==========================================
-# LEVEL 1: THE CONTEXT (Syllabus & Year)
+# LEVEL 1: THE CONTEXT (Syllabus)
 # ==========================================
 class SyllabusMaster(SQLModel, table=True):
     __tablename__ = "syllabus_master"
 
     syllabus_id: Optional[int] = Field(default=None, primary_key=True)
-    syllabus_name: str  # e.g., "CBSE", "ICSE"
-    academic_year: str  # e.g., "2025-2026"
+    syllabus_name: str
+    academic_year: str
     
-    # Relationship: One Syllabus has many Grades
-    grades: List["GradeConfig"] = Relationship(back_populates="syllabus")
+    # Cascade: If Syllabus is deleted, delete all Grades
+    grades: List["GradeConfig"] = Relationship(back_populates="syllabus", cascade_delete=True)
 
     def __repr__(self):
-        return f"<SyllabusMaster(id={self.syllabus_id}, name='{self.syllabus_name}', year='{self.academic_year}')>"
+        return f"<SyllabusMaster(id={self.syllabus_id}, name='{self.syllabus_name}')>"
 
 # ==========================================
-# LEVEL 2: THE GRADE (Class 10, 11...)
+# LEVEL 2: THE GRADE
 # ==========================================
 class GradeConfig(SQLModel, table=True):
     __tablename__ = "grade_config"
 
     config_id: Optional[int] = Field(default=None, primary_key=True)
-    
-    # Link to Syllabus
-    syllabus_id: int = Field(foreign_key="syllabus_master.syllabus_id")
+    syllabus_id: int = Field(foreign_key="syllabus_master.syllabus_id", ondelete="CASCADE")
     syllabus: SyllabusMaster = Relationship(back_populates="grades")
     
-    grade_level: int  # e.g., 10, 11
+    grade_level: int
     
-    # Relationship: One Grade has many Subjects
-    subjects: List["Subject"] = Relationship(back_populates="grade")
+    # Cascade: If Grade is deleted, delete all Subjects
+    subjects: List["Subject"] = Relationship(back_populates="grade", cascade_delete=True)
 
     def __repr__(self):
-        return f"<GradeConfig(id={self.config_id}, grade={self.grade_level}, syllabus_id={self.syllabus_id})>"
+        return f"<GradeConfig(id={self.config_id}, level={self.grade_level})>"
 
 # ==========================================
-# LEVEL 3: THE SUBJECT (Physics, Math)
+# LEVEL 3: THE SUBJECT
 # ==========================================
 class Subject(SQLModel, table=True):
     __tablename__ = "subjects"
     
     subject_id: Optional[int] = Field(default=None, primary_key=True)
-    subject_name: str # e.g., "Physics"
-    
-    # Link to Grade
-    config_id: int = Field(foreign_key="grade_config.config_id")
+    subject_name: str
+    config_id: int = Field(foreign_key="grade_config.config_id", ondelete="CASCADE")
     grade: GradeConfig = Relationship(back_populates="subjects")
     
-    # Relationship: One Subject has many Topics
-    topics: List["Topic"] = Relationship(back_populates="subject")
-    
-    # Many-to-Many: Subject linked to multiple Teachers
+    # Cascade: If Subject is deleted, delete all Topics
+    topics: List["Topic"] = Relationship(back_populates="subject", cascade_delete=True)
     teachers: List["Users"] = Relationship(back_populates="subjects", link_model=UserSubjectLink)
 
     def __repr__(self):
-        return f"<Subject(id={self.subject_id}, name='{self.subject_name}', config_id={self.config_id})>"
+        return f"<Subject(id={self.subject_id}, name='{self.subject_name}')>"
 
 # ==========================================
-# LEVEL 4: THE TOPIC (Kinematics, Algebra)
+# LEVEL 4: THE TOPIC
 # ==========================================
 class Topic(SQLModel, table=True):
     __tablename__ = "topics"
     
     topic_id: Optional[int] = Field(default=None, primary_key=True)
-    topic_name: str # e.g., "Kinematics"
-    
-    # Link to Subject
-    subject_id: int = Field(foreign_key="subjects.subject_id")
+    topic_name: str
+    subject_id: int = Field(foreign_key="subjects.subject_id", ondelete="CASCADE")
     subject: Subject = Relationship(back_populates="topics")
     
-    # Relationship: One Topic has many Questions
-    questions: List["QuestionBank"] = Relationship(back_populates="topic")
+    # Cascade: If Topic is deleted, delete all Questions
+    questions: List["QuestionBank"] = Relationship(back_populates="topic", cascade_delete=True)
 
     def __repr__(self):
-        return f"<Topic(id={self.topic_id}, name='{self.topic_name}', subject_id={self.subject_id})>"
+        return f"<Topic(id={self.topic_id}, name='{self.topic_name}')>"
 
 # ==========================================
-# LEVEL 5: THE USERS (Teachers)
+# LEVEL 5: THE USERS
 # ==========================================
 class Users(SQLModel, table=True):
     __tablename__ = "users"
@@ -112,17 +105,16 @@ class Users(SQLModel, table=True):
     full_name: str
     email: str = Field(unique=True, index=True)
     password_hash: str = Field(exclude=True)
-    department: str  # e.g., "Science"
+    department: str
     is_admin: bool = Field(default=False)
     
-    # Many-to-Many: User assigned to multiple Subjects
     subjects: List[Subject] = Relationship(back_populates="teachers", link_model=UserSubjectLink)
     
-    # Relationship: One Teacher writes many Questions
-    questions: List["QuestionBank"] = Relationship(back_populates="teacher")
+    # Cascade: If Teacher is deleted, delete their Questions (or we could set to NULL, but cascade is safer for now)
+    questions: List["QuestionBank"] = Relationship(back_populates="teacher", cascade_delete=True)
 
     def __repr__(self):
-        return f"<User(id={self.user_id}, name='{self.full_name}', email='{self.email}')>"
+        return f"<User(id={self.user_id}, name='{self.full_name}')>"
 
 # ==========================================
 # LEVEL 6: THE CONTENT (Questions)
@@ -131,33 +123,23 @@ class QuestionBank(SQLModel, table=True):
     __tablename__ = "question_bank"
 
     question_id: Optional[int] = Field(default=None, primary_key=True)
-    
-    # LINK 1: TOPIC (Determines Subject, Grade, and Syllabus automatically!)
-    topic_id: int = Field(foreign_key="topics.topic_id")
+    topic_id: int = Field(foreign_key="topics.topic_id", ondelete="CASCADE")
     topic: Topic = Relationship(back_populates="questions")
     
-    # LINK 2: AUTHOR (Who wrote this?)
-    teacher_id: int = Field(foreign_key="users.user_id")
+    teacher_id: int = Field(foreign_key="users.user_id", ondelete="CASCADE")
     teacher: Users = Relationship(back_populates="questions")
 
-    # The Actual Content
     question_text: str
     answer_text: str
+    # Options stored as JSON for flexibility: {"A": "Choice 1", "B": "Choice 2"...}
+    options: Optional[Dict[str, str]] = Field(default=None, sa_column=Column(JSON))
     image_url: Optional[str] = None 
     marks: int
     difficulty: DifficultyLevel = Field(default=DifficultyLevel.MEDIUM)
     q_type: QuestionType = Field(default=QuestionType.MCQ)
-    
-    # Metadata
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     def __repr__(self):
         short_text = (self.question_text[:30] + '..') if len(self.question_text) > 30 else self.question_text
-        return (
-            f"<Question(id={self.question_id}, "
-            f"type={self.q_type.value}, "
-            f"marks={self.marks}, "
-            f"topic_id={self.topic_id}, "
-            f"text='{short_text}')>"
-        )
+        return f"<Question(id={self.question_id}, text='{short_text}')>"
