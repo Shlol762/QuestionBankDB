@@ -111,7 +111,7 @@ async def get_all_subjects(session: AsyncSession = Depends(get_session)):
 @router.post("/grades", response_model=GradeRead, status_code=status.HTTP_201_CREATED)
 async def create_grade(data: GradeCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
     """Adds a Grade level. Admin only."""
-    if not current_user.is_admin: raise HTTPException(403, "Admin only")
+    if not current_user.can_modify_grade(): raise HTTPException(403, "Admin only")
     
     # Verify syllabus exists
     syllabus = await session.get(SyllabusMaster, data.syllabus_id)
@@ -144,12 +144,13 @@ async def get_grades_by_syllabus(syllabus_id: int, session: AsyncSession = Depen
 
 @router.post("/subjects", response_model=SubjectRead, status_code=status.HTTP_201_CREATED)
 async def create_subject(data: SubjectCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    """Adds a Subject. Admin only."""
-    if not current_user.is_admin: raise HTTPException(403, "Admin only")
-    
+    """Adds a Subject. Admin or Grade Coordinator."""
     grade = await session.get(GradeConfig, data.config_id)
     if not grade:
         raise HTTPException(status_code=404, detail="Grade config not found")
+    
+    if not current_user.can_modify_subject(grade.grade_level):
+        raise HTTPException(403, "Not authorized to modify subjects for this grade")
     
     # Check for duplicate
     statement = select(Subject).where(
@@ -197,7 +198,7 @@ async def delete_syllabus(id: int, session: AsyncSession = Depends(get_session),
 # GRADE
 @router.patch("/grades/{id}", response_model=GradeRead)
 async def update_grade(id: int, data: GradeCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    if not current_user.is_admin: raise HTTPException(403, "Admin only")
+    if not current_user.can_modify_grade(): raise HTTPException(403, "Admin only")
     item = await session.get(GradeConfig, id)
     if not item: raise HTTPException(404, "Not found")
     for key, val in data.model_dump().items(): setattr(item, key, val)
@@ -206,7 +207,7 @@ async def update_grade(id: int, data: GradeCreate, session: AsyncSession = Depen
 
 @router.delete("/grades/{id}", status_code=204)
 async def delete_grade(id: int, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    if not current_user.is_admin: raise HTTPException(403, "Admin only")
+    if not current_user.can_modify_grade(): raise HTTPException(403, "Admin only")
     item = await session.get(GradeConfig, id)
     if item:
         await session.delete(item)
@@ -216,29 +217,44 @@ async def delete_grade(id: int, session: AsyncSession = Depends(get_session), cu
 # SUBJECT
 @router.patch("/subjects/{id}", response_model=SubjectRead)
 async def update_subject(id: int, data: SubjectCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    if not current_user.is_admin: raise HTTPException(403, "Admin only")
     item = await session.get(Subject, id)
     if not item: raise HTTPException(404, "Not found")
+    
+    # Need grade level for permission check
+    grade = await session.get(GradeConfig, item.config_id)
+    if not current_user.can_modify_subject(grade.grade_level):
+        raise HTTPException(403, "Not authorized to modify this subject")
+
     for key, val in data.model_dump().items(): setattr(item, key, val)
     await session.commit()
     return item
 
 @router.delete("/subjects/{id}", status_code=204)
 async def delete_subject(id: int, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    if not current_user.is_admin: raise HTTPException(403, "Admin only")
     item = await session.get(Subject, id)
-    if item:
-        await session.delete(item)
-        await session.commit()
+    if not item: return None
+    
+    grade = await session.get(GradeConfig, item.config_id)
+    if not current_user.can_modify_subject(grade.grade_level):
+        raise HTTPException(403, "Not authorized to modify this subject")
+
+    await session.delete(item)
+    await session.commit()
     return None
 
 # TOPIC
 @router.post("/topics", response_model=TopicRead, status_code=status.HTTP_201_CREATED)
 async def create_topic(data: TopicCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    """Adds a Topic. Admins or Assigned Teachers only."""
-    assigned_ids = [s.subject_id for s in current_user.subjects]
-    if not current_user.is_admin and data.subject_id not in assigned_ids:
-        raise HTTPException(403, "You are not assigned to this subject")
+    """Adds a Topic. Admins, Grade Coordinators, HODs, or Assigned Teachers."""
+    from sqlalchemy.orm import selectinload
+    # Load subject with grade to check permissions
+    stmt = select(Subject).where(Subject.subject_id == data.subject_id).options(selectinload(Subject.grade))
+    result = await session.exec(stmt)
+    subject = result.first()
+    if not subject: raise HTTPException(404, "Subject not found")
+
+    if not current_user.can_modify_topic(subject.subject_id, subject.subject_name, subject.grade.grade_level):
+        raise HTTPException(403, "Not authorized to modify topics for this subject")
 
     statement = select(Topic).where(Topic.subject_id == data.subject_id, Topic.topic_name == data.topic_name)
     result = await session.exec(statement)
@@ -255,9 +271,13 @@ async def update_topic(id: int, data: TopicCreate, session: AsyncSession = Depen
     item = await session.get(Topic, id)
     if not item: raise HTTPException(404, "Not found")
     
-    assigned_ids = [s.subject_id for s in current_user.subjects]
-    if not current_user.is_admin and item.subject_id not in assigned_ids:
-        raise HTTPException(403, "You are not assigned to this subject")
+    from sqlalchemy.orm import selectinload
+    stmt = select(Subject).where(Subject.subject_id == item.subject_id).options(selectinload(Subject.grade))
+    result = await session.exec(stmt)
+    subject = result.first()
+
+    if not current_user.can_modify_topic(subject.subject_id, subject.subject_name, subject.grade.grade_level):
+        raise HTTPException(403, "Not authorized to modify topics for this subject")
 
     for key, val in data.model_dump().items(): setattr(item, key, val)
     await session.commit()
@@ -268,9 +288,13 @@ async def delete_topic(id: int, session: AsyncSession = Depends(get_session), cu
     item = await session.get(Topic, id)
     if not item: return None
     
-    assigned_ids = [s.subject_id for s in current_user.subjects]
-    if not current_user.is_admin and item.subject_id not in assigned_ids:
-        raise HTTPException(403, "You are not assigned to this subject")
+    from sqlalchemy.orm import selectinload
+    stmt = select(Subject).where(Subject.subject_id == item.subject_id).options(selectinload(Subject.grade))
+    result = await session.exec(stmt)
+    subject = result.first()
+
+    if not current_user.can_modify_topic(subject.subject_id, subject.subject_name, subject.grade.grade_level):
+        raise HTTPException(403, "Not authorized to modify topics for this subject")
 
     await session.delete(item)
     await session.commit()

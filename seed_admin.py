@@ -33,7 +33,9 @@ async def create_initial_admin():
             email=email,
             password_hash=get_password_hash("admin123"), # Default password
             department="IT / Administration",
-            is_admin=True
+            is_admin=True,
+            grade_coordinating=[],
+            hod_subjects=[]
         )
 
         session.add(admin_user)

@@ -58,7 +58,15 @@ async def get_current_user(
         raise credentials_exception
     
     from sqlalchemy.orm import selectinload
-    statement = select(Users).options(selectinload(Users.subjects)).where(Users.email == email)
+    statement = (
+        select(Users)
+        .options(
+            selectinload(Users.subjects),
+            selectinload(Users.grade_coordinating),
+            selectinload(Users.hod_subjects)
+        )
+        .where(Users.email == email)
+    )
     result = await session.exec(statement)
     user = result.first()
     

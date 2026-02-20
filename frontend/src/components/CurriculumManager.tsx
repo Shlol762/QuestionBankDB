@@ -34,6 +34,8 @@ const CurriculumManager: React.FC = () => {
 
   const isAdmin = user?.is_admin || false;
   const assignedSubjectIds = user?.subjects?.map((s: any) => s.subject_id) || [];
+  const gradeLevels = user?.grade_levels || [];
+  const hodSubjects = user?.hod_subject_names || [];
 
   // Modal State
   const [modalType, setModalType] = useState<'syllabus' | 'grade' | 'subject' | 'topic' | null>(null);
@@ -56,16 +58,24 @@ const CurriculumManager: React.FC = () => {
   // 2. Filter the tree based on permissions
   const hierarchy = useMemo(() => {
     if (isAdmin) return rawHierarchy;
+
     return rawHierarchy.map((syllabus: any) => {
       const filteredGrades = (syllabus.grades || []).map((grade: any) => {
-        const filteredSubjects = (grade.subjects || []).filter((subject: any) => 
-          assignedSubjectIds.includes(subject.subject_id)
-        );
-        return { ...grade, subjects: filteredSubjects };
+        // If Grade Coordinator for this level, show ALL subjects in this grade
+        const isCoordinator = gradeLevels.includes(grade.grade_level);
+        
+        const filteredSubjects = (grade.subjects || []).filter((subject: any) => {
+          if (isCoordinator) return true;
+          if (hodSubjects.includes(subject.subject_name)) return true;
+          return assignedSubjectIds.includes(subject.subject_id);
+        });
+
+        return { ...grade, subjects: filteredSubjects, isCoordinator };
       }).filter((grade: any) => grade.subjects.length > 0);
+      
       return { ...syllabus, grades: filteredGrades };
     }).filter((syllabus: any) => syllabus.grades.length > 0);
-  }, [rawHierarchy, isAdmin, assignedSubjectIds]);
+  }, [rawHierarchy, isAdmin, assignedSubjectIds, gradeLevels, hodSubjects]);
 
   const toggleExpand = (id: string) => {
     setExpanded(prev => 
@@ -212,46 +222,59 @@ const CurriculumManager: React.FC = () => {
                               <>
                                 <button onClick={(e) => { e.stopPropagation(); openEdit('grade', grade); }} className="p-1.5 text-gray-400 hover:text-academy-600"><Pencil className="w-3.5 h-3.5" /></button>
                                 <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'grade', id: grade.config_id, name: `Grade ${grade.grade_level}`}); }} className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
-                                <button onClick={(e) => { e.stopPropagation(); setModalType('subject'); setModalData({ parentId: grade.config_id }); setIsEditing(false); }} className="ml-2 text-[10px] font-black uppercase text-academy-600 border border-academy-100 px-2 py-1 rounded-md hover:bg-academy-600 hover:text-white transition-all">+ Subject</button>
                               </>
+                            )}
+                            { (isAdmin || grade.isCoordinator) && (
+                              <button onClick={(e) => { e.stopPropagation(); setModalType('subject'); setModalData({ parentId: grade.config_id }); setIsEditing(false); }} className="ml-2 text-[10px] font-black uppercase text-academy-600 border border-academy-100 px-2 py-1 rounded-md hover:bg-academy-600 hover:text-white transition-all">+ Subject</button>
                             )}
                           </div>
                         </div>
 
                         {expanded.includes(`g-${grade.config_id}`) && (
                           <div className="ml-12 mt-2 space-y-1">
-                            {(grade.subjects || []).map((subject: any) => (
-                              <div key={`sub-${subject.subject_id}`}>
-                                <div className="flex items-center justify-between p-2 hover:text-academy-700 transition-colors cursor-pointer group/sub" onClick={(e) => { e.stopPropagation(); toggleExpand(`sub-${subject.subject_id}`); }}>
-                                  <div className="flex items-center gap-3 ml-4">
-                                    <Book className="w-4 h-4 text-blue-500" /><span className="text-sm font-bold text-gray-600">{subject.subject_name}</span>
-                                  </div>
-                                  <div className="flex items-center gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity">
-                                    {isAdmin && (
-                                      <>
-                                        <button onClick={(e) => { e.stopPropagation(); openEdit('subject', subject); }} className="p-1 text-gray-400 hover:text-academy-600"><Pencil className="w-3 h-3" /></button>
-                                        <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'subject', id: subject.subject_id, name: subject.subject_name}); }} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
-                                      </>
-                                    )}
-                                    <button onClick={(e) => { e.stopPropagation(); setModalType('topic'); setModalData({ parentId: subject.subject_id }); setIsEditing(false); }} className="ml-2 text-[10px] font-black uppercase text-academy-600 hover:bg-academy-50 px-2 py-1 rounded">+ Topic</button>
-                                  </div>
-                                </div>
+                            {(grade.subjects || []).map((subject: any) => {
+                              const canModifySubject = isAdmin || grade.isCoordinator;
+                              const canModifyTopic = isAdmin || grade.isCoordinator || hodSubjects.includes(subject.subject_name) || assignedSubjectIds.includes(subject.subject_id);
 
-                                {expanded.includes(`sub-${subject.subject_id}`) && (
-                                  <div className="ml-12 mt-1 grid grid-cols-1 sm:grid-cols-2 gap-2 pb-3">
-                                    {(subject.topics || []).map((topic: any) => (
-                                      <div key={`t-${topic.topic_id}`} className="group/topic flex items-center justify-between p-2.5 bg-white border border-gray-100 rounded-xl text-xs font-bold text-gray-500 hover:border-academy-200 hover:text-academy-700 transition-all shadow-sm">
-                                        <div className="flex items-center gap-2"><Tag className="w-3 h-3 text-emerald-500" />{topic.topic_name}</div>
-                                        <div className="flex items-center gap-1 opacity-0 group-hover/topic:opacity-100 transition-opacity">
-                                          <button onClick={() => openEdit('topic', topic)} className="p-1 hover:text-academy-600"><Pencil className="w-3 h-3" /></button>
-                                          <button onClick={() => setDeleteTarget({type:'topic', id: topic.topic_id, name: topic.topic_name})} className="p-1 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
-                                        </div>
-                                      </div>
-                                    ))}
+                              return (
+                                <div key={`sub-${subject.subject_id}`}>
+                                  <div className="flex items-center justify-between p-2 hover:text-academy-700 transition-colors cursor-pointer group/sub" onClick={(e) => { e.stopPropagation(); toggleExpand(`sub-${subject.subject_id}`); }}>
+                                    <div className="flex items-center gap-3 ml-4">
+                                      <Book className="w-4 h-4 text-blue-500" /><span className="text-sm font-bold text-gray-600">{subject.subject_name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity">
+                                      {canModifySubject && (
+                                        <>
+                                          <button onClick={(e) => { e.stopPropagation(); openEdit('subject', subject); }} className="p-1 text-gray-400 hover:text-academy-600"><Pencil className="w-3 h-3" /></button>
+                                          <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'subject', id: subject.subject_id, name: subject.subject_name}); }} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
+                                        </>
+                                      )}
+                                      {canModifyTopic && (
+                                        <button onClick={(e) => { e.stopPropagation(); setModalType('topic'); setModalData({ parentId: subject.subject_id }); setIsEditing(false); }} className="ml-2 text-[10px] font-black uppercase text-academy-600 hover:bg-academy-50 px-2 py-1 rounded">+ Topic</button>
+                                      )}
+                                    </div>
                                   </div>
-                                )}
-                              </div>
-                            ))}
+
+                                  {expanded.includes(`sub-${subject.subject_id}`) && (
+                                    <div className="ml-12 mt-1 grid grid-cols-1 sm:grid-cols-2 gap-2 pb-3">
+                                      {(subject.topics || []).map((topic: any) => (
+                                        <div key={`t-${topic.topic_id}`} className="group/topic flex items-center justify-between p-2.5 bg-white border border-gray-100 rounded-xl text-xs font-bold text-gray-500 hover:border-academy-200 hover:text-academy-700 transition-all shadow-sm">
+                                          <div className="flex items-center gap-2"><Tag className="w-3 h-3 text-emerald-500" />{topic.topic_name}</div>
+                                          <div className="flex items-center gap-1 opacity-0 group-hover/topic:opacity-100 transition-opacity">
+                                            {canModifyTopic && (
+                                              <>
+                                                <button onClick={() => openEdit('topic', topic)} className="p-1 hover:text-academy-600"><Pencil className="w-3 h-3" /></button>
+                                                <button onClick={() => setDeleteTarget({type:'topic', id: topic.topic_id, name: topic.topic_name})} className="p-1 hover:text-red-600"><Trash2 className="w-3 h-3" /></button>
+                                              </>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>

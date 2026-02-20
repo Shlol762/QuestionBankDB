@@ -27,6 +27,24 @@ class UserSubjectLink(SQLModel, table=True):
     subject_id: int = Field(foreign_key="subjects.subject_id", primary_key=True, ondelete="CASCADE")
 
 # ==========================================
+# LINK TABLE: GRADE COORDINATOR <-> GRADE LEVEL
+# ==========================================
+class GradeCoordinatorLink(SQLModel, table=True):
+    __tablename__ = "grade_coordinator_link"
+    
+    user_id: int = Field(foreign_key="users.user_id", primary_key=True, ondelete="CASCADE")
+    grade_level: int = Field(primary_key=True)
+
+# ==========================================
+# LINK TABLE: HOD <-> SUBJECT NAME
+# ==========================================
+class HODLink(SQLModel, table=True):
+    __tablename__ = "hod_link"
+    
+    user_id: int = Field(foreign_key="users.user_id", primary_key=True, ondelete="CASCADE")
+    subject_name: str = Field(primary_key=True)
+
+# ==========================================
 # LEVEL 1: THE CONTEXT (Syllabus)
 # ==========================================
 class SyllabusMaster(SQLModel, table=True):
@@ -109,9 +127,34 @@ class Users(SQLModel, table=True):
     is_admin: bool = Field(default=False)
     
     subjects: List[Subject] = Relationship(back_populates="teachers", link_model=UserSubjectLink)
+    grade_coordinating: List[GradeCoordinatorLink] = Relationship(cascade_delete=True)
+    hod_subjects: List[HODLink] = Relationship(cascade_delete=True)
     
     # Cascade: If Teacher is deleted, delete their Questions (or we could set to NULL, but cascade is safer for now)
     questions: List["QuestionBank"] = Relationship(back_populates="teacher", cascade_delete=True)
+
+    def can_modify_grade(self) -> bool:
+        """Only Admins can modify grade levels or syllabus links."""
+        return self.is_admin
+
+    def can_modify_subject(self, grade_level: int) -> bool:
+        """Admins and Grade Coordinators can modify subjects within a grade."""
+        if self.is_admin: return True
+        return any(g.grade_level == grade_level for g in self.grade_coordinating)
+
+    def can_modify_topic(self, subject_id: int, subject_name: str, grade_level: int) -> bool:
+        """Admins, Coordinators, HODs, and Assigned Teachers can modify topics."""
+        if self.is_admin: return True
+        # HOD for the subject name
+        if any(h.subject_name == subject_name for h in self.hod_subjects):
+            return True
+        # Grade Coordinator for the grade
+        if any(g.grade_level == grade_level for g in self.grade_coordinating):
+            return True
+        # Assigned Teacher for the specific subject ID
+        if any(s.subject_id == subject_id for s in self.subjects):
+            return True
+        return False
 
     def __repr__(self):
         return f"<User(id={self.user_id}, name='{self.full_name}')>"

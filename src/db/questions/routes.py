@@ -6,7 +6,7 @@ import os
 import uuid
 from datetime import datetime
 from src.db.main import get_session
-from src.db.models import QuestionBank, Users, Topic, DifficultyLevel, QuestionType
+from src.db.models import QuestionBank, Users, Topic, DifficultyLevel, QuestionType, Subject
 from src.db.auth_utils import get_current_user
 from pydantic import BaseModel
 from sqlalchemy.orm import selectinload
@@ -80,15 +80,18 @@ async def create_question(
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
-    """Creates a new question. Verifies topic ownership/assignment."""
-    topic = await session.get(Topic, data.topic_id)
+    """Creates a new question. Verifies management rights for the topic."""
+    # Load topic with subject and grade level
+    stmt = select(Topic).where(Topic.topic_id == data.topic_id).options(
+        selectinload(Topic.subject).selectinload(Subject.grade)
+    )
+    result = await session.exec(stmt)
+    topic = result.first()
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
     
-    if not current_user.is_admin:
-        assigned_subject_ids = [s.subject_id for s in current_user.subjects]
-        if topic.subject_id not in assigned_subject_ids:
-            raise HTTPException(status_code=403, detail="Not authorized for this subject")
+    if not current_user.can_manage_topic(topic.subject_id, topic.subject.subject_name, topic.subject.grade.grade_level):
+        raise HTTPException(status_code=403, detail="Not authorized for this subject/topic")
     
     new_question = QuestionBank(
         **data.model_dump(),
@@ -112,15 +115,46 @@ async def list_questions(
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
-    """Lists questions. Admins see all, Teachers see assigned subjects only."""
+    """Lists questions. Admins see all, others see based on permissions."""
     statement = select(QuestionBank).options(
         selectinload(QuestionBank.teacher),
         selectinload(QuestionBank.topic)
     )
     
     if not current_user.is_admin:
-        assigned_subject_ids = [s.subject_id for s in current_user.subjects]
-        statement = statement.join(Topic).where(Topic.subject_id.in_(assigned_subject_ids))
+        # Complex filtering for HOD and Grade Coordinator might be better done with a JOIN
+        # or by gathering allowed subject IDs
+        # But for simplicity, we can fetch all and filter if the list isn't massive, 
+        # or better, build a targeted query.
+        
+        # Gathering IDs:
+        # 1. Subject IDs assigned as Teacher
+        # 2. Subject names assigned as HOD
+        # 3. Grade levels assigned as Coordinator
+        
+        teacher_subject_ids = [s.subject_id for s in current_user.subjects]
+        hod_subject_names = [h.subject_name for h in current_user.hod_subjects]
+        coordinator_grade_levels = [g.grade_level for g in current_user.grade_coordinating]
+        
+        from sqlalchemy import or_
+        from src.db.models import GradeConfig
+        
+        statement = statement.join(Topic).join(Subject).join(GradeConfig)
+        
+        filters = []
+        if teacher_subject_ids:
+            filters.append(Subject.subject_id.in_(teacher_subject_ids))
+        if hod_subject_names:
+            filters.append(Subject.subject_name.in_(hod_subject_names))
+        if coordinator_grade_levels:
+            filters.append(GradeConfig.grade_level.in_(coordinator_grade_levels))
+        
+        if filters:
+            statement = statement.where(or_(*filters))
+        else:
+            # If no roles at all, can only see their own questions if any? 
+            # Current logic for list_questions didn't handle "own only" specifically besides subjects.
+            statement = statement.where(QuestionBank.teacher_id == current_user.user_id)
     
     if topic_id:
         statement = statement.where(QuestionBank.topic_id == topic_id)
@@ -154,12 +188,23 @@ async def update_question(
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
-    """Updates a question. Only the author or an admin can perform this."""
-    question = await session.get(QuestionBank, question_id)
+    """Updates a question. Author, Admin, HOD, or Grade Coordinator."""
+    stmt = select(QuestionBank).where(QuestionBank.question_id == question_id).options(
+        selectinload(QuestionBank.topic).selectinload(Topic.subject).selectinload(Subject.grade)
+    )
+    result = await session.exec(stmt)
+    question = result.first()
+    
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
     
-    if question.teacher_id != current_user.user_id and not current_user.is_admin:
+    can_manage = current_user.can_manage_topic(
+        question.topic.subject_id, 
+        question.topic.subject.subject_name, 
+        question.topic.subject.grade.grade_level
+    )
+    
+    if question.teacher_id != current_user.user_id and not can_manage:
         raise HTTPException(status_code=403, detail="Not authorized to update this question")
     
     update_data = data.model_dump(exclude_unset=True)
@@ -182,12 +227,23 @@ async def delete_question(
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
-    """Deletes a question. Only the author or an admin can perform this."""
-    question = await session.get(QuestionBank, question_id)
+    """Deletes a question. Author, Admin, HOD, or Grade Coordinator."""
+    stmt = select(QuestionBank).where(QuestionBank.question_id == question_id).options(
+        selectinload(QuestionBank.topic).selectinload(Topic.subject).selectinload(Subject.grade)
+    )
+    result = await session.exec(stmt)
+    question = result.first()
+    
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
     
-    if question.teacher_id != current_user.user_id and not current_user.is_admin:
+    can_manage = current_user.can_manage_topic(
+        question.topic.subject_id, 
+        question.topic.subject.subject_name, 
+        question.topic.subject.grade.grade_level
+    )
+    
+    if question.teacher_id != current_user.user_id and not can_manage:
         raise HTTPException(status_code=403, detail="Not authorized to delete this question")
     
     await session.delete(question)
