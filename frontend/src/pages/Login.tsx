@@ -46,7 +46,7 @@ const Login: React.FC = () => {
             </div>
             <h1 className="text-4xl font-black mb-4 tracking-tight">Question Bank Portal</h1>
             <p className="text-academy-100 text-lg leading-relaxed">
-              The central command for academic excellence. Manage curriculum and assessments with precision.
+              Manage curriculum and assessments with precision.
             </p>
           </div>
 
@@ -55,7 +55,7 @@ const Login: React.FC = () => {
               {[1, 2, 3].map(i => <div key={i} className="w-2 h-2 rounded-full bg-white/30" />)}
             </div>
             <p className="text-xs font-bold uppercase tracking-widest text-academy-200">
-              Trusted by Leading Institutions
+              V1.0.0
             </p>
           </div>
         </div>

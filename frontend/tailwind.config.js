@@ -13,7 +13,7 @@ export default {
           200: '#bcccdc',
           300: '#9fb3c8',
           400: '#829ab1',
-          50: '#627d98', // Base Academy Blue
+          500: '#627d98', // Base Academy Blue
           600: '#486581',
           700: '#334e68',
           800: '#243b53',

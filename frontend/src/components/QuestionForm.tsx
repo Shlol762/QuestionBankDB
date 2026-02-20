@@ -8,32 +8,69 @@ import {
   Plus,
   CheckCircle2,
   BookOpen,
-  Tag
+  Tag,
+  Pencil
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import client from '../api/client';
 
 interface QuestionFormProps {
+  initialData?: any;
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-const QuestionForm: React.FC<QuestionFormProps> = ({ onSuccess, onCancel }) => {
+interface QuestionFormData {
+  topic_id: string;
+  question_text: string;
+  answer_text: string;
+  image_url: string;
+  marks: number;
+  difficulty: string;
+  q_type: string;
+  options: Record<string, string>;
+}
+
+const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onCancel }) => {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
+  const [error, setError] = useState('');
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>(
+    initialData?.topic?.subject_id?.toString() || ''
+  );
   
+  const isEditing = !!initialData;
+
+  const defaultOptions = { A: '', B: '', C: '', D: '' };
+
   // Form State
-  const [formData, setFormData] = useState({
-    topic_id: '',
-    question_text: '',
-    answer_text: '',
-    image_url: '',
-    marks: 5,
-    difficulty: 'Medium',
-    q_type: 'MCQ',
-    options: { A: '', B: '', C: '', D: '' } as Record<string, string>
+  const [formData, setFormData] = useState<QuestionFormData>({
+    topic_id: initialData?.topic_id?.toString() || '',
+    question_text: initialData?.question_text || '',
+    answer_text: initialData?.answer_text || '',
+    image_url: initialData?.image_url || '',
+    marks: initialData?.marks || 5,
+    difficulty: initialData?.difficulty || 'Medium',
+    q_type: initialData?.q_type || 'MCQ',
+    options: initialData?.options || defaultOptions
   });
+
+  // Keep state in sync if initialData changes
+  useEffect(() => {
+    if (initialData) {
+      setSelectedSubjectId(initialData.topic?.subject_id?.toString() || '');
+      setFormData({
+        topic_id: initialData.topic_id?.toString() || '',
+        question_text: initialData.question_text || '',
+        answer_text: initialData.answer_text || '',
+        image_url: initialData.image_url || '',
+        marks: initialData.marks || 5,
+        difficulty: initialData.difficulty || 'Medium',
+        q_type: initialData.q_type || 'MCQ',
+        options: initialData.options || defaultOptions
+      });
+    }
+  }, [initialData]);
 
   // 1. Get current user
   const { data: user } = useQuery({
@@ -88,13 +125,14 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ onSuccess, onCancel }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setError('');
     const uploadData = new FormData();
     uploadData.append('file', file);
     try {
       const res = await client.post('/questions/upload-image', uploadData);
       setFormData({ ...formData, image_url: res.data.image_url });
     } catch (err) {
-      alert("Image upload failed");
+      setError("Image upload failed");
     } finally {
       setUploading(false);
     }
@@ -102,29 +140,47 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ onSuccess, onCancel }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.topic_id) return alert("Please select a topic");
+    setError('');
+    
+    if (!formData.topic_id) {
+      setError("Please select a topic");
+      return;
+    }
     
     if (formData.q_type === 'MCQ') {
-      const emptyOptions = Object.values(formData.options).some(v => !v.trim());
-      if (emptyOptions) return alert("Please fill all 4 options for MCQ");
-      if (!formData.answer_text) return alert("Please select which option is correct");
+      const emptyOptions = Object.values(formData.options).some(v => !String(v).trim());
+      if (emptyOptions) {
+        setError("Please fill all 4 options for MCQ");
+        return;
+      }
+      if (!formData.answer_text) {
+        setError("Please select which option is correct");
+        return;
+      }
     }
 
     if (formData.q_type === 'True/False' && !formData.answer_text) {
-      return alert("Please select whether the statement is True or False");
+      setError("Please select whether the statement is True or False");
+      return;
     }
 
     setLoading(true);
     try {
-      await client.post('/questions/', {
+      const payload = {
         ...formData,
         topic_id: parseInt(formData.topic_id),
         marks: parseInt(formData.marks.toString()),
         options: formData.q_type === 'MCQ' ? formData.options : null
-      });
+      };
+
+      if (isEditing) {
+        await client.patch(`/questions/${initialData.question_id}`, payload);
+      } else {
+        await client.post('/questions/', payload);
+      }
       onSuccess();
     } catch (err: any) {
-      alert(err.response?.data?.detail || "Failed to save question");
+      setError(err.response?.data?.detail || "Failed to save question");
     } finally {
       setLoading(false);
     }
@@ -135,18 +191,25 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ onSuccess, onCancel }) => {
       <div className="p-8">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-academy-600 text-white rounded-xl shadow-lg shadow-academy-600/20">
-              <Plus className="w-6 h-6" />
+            <div className={`p-2 ${isEditing ? 'bg-amber-500' : 'bg-academy-600'} text-white rounded-xl shadow-lg shadow-academy-600/20`}>
+              {isEditing ? <Pencil className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
             </div>
             <div>
-              <h2 className="text-2xl font-black tracking-tight">Compose Question</h2>
-              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Author: {user?.full_name}</p>
+              <h2 className="text-2xl font-black tracking-tight">{isEditing ? 'Refine Question' : 'Compose Question'}</h2>
+              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Author: {isEditing ? initialData.teacher?.full_name : user?.full_name}</p>
             </div>
           </div>
           <button onClick={onCancel} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
             <X className="w-6 h-6" />
           </button>
         </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-700 text-sm font-bold animate-in slide-in-from-top-2">
+            <AlertCircle className="w-5 h-5" />
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
@@ -363,10 +426,10 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ onSuccess, onCancel }) => {
             <button 
               type="submit"
               disabled={loading || uploading}
-              className="bg-academy-700 hover:bg-academy-800 text-white px-12 py-4 rounded-2xl shadow-xl shadow-academy-700/20 font-black transition-all flex items-center gap-3 disabled:opacity-50 active:scale-95"
+              className={`${isEditing ? 'bg-amber-600 hover:bg-amber-700' : 'bg-academy-700 hover:bg-academy-800'} text-white px-12 py-4 rounded-2xl shadow-xl font-black transition-all flex items-center gap-3 disabled:opacity-50 active:scale-95`}
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-              <span>Commit to Question Bank</span>
+              <span>{isEditing ? 'Save Changes' : 'Commit to Question Bank'}</span>
             </button>
           </div>
         </form>
