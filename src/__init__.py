@@ -6,6 +6,7 @@ from src.db.main import init_db
 from src.db.auth_routes import router as auth_router
 from src.db.curriculum_routes import router as curriculum_router
 from src.db.questions.routes import router as question_router
+from src.db.stats_routes import router as stats_router
 import os
 
 
@@ -44,6 +45,7 @@ app.mount("/static", StaticFiles(directory="uploads"), name="static")
 app.include_router(auth_router)
 app.include_router(curriculum_router)
 app.include_router(question_router)
+app.include_router(stats_router)
 
 
 @app.get("/ping")

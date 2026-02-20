@@ -9,10 +9,20 @@ from src.db.main import get_session
 from src.db.models import QuestionBank, Users, Topic, DifficultyLevel, QuestionType
 from src.db.auth_utils import get_current_user
 from pydantic import BaseModel
+from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/questions", tags=["Question Management"])
 
 # --- SCHEMAS ---
+
+class UserSimple(BaseModel):
+    user_id: int
+    full_name: str
+
+class TopicSimple(BaseModel):
+    topic_id: int
+    topic_name: str
+    subject_id: int
 
 class QuestionCreate(BaseModel):
     topic_id: int
@@ -28,6 +38,8 @@ class QuestionRead(QuestionCreate):
     question_id: int
     teacher_id: int
     created_at: datetime
+    teacher: Optional[UserSimple] = None
+    topic: Optional[TopicSimple] = None
 
 class QuestionUpdate(BaseModel):
     topic_id: Optional[int] = None
@@ -50,20 +62,16 @@ async def upload_question_image(
     current_user: Users = Depends(get_current_user)
 ):
     """Uploads an image for a question and returns its path."""
-    # Ensure the upload directory exists
     if not os.path.exists(UPLOAD_DIR):
         os.makedirs(UPLOAD_DIR)
     
-    # Generate a unique filename to prevent collisions
     file_extension = os.path.splitext(file.filename)[1]
     unique_filename = f"{uuid.uuid4()}{file_extension}"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
     
-    # Save the file
     with open(file_path, "wb") as buffer:
         buffer.write(await file.read())
     
-    # Return the relative path (in a real app, this would be a full URL)
     return {"image_url": f"/static/{unique_filename}"}
 
 @router.post("/", response_model=QuestionRead, status_code=status.HTTP_201_CREATED)
@@ -73,19 +81,14 @@ async def create_question(
     current_user: Users = Depends(get_current_user)
 ):
     """Creates a new question. Verifies topic ownership/assignment."""
-    # 1. Fetch the topic and its parent subject
     topic = await session.get(Topic, data.topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
     
-    # 2. Permission Check: Admin can do anything, Teachers only assigned subjects
     if not current_user.is_admin:
         assigned_subject_ids = [s.subject_id for s in current_user.subjects]
         if topic.subject_id not in assigned_subject_ids:
-            raise HTTPException(
-                status_code=403, 
-                detail="You are not authorized to add questions to this subject"
-            )
+            raise HTTPException(status_code=403, detail="Not authorized for this subject")
     
     new_question = QuestionBank(
         **data.model_dump(),
@@ -94,8 +97,13 @@ async def create_question(
     
     session.add(new_question)
     await session.commit()
-    await session.refresh(new_question)
-    return new_question
+    
+    stmt = select(QuestionBank).where(QuestionBank.question_id == new_question.question_id).options(
+        selectinload(QuestionBank.teacher),
+        selectinload(QuestionBank.topic)
+    )
+    result = await session.exec(stmt)
+    return result.first()
 
 @router.get("/", response_model=List[QuestionRead])
 async def list_questions(
@@ -104,8 +112,16 @@ async def list_questions(
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
-    """Lists questions with optional filtering by topic or difficulty."""
-    statement = select(QuestionBank)
+    """Lists questions. Admins see all, Teachers see assigned subjects only."""
+    statement = select(QuestionBank).options(
+        selectinload(QuestionBank.teacher),
+        selectinload(QuestionBank.topic)
+    )
+    
+    if not current_user.is_admin:
+        assigned_subject_ids = [s.subject_id for s in current_user.subjects]
+        statement = statement.join(Topic).where(Topic.subject_id.in_(assigned_subject_ids))
+    
     if topic_id:
         statement = statement.where(QuestionBank.topic_id == topic_id)
     if difficulty:
@@ -121,7 +137,12 @@ async def get_question(
     current_user: Users = Depends(get_current_user)
 ):
     """Retrieves a specific question by its ID."""
-    question = await session.get(QuestionBank, question_id)
+    statement = select(QuestionBank).where(QuestionBank.question_id == question_id).options(
+        selectinload(QuestionBank.teacher),
+        selectinload(QuestionBank.topic)
+    )
+    result = await session.exec(statement)
+    question = result.first()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
     return question
@@ -138,19 +159,22 @@ async def update_question(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
     
-    # Check permissions
     if question.teacher_id != current_user.user_id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Not authorized to update this question")
     
-    # Apply updates
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(question, key, value)
     
     session.add(question)
     await session.commit()
-    await session.refresh(question)
-    return question
+    
+    stmt = select(QuestionBank).where(QuestionBank.question_id == question_id).options(
+        selectinload(QuestionBank.teacher),
+        selectinload(QuestionBank.topic)
+    )
+    result = await session.exec(stmt)
+    return result.first()
 
 @router.delete("/{question_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_question(
@@ -163,7 +187,6 @@ async def delete_question(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
     
-    # Check permissions
     if question.teacher_id != current_user.user_id and not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Not authorized to delete this question")
     

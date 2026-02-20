@@ -150,5 +150,11 @@ async def update_user(id: int, data: UserCreate, session: AsyncSession = Depends
             session.add(UserSubjectLink(user_id=id, subject_id=s_id))
             
     await session.commit()
-    await session.refresh(user)
+    
+    # Reload user with subjects to avoid lazy-loading error during serialization
+    from sqlalchemy.orm import selectinload
+    statement = select(Users).options(selectinload(Users.subjects)).where(Users.user_id == id)
+    result = await session.exec(statement)
+    user = result.first()
+    
     return user
