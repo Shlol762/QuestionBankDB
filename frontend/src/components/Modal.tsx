@@ -25,17 +25,17 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div 
-        className="absolute inset-0 bg-academy-900/60 backdrop-blur-sm animate-in fade-in duration-300"
+        className="absolute inset-0 bg-academy-900/60 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-300"
         onClick={onClose}
       />
       
       {/* Modal Content */}
-      <div className={`relative bg-white w-full ${maxWidth} rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300`}>
-        <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50">
-          <h3 className="text-xl font-bold text-gray-900">{title}</h3>
+      <div className={`relative bg-white dark:bg-gray-800 w-full ${maxWidth} rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300 transition-colors duration-300`}>
+        <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">{title}</h3>
           <button 
             onClick={onClose}
-            className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-400 hover:text-gray-600"
+            className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
           >
             <X className="w-5 h-5" />
           </button>

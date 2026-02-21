@@ -81,17 +81,16 @@ async def create_question(
     current_user: Users = Depends(get_current_user)
 ):
     """Creates a new question. Verifies management rights for the topic."""
-    # Load topic with subject and grade level
     stmt = select(Topic).where(Topic.topic_id == data.topic_id).options(
         selectinload(Topic.subject).selectinload(Subject.grade)
     )
     result = await session.exec(stmt)
     topic = result.first()
     if not topic:
-        raise HTTPException(status_code=404, detail="Topic not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Target topic not found")
     
-    if not current_user.can_manage_topic(topic.subject_id, topic.subject.subject_name, topic.subject.grade.grade_level):
-        raise HTTPException(status_code=403, detail="Not authorized for this subject/topic")
+    if not current_user.can_modify_topic(topic.subject_id, topic.subject.subject_name, topic.subject.grade.grade_level):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to add questions to this topic")
     
     new_question = QuestionBank(
         **data.model_dump(),
@@ -112,6 +111,8 @@ async def create_question(
 async def list_questions(
     topic_id: Optional[int] = None,
     difficulty: Optional[DifficultyLevel] = None,
+    q_type: Optional[QuestionType] = None,
+    search: Optional[str] = None,
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
@@ -121,23 +122,13 @@ async def list_questions(
         selectinload(QuestionBank.topic)
     )
     
+    from src.db.models import GradeConfig
+    from sqlalchemy import or_, func
+
     if not current_user.is_admin:
-        # Complex filtering for HOD and Grade Coordinator might be better done with a JOIN
-        # or by gathering allowed subject IDs
-        # But for simplicity, we can fetch all and filter if the list isn't massive, 
-        # or better, build a targeted query.
-        
-        # Gathering IDs:
-        # 1. Subject IDs assigned as Teacher
-        # 2. Subject names assigned as HOD
-        # 3. Grade levels assigned as Coordinator
-        
         teacher_subject_ids = [s.subject_id for s in current_user.subjects]
         hod_subject_names = [h.subject_name for h in current_user.hod_subjects]
         coordinator_grade_levels = [g.grade_level for g in current_user.grade_coordinating]
-        
-        from sqlalchemy import or_
-        from src.db.models import GradeConfig
         
         statement = statement.join(Topic).join(Subject).join(GradeConfig)
         
@@ -152,14 +143,16 @@ async def list_questions(
         if filters:
             statement = statement.where(or_(*filters))
         else:
-            # If no roles at all, can only see their own questions if any? 
-            # Current logic for list_questions didn't handle "own only" specifically besides subjects.
             statement = statement.where(QuestionBank.teacher_id == current_user.user_id)
     
     if topic_id:
         statement = statement.where(QuestionBank.topic_id == topic_id)
     if difficulty:
         statement = statement.where(QuestionBank.difficulty == difficulty)
+    if q_type:
+        statement = statement.where(QuestionBank.q_type == q_type)
+    if search:
+        statement = statement.where(func.lower(QuestionBank.question_text).contains(search.lower()))
     
     result = await session.exec(statement)
     return result.all()
@@ -170,15 +163,26 @@ async def get_question(
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
-    """Retrieves a specific question by its ID."""
+    """Retrieves a specific question by its ID. Enforces permission boundaries."""
     statement = select(QuestionBank).where(QuestionBank.question_id == question_id).options(
         selectinload(QuestionBank.teacher),
-        selectinload(QuestionBank.topic)
+        selectinload(QuestionBank.topic).selectinload(Topic.subject).selectinload(Subject.grade)
     )
     result = await session.exec(statement)
     question = result.first()
     if not question:
-        raise HTTPException(status_code=404, detail="Question not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Question not found")
+    
+    # Permission Check
+    if not current_user.is_admin:
+        can_view = current_user.can_modify_topic(
+            question.topic.subject_id,
+            question.topic.subject.subject_name,
+            question.topic.subject.grade.grade_level
+        )
+        if question.teacher_id != current_user.user_id and not can_view:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not authorized to view this question")
+
     return question
 
 @router.patch("/{question_id}", response_model=QuestionRead)
@@ -196,16 +200,16 @@ async def update_question(
     question = result.first()
     
     if not question:
-        raise HTTPException(status_code=404, detail="Question not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Question not found")
     
-    can_manage = current_user.can_manage_topic(
+    can_manage = current_user.can_modify_topic(
         question.topic.subject_id, 
         question.topic.subject.subject_name, 
         question.topic.subject.grade.grade_level
     )
     
     if question.teacher_id != current_user.user_id and not can_manage:
-        raise HTTPException(status_code=403, detail="Not authorized to update this question")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to update this question")
     
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -235,16 +239,16 @@ async def delete_question(
     question = result.first()
     
     if not question:
-        raise HTTPException(status_code=404, detail="Question not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Question not found")
     
-    can_manage = current_user.can_manage_topic(
+    can_manage = current_user.can_modify_topic(
         question.topic.subject_id, 
         question.topic.subject.subject_name, 
         question.topic.subject.grade.grade_level
     )
     
     if question.teacher_id != current_user.user_id and not can_manage:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this question")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to delete this question")
     
     await session.delete(question)
     await session.commit()

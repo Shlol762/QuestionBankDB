@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Optional
+import os
+import uuid
 from src.db.main import get_session
 from src.db.models import SyllabusMaster, GradeConfig, Subject, Topic, Users
 from src.db.auth_utils import get_current_user
@@ -30,6 +32,7 @@ class SyllabusRead(BaseModel):
     syllabus_id: int
     syllabus_name: str
     academic_year: str
+    pdf_url: Optional[str] = None
 
 # Hierarchy Versions (for the Tree View)
 class SubjectHierarchy(SubjectRead):
@@ -41,10 +44,28 @@ class GradeHierarchy(GradeRead):
 class SyllabusHierarchyRead(SyllabusRead):
     grades: List[GradeHierarchy] = []
 
-# Creation/Update Schemas
+# --- UPDATE SCHEMAS ---
+
+class SyllabusUpdate(BaseModel):
+    syllabus_name: Optional[str] = None
+    academic_year: Optional[str] = None
+    pdf_url: Optional[str] = None
+
+class GradeUpdate(BaseModel):
+    grade_level: Optional[int] = None
+
+class SubjectUpdate(BaseModel):
+    subject_name: Optional[str] = None
+
+class TopicUpdate(BaseModel):
+    topic_name: Optional[str] = None
+
+# --- CREATION SCHEMAS ---
+
 class SyllabusCreate(BaseModel):
     syllabus_name: str
     academic_year: str
+    pdf_url: Optional[str] = None
 
 class GradeCreate(BaseModel):
     syllabus_id: int
@@ -58,12 +79,40 @@ class TopicCreate(BaseModel):
     subject_id: int
     topic_name: str
 
+# --- CONSTANTS ---
+UPLOAD_DIR = "uploads/curriculum"
+
 # --- ROUTES: SYLLABUS ---
+
+@router.post("/upload-pdf")
+async def upload_syllabus_pdf(
+    file: UploadFile = File(...),
+    current_user: Users = Depends(get_current_user)
+):
+    """Uploads a PDF for a syllabus. Admin only."""
+    if not current_user.is_admin: 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can upload syllabus documents")
+    
+    if not os.path.exists(UPLOAD_DIR):
+        os.makedirs(UPLOAD_DIR)
+    
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only PDF files are allowed")
+    
+    file_extension = ".pdf"
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+    
+    with open(file_path, "wb") as buffer:
+        buffer.write(await file.read())
+    
+    return {"pdf_url": f"/static/curriculum/{unique_filename}"}
 
 @router.post("/syllabuses", response_model=SyllabusRead, status_code=status.HTTP_201_CREATED)
 async def create_syllabus(data: SyllabusCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
     """Creates a new Syllabus. Admin only."""
-    if not current_user.is_admin: raise HTTPException(403, "Admin only")
+    if not current_user.is_admin: 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can create syllabuses")
     
     statement = select(SyllabusMaster).where(
         SyllabusMaster.syllabus_name == data.syllabus_name,
@@ -71,7 +120,7 @@ async def create_syllabus(data: SyllabusCreate, session: AsyncSession = Depends(
     )
     result = await session.exec(statement)
     if result.first():
-        raise HTTPException(status_code=400, detail="This Syllabus already exists for this year")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Syllabus '{data.syllabus_name}' already exists for {data.academic_year}")
 
     new_item = SyllabusMaster(**data.model_dump())
     session.add(new_item)
@@ -80,8 +129,11 @@ async def create_syllabus(data: SyllabusCreate, session: AsyncSession = Depends(
     return new_item
 
 @router.get("/hierarchy", response_model=List[SyllabusHierarchyRead])
-async def get_full_hierarchy(session: AsyncSession = Depends(get_session)):
-    """Returns the nested hierarchy of Syllabus -> Grade -> Subject -> Topic."""
+async def get_full_hierarchy(
+    session: AsyncSession = Depends(get_session),
+    current_user: Users = Depends(get_current_user)
+):
+    """Returns the nested hierarchy. Filtered based on user permissions for non-admins."""
     from sqlalchemy.orm import selectinload
     
     statement = select(SyllabusMaster).options(
@@ -90,11 +142,51 @@ async def get_full_hierarchy(session: AsyncSession = Depends(get_session)):
         .selectinload(Subject.topics)
     )
     result = await session.exec(statement)
-    return result.all()
+    syllabuses = result.all()
+
+    if current_user.is_admin:
+        return syllabuses
+
+    # Filter hierarchy for non-admins
+    filtered_syllabuses = []
+    teacher_sub_ids = [s.subject_id for s in current_user.subjects]
+    hod_sub_names = [h.subject_name for h in current_user.hod_subjects]
+    coord_grade_levels = [g.grade_level for g in current_user.grade_coordinating]
+
+    for syllabus in syllabuses:
+        filtered_grades = []
+        for grade in syllabus.grades:
+            is_coordinator = grade.grade_level in coord_grade_levels
+            
+            # If coordinator, they see ALL subjects in this grade
+            if is_coordinator:
+                filtered_grades.append(grade)
+                continue
+
+            # Otherwise, filter subjects by HOD or Teacher assignments
+            filtered_subjects = [
+                sub for sub in grade.subjects 
+                if sub.subject_name in hod_sub_names or sub.subject_id in teacher_sub_ids
+            ]
+            
+            if filtered_subjects:
+                grade.subjects = filtered_subjects
+                filtered_grades.append(grade)
+        
+        if filtered_grades:
+            syllabus.grades = filtered_grades
+            filtered_syllabuses.append(syllabus)
+
+    return filtered_syllabuses
 
 @router.get("/syllabuses", response_model=List[SyllabusRead])
-async def get_all_syllabuses(session: AsyncSession = Depends(get_session)):
-    """Lists all available syllabuses."""
+async def get_all_syllabuses(
+    session: AsyncSession = Depends(get_session),
+    current_user: Users = Depends(get_current_user)
+):
+    """Lists available syllabuses. Admins see all, others see based on their assignments."""
+    # For simplicity in this route, we'll let all authenticated staff see the base Syllabus names,
+    # as they are top-level organizational units. Scoping happens deeper in the tree.
     statement = select(SyllabusMaster)
     result = await session.exec(statement)
     return result.all()
@@ -111,21 +203,20 @@ async def get_all_subjects(session: AsyncSession = Depends(get_session)):
 @router.post("/grades", response_model=GradeRead, status_code=status.HTTP_201_CREATED)
 async def create_grade(data: GradeCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
     """Adds a Grade level. Admin only."""
-    if not current_user.can_modify_grade(): raise HTTPException(403, "Admin only")
+    if not current_user.can_manage_grade(): 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can manage grades")
     
-    # Verify syllabus exists
     syllabus = await session.get(SyllabusMaster, data.syllabus_id)
     if not syllabus:
-        raise HTTPException(status_code=404, detail="Syllabus not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "The target syllabus does not exist")
     
-    # Check for duplicate
     statement = select(GradeConfig).where(
         GradeConfig.syllabus_id == data.syllabus_id,
         GradeConfig.grade_level == data.grade_level
     )
     result = await session.exec(statement)
     if result.first():
-        raise HTTPException(status_code=400, detail=f"Grade {data.grade_level} already exists in this syllabus")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Grade {data.grade_level} already exists in this syllabus")
     
     new_item = GradeConfig(**data.model_dump())
     session.add(new_item)
@@ -147,19 +238,18 @@ async def create_subject(data: SubjectCreate, session: AsyncSession = Depends(ge
     """Adds a Subject. Admin or Grade Coordinator."""
     grade = await session.get(GradeConfig, data.config_id)
     if not grade:
-        raise HTTPException(status_code=404, detail="Grade config not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Target grade configuration not found")
     
-    if not current_user.can_modify_subject(grade.grade_level):
-        raise HTTPException(403, "Not authorized to modify subjects for this grade")
+    if not current_user.can_manage_subject(grade.grade_level):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to manage subjects for this grade")
     
-    # Check for duplicate
     statement = select(Subject).where(
         Subject.config_id == data.config_id,
         Subject.subject_name == data.subject_name
     )
     result = await session.exec(statement)
     if result.first():
-        raise HTTPException(status_code=400, detail="This subject already exists in this grade")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Subject '{data.subject_name}' already exists in this grade")
     
     new_item = Subject(**data.model_dump())
     session.add(new_item)
@@ -178,17 +268,22 @@ async def get_subjects_by_grade(config_id: int, session: AsyncSession = Depends(
 
 # SYLLABUS
 @router.patch("/syllabuses/{id}", response_model=SyllabusRead)
-async def update_syllabus(id: int, data: SyllabusCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    if not current_user.is_admin: raise HTTPException(403, "Admin only")
+async def update_syllabus(id: int, data: SyllabusUpdate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
+    if not current_user.is_admin: 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can update syllabuses")
     item = await session.get(SyllabusMaster, id)
-    if not item: raise HTTPException(404, "Not found")
-    for key, val in data.model_dump().items(): setattr(item, key, val)
+    if not item: 
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Syllabus not found")
+    for key, val in data.model_dump(exclude_unset=True).items(): 
+        setattr(item, key, val)
     await session.commit()
+    await session.refresh(item)
     return item
 
-@router.delete("/syllabuses/{id}", status_code=204)
+@router.delete("/syllabuses/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_syllabus(id: int, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    if not current_user.is_admin: raise HTTPException(403, "Admin only")
+    if not current_user.is_admin: 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can delete syllabuses")
     item = await session.get(SyllabusMaster, id)
     if item: 
         await session.delete(item)
@@ -197,17 +292,22 @@ async def delete_syllabus(id: int, session: AsyncSession = Depends(get_session),
 
 # GRADE
 @router.patch("/grades/{id}", response_model=GradeRead)
-async def update_grade(id: int, data: GradeCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    if not current_user.can_modify_grade(): raise HTTPException(403, "Admin only")
+async def update_grade(id: int, data: GradeUpdate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
+    if not current_user.can_manage_grade(): 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can update grade levels")
     item = await session.get(GradeConfig, id)
-    if not item: raise HTTPException(404, "Not found")
-    for key, val in data.model_dump().items(): setattr(item, key, val)
+    if not item: 
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Grade not found")
+    for key, val in data.model_dump(exclude_unset=True).items(): 
+        setattr(item, key, val)
     await session.commit()
+    await session.refresh(item)
     return item
 
-@router.delete("/grades/{id}", status_code=204)
+@router.delete("/grades/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_grade(id: int, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    if not current_user.can_modify_grade(): raise HTTPException(403, "Admin only")
+    if not current_user.can_manage_grade(): 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can delete grades")
     item = await session.get(GradeConfig, id)
     if item:
         await session.delete(item)
@@ -216,27 +316,29 @@ async def delete_grade(id: int, session: AsyncSession = Depends(get_session), cu
 
 # SUBJECT
 @router.patch("/subjects/{id}", response_model=SubjectRead)
-async def update_subject(id: int, data: SubjectCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
+async def update_subject(id: int, data: SubjectUpdate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
     item = await session.get(Subject, id)
-    if not item: raise HTTPException(404, "Not found")
+    if not item: 
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Subject not found")
     
-    # Need grade level for permission check
     grade = await session.get(GradeConfig, item.config_id)
-    if not current_user.can_modify_subject(grade.grade_level):
-        raise HTTPException(403, "Not authorized to modify this subject")
+    if not current_user.can_manage_subject(grade.grade_level):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized to modify subjects for this grade")
 
-    for key, val in data.model_dump().items(): setattr(item, key, val)
+    for key, val in data.model_dump(exclude_unset=True).items(): 
+        setattr(item, key, val)
     await session.commit()
+    await session.refresh(item)
     return item
 
-@router.delete("/subjects/{id}", status_code=204)
+@router.delete("/subjects/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_subject(id: int, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
     item = await session.get(Subject, id)
     if not item: return None
     
     grade = await session.get(GradeConfig, item.config_id)
-    if not current_user.can_modify_subject(grade.grade_level):
-        raise HTTPException(403, "Not authorized to modify this subject")
+    if not current_user.can_manage_subject(grade.grade_level):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized to delete this subject")
 
     await session.delete(item)
     await session.commit()
@@ -247,18 +349,19 @@ async def delete_subject(id: int, session: AsyncSession = Depends(get_session), 
 async def create_topic(data: TopicCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
     """Adds a Topic. Admins, Grade Coordinators, HODs, or Assigned Teachers."""
     from sqlalchemy.orm import selectinload
-    # Load subject with grade to check permissions
     stmt = select(Subject).where(Subject.subject_id == data.subject_id).options(selectinload(Subject.grade))
     result = await session.exec(stmt)
     subject = result.first()
-    if not subject: raise HTTPException(404, "Subject not found")
+    if not subject: 
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Subject not found")
 
     if not current_user.can_modify_topic(subject.subject_id, subject.subject_name, subject.grade.grade_level):
-        raise HTTPException(403, "Not authorized to modify topics for this subject")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized to manage topics for this subject")
 
     statement = select(Topic).where(Topic.subject_id == data.subject_id, Topic.topic_name == data.topic_name)
     result = await session.exec(statement)
-    if result.first(): raise HTTPException(400, "Topic already exists")
+    if result.first(): 
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Topic '{data.topic_name}' already exists in this subject")
     
     new_item = Topic(**data.model_dump())
     session.add(new_item)
@@ -267,9 +370,10 @@ async def create_topic(data: TopicCreate, session: AsyncSession = Depends(get_se
     return new_item
 
 @router.patch("/topics/{id}", response_model=TopicRead)
-async def update_topic(id: int, data: TopicCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
+async def update_topic(id: int, data: TopicUpdate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
     item = await session.get(Topic, id)
-    if not item: raise HTTPException(404, "Not found")
+    if not item: 
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Topic not found")
     
     from sqlalchemy.orm import selectinload
     stmt = select(Subject).where(Subject.subject_id == item.subject_id).options(selectinload(Subject.grade))
@@ -277,13 +381,15 @@ async def update_topic(id: int, data: TopicCreate, session: AsyncSession = Depen
     subject = result.first()
 
     if not current_user.can_modify_topic(subject.subject_id, subject.subject_name, subject.grade.grade_level):
-        raise HTTPException(403, "Not authorized to modify topics for this subject")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized to modify topics for this subject")
 
-    for key, val in data.model_dump().items(): setattr(item, key, val)
+    for key, val in data.model_dump(exclude_unset=True).items(): 
+        setattr(item, key, val)
     await session.commit()
+    await session.refresh(item)
     return item
 
-@router.delete("/topics/{id}", status_code=204)
+@router.delete("/topics/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_topic(id: int, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
     item = await session.get(Topic, id)
     if not item: return None
@@ -294,7 +400,7 @@ async def delete_topic(id: int, session: AsyncSession = Depends(get_session), cu
     subject = result.first()
 
     if not current_user.can_modify_topic(subject.subject_id, subject.subject_name, subject.grade.grade_level):
-        raise HTTPException(403, "Not authorized to modify topics for this subject")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized to delete topics for this subject")
 
     await session.delete(item)
     await session.commit()

@@ -13,6 +13,21 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
+// Add a response interceptor to handle session expiry (401)
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      // Redirect to login if not already there
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const getMe = () => client.get('/auth/me');
 
 export default client;

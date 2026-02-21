@@ -3,7 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { GraduationCap, Lock, Mail, Loader2, ChevronRight, AlertCircle } from 'lucide-react';
 import client from '../api/client';
 
-const Login: React.FC = () => {
+interface LoginProps {
+  isDarkMode?: boolean;
+}
+
+const Login: React.FC<LoginProps> = ({ isDarkMode }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -31,17 +35,17 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-academy-900 px-4 py-12">
-      <div className="max-w-4xl w-full bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[500px]">
+    <div className="min-h-screen w-full flex items-center justify-center bg-academy-900 dark:bg-black px-4 py-12 transition-colors duration-300">
+      <div className="max-w-4xl w-full bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[500px]">
         
-        {/* Left Side: Branding / Info (Hidden on very small screens, side-by-side on desktop) */}
-        <div className="md:w-5/12 bg-academy-700 p-12 text-white flex flex-col justify-center relative overflow-hidden">
+        {/* Left Side: Branding / Info */}
+        <div className="md:w-5/12 bg-academy-700 dark:bg-academy-800 p-12 text-white flex flex-col justify-center relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-full opacity-10">
             <GraduationCap className="absolute -right-8 -bottom-8 w-64 h-64 rotate-12" />
           </div>
           
           <div className="relative z-10">
-            <div className="bg-white/20 w-16 h-16 rounded-2xl flex items-center justify-center mb-8 backdrop-blur-md">
+            <div className="bg-white/20 dark:bg-white/10 w-16 h-16 rounded-2xl flex items-center justify-center mb-8 backdrop-blur-md">
               <GraduationCap className="w-10 h-10 text-white" />
             </div>
             <h1 className="text-4xl font-black mb-4 tracking-tight">Question Bank Portal</h1>
@@ -61,28 +65,28 @@ const Login: React.FC = () => {
         </div>
 
         {/* Right Side: Login Form */}
-        <div className="md:w-7/12 p-8 md:p-16 flex flex-col justify-center bg-white">
+        <div className="md:w-7/12 p-8 md:p-16 flex flex-col justify-center bg-white dark:bg-gray-900">
           <div className="max-w-sm mx-auto w-full">
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Staff Sign In</h2>
-            <p className="text-gray-500 mb-10 text-sm">Access your workspace using school credentials.</p>
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Staff Sign In</h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-10 text-sm">Access your workspace using school credentials.</p>
 
             {error && (
-              <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-8 rounded-r flex items-start gap-3 animate-in fade-in duration-300">
+              <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 mb-8 rounded-r flex items-start gap-3 animate-in fade-in duration-300">
                 <div className="mt-0.5"><AlertCircle className="w-4 h-4 text-red-500" /></div>
-                <p className="text-sm text-red-700 font-medium">{error}</p>
+                <p className="text-sm text-red-700 dark:text-red-400 font-medium">{error}</p>
               </div>
             )}
 
             <form onSubmit={handleLogin} className="space-y-6">
               <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase mb-2 ml-1 tracking-widest">Work Email</label>
+                <label className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2 ml-1 tracking-widest">Work Email</label>
                 <div className="relative group">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-academy-600 transition-colors" />
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-academy-500/10 focus:border-academy-500 focus:bg-white outline-none transition-all"
+                    className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 focus:border-academy-500 dark:focus:border-academy-400 focus:bg-white dark:focus:bg-gray-800 outline-none transition-all dark:text-white"
                     placeholder="name@school.edu"
                     required
                   />
@@ -90,14 +94,14 @@ const Login: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase mb-2 ml-1 tracking-widest">Secure Password</label>
+                <label className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2 ml-1 tracking-widest">Secure Password</label>
                 <div className="relative group">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-academy-600 transition-colors" />
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-academy-500/10 focus:border-academy-500 focus:bg-white outline-none transition-all"
+                    className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 focus:border-academy-500 dark:focus:border-academy-400 focus:bg-white dark:focus:bg-gray-800 outline-none transition-all dark:text-white"
                     placeholder="••••••••"
                     required
                   />

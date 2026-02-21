@@ -1,16 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlmodel import select
+from sqlmodel import select, delete
 from sqlmodel.ext.asyncio.session import AsyncSession
-from typing import List
+from typing import List, Optional
 from src.db.main import get_session
-from src.db.models import Users, GradeCoordinatorLink, HODLink, UserSubjectLink
+from src.db.models import Users, GradeCoordinatorLink, HODLink, UserSubjectLink, GradeConfig, Subject
 from src.db.auth_utils import get_password_hash, verify_password, create_access_token, get_current_user
 from pydantic import BaseModel, EmailStr
+from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # --- SCHEMAS ---
+
 class SubjectSimple(BaseModel):
     subject_id: int
     subject_name: str
@@ -22,8 +24,8 @@ class UserRead(BaseModel):
     department: str
     is_admin: bool
     subjects: List[SubjectSimple] = []
-    grade_levels: List[int] = [] # For Grade Coordinator
-    hod_subject_names: List[str] = [] # For HOD
+    grade_levels: List[int] = [] 
+    hod_subject_names: List[str] = []
 
 class UserCreate(BaseModel):
     full_name: str
@@ -35,21 +37,52 @@ class UserCreate(BaseModel):
     grade_levels: List[int] = []
     hod_subject_names: List[str] = []
 
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    department: Optional[str] = None
+    is_admin: Optional[bool] = None
+    subject_ids: Optional[List[int]] = None
+    grade_levels: Optional[List[int]] = None
+    hod_subject_names: Optional[List[str]] = None
+
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+# --- HELPERS ---
+
+async def validate_assignments(session: AsyncSession, grade_levels: List[int] = None, hod_subject_names: List[str] = None):
+    """Ensures assigned grades and subjects exist in the curriculum."""
+    if grade_levels:
+        for gl in grade_levels:
+            grade_stmt = select(GradeConfig).where(GradeConfig.grade_level == gl)
+            grade_res = await session.exec(grade_stmt)
+            if not grade_res.first():
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Grade level {gl} does not exist in the curriculum")
+    
+    if hod_subject_names:
+        for sn in hod_subject_names:
+            sub_stmt = select(Subject).where(Subject.subject_name == sn)
+            sub_res = await session.exec(sub_stmt)
+            if not sub_res.first():
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Subject '{sn}' does not exist in the curriculum")
+
+def map_user_to_read(user: Users) -> dict:
+    """Helper to transform User model to UserRead-compatible dict."""
+    d = user.model_dump()
+    d["subjects"] = [SubjectSimple(subject_id=s.subject_id, subject_name=s.subject_name) for s in user.subjects]
+    d["grade_levels"] = [g.grade_level for g in user.grade_coordinating]
+    d["hod_subject_names"] = [h.subject_name for h in user.hod_subjects]
+    return d
 
 # --- ROUTES ---
 
 @router.get("/me", response_model=UserRead)
 async def get_me(current_user: Users = Depends(get_current_user)):
-    """Returns the profile of the currently logged-in user, including their roles and assignments."""
-    # current_user is already loaded with subjects, grade_coordinating, and hod_subjects in auth_utils
-    user_dict = current_user.model_dump()
-    user_dict["subjects"] = [SubjectSimple(subject_id=s.subject_id, subject_name=s.subject_name) for s in current_user.subjects]
-    user_dict["grade_levels"] = [g.grade_level for g in current_user.grade_coordinating]
-    user_dict["hod_subject_names"] = [h.subject_name for h in current_user.hod_subjects]
-    return user_dict
+    """Returns the profile of the currently logged-in user."""
+    return map_user_to_read(current_user)
 
 @router.get("/users", response_model=List[UserRead])
 async def list_users(
@@ -58,26 +91,17 @@ async def list_users(
 ):
     """Lists all users. Restricted to Admins."""
     if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Only administrators can access the staff list")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can access the staff directory")
     
-    from sqlalchemy.orm import selectinload
     statement = select(Users).options(
         selectinload(Users.subjects),
         selectinload(Users.grade_coordinating),
         selectinload(Users.hod_subjects)
-    )
+    ).order_by(Users.full_name)
+    
     result = await session.exec(statement)
     users = result.all()
-    
-    # Map to schema
-    output = []
-    for u in users:
-        d = u.model_dump()
-        d["subjects"] = u.subjects
-        d["grade_levels"] = [g.grade_level for g in u.grade_coordinating]
-        d["hod_subject_names"] = [h.subject_name for h in u.hod_subjects]
-        output.append(d)
-    return output
+    return [map_user_to_read(u) for u in users]
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register_user(
@@ -85,34 +109,18 @@ async def register_user(
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
-    """Registers staff and assigns them roles and subjects."""
+    """Registers a new staff member and assigns roles. Restricted to Admins."""
     if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Only administrators can register staff")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can register new staff")
 
+    # Check if user already exists
     statement = select(Users).where(Users.email == user_data.email)
     result = await session.exec(statement)
     if result.first():
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"A user with email {user_data.email} is already registered")
     
-    # --- VALIDATION ---
-    from src.db.models import GradeConfig, Subject
-    
-    # Validate Grade Levels
-    if user_data.grade_levels:
-        for gl in user_data.grade_levels:
-            grade_stmt = select(GradeConfig).where(GradeConfig.grade_level == gl)
-            grade_res = await session.exec(grade_stmt)
-            if not grade_res.first():
-                raise HTTPException(400, f"Grade level {gl} does not exist in curriculum")
-    
-    # Validate HOD Subject Names
-    if user_data.hod_subject_names:
-        for sn in user_data.hod_subject_names:
-            sub_stmt = select(Subject).where(Subject.subject_name == sn)
-            sub_res = await session.exec(sub_stmt)
-            if not sub_res.first():
-                raise HTTPException(400, f"Subject '{sn}' does not exist in curriculum")
-    # --- END VALIDATION ---
+    # Validate Grade/HOD assignments
+    await validate_assignments(session, user_data.grade_levels, user_data.hod_subject_names)
 
     new_user = Users(
         full_name=user_data.full_name,
@@ -122,9 +130,9 @@ async def register_user(
         is_admin=user_data.is_admin
     )
     session.add(new_user)
-    await session.flush() 
+    await session.flush() # Get the new_user.user_id
 
-    # Assign Subjects
+    # Assign Teacher Subjects
     if user_data.subject_ids:
         for s_id in user_data.subject_ids:
             session.add(UserSubjectLink(user_id=new_user.user_id, subject_id=s_id))
@@ -140,7 +148,7 @@ async def register_user(
             session.add(HODLink(user_id=new_user.user_id, subject_name=sn))
     
     await session.commit()
-    return {"message": "Staff member registered successfully"}
+    return {"message": f"Staff member '{user_data.full_name}' registered successfully"}
 
 @router.post("/login", response_model=Token)
 async def login_for_access_token(
@@ -155,87 +163,85 @@ async def login_for_access_token(
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Invalid email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
     access_token = create_access_token(data={"sub": user.email, "id": user.user_id})
     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.delete("/users/{id}", status_code=204)
-async def delete_user(id: int, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    if not current_user.is_admin: raise HTTPException(403, "Admin only")
-    if id == current_user.user_id: raise HTTPException(400, "You cannot delete yourself")
-    user = await session.get(Users, id)
-    if user:
-        await session.delete(user)
-        await session.commit()
-    return None
-
 @router.patch("/users/{id}", response_model=UserRead)
-async def update_user(id: int, data: UserCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    if not current_user.is_admin: raise HTTPException(403, "Admin only")
+async def update_user(
+    id: int, 
+    data: UserUpdate, 
+    session: AsyncSession = Depends(get_session), 
+    current_user: Users = Depends(get_current_user)
+):
+    """Updates user profile and roles. Restricted to Admins."""
+    if not current_user.is_admin: 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can update staff profiles")
+    
     user = await session.get(Users, id)
-    if not user: raise HTTPException(404, "User not found")
+    if not user: 
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Staff member not found")
     
-    # --- VALIDATION ---
-    from src.db.models import GradeConfig, Subject
-    
-    # Validate Grade Levels
-    if data.grade_levels:
-        for gl in data.grade_levels:
-            grade_stmt = select(GradeConfig).where(GradeConfig.grade_level == gl)
-            grade_res = await session.exec(grade_stmt)
-            if not grade_res.first():
-                raise HTTPException(400, f"Grade level {gl} does not exist in curriculum")
-    
-    # Validate HOD Subject Names
-    if data.hod_subject_names:
-        for sn in data.hod_subject_names:
-            sub_stmt = select(Subject).where(Subject.subject_name == sn)
-            sub_res = await session.exec(sub_stmt)
-            if not sub_res.first():
-                raise HTTPException(400, f"Subject '{sn}' does not exist in curriculum")
-    # --- END VALIDATION ---
+    # Validate Grade/HOD assignments if they are being updated
+    await validate_assignments(session, data.grade_levels, data.hod_subject_names)
 
-    user.full_name = data.full_name
-    user.email = data.email
-    user.department = data.department
-    user.is_admin = data.is_admin
-    if data.password: user.password_hash = get_password_hash(data.password)
+    # Update basic info
+    update_data = data.model_dump(exclude_unset=True)
+    if "password" in update_data and update_data["password"]:
+        user.password_hash = get_password_hash(update_data.pop("password"))
     
-    from sqlmodel import delete
+    # Extract role-specific fields for separate sync
+    subject_ids = update_data.pop("subject_ids", None)
+    grade_levels = update_data.pop("grade_levels", None)
+    hod_subject_names = update_data.pop("hod_subject_names", None)
+
+    for key, val in update_data.items():
+        setattr(user, key, val)
+    
     # Sync Subjects
-    await session.exec(delete(UserSubjectLink).where(UserSubjectLink.user_id == id))
-    if data.subject_ids:
-        for s_id in data.subject_ids:
+    if subject_ids is not None:
+        await session.exec(delete(UserSubjectLink).where(UserSubjectLink.user_id == id))
+        for s_id in subject_ids:
             session.add(UserSubjectLink(user_id=id, subject_id=s_id))
             
     # Sync Grade Coordinator Roles
-    await session.exec(delete(GradeCoordinatorLink).where(GradeCoordinatorLink.user_id == id))
-    if data.grade_levels:
-        for gl in data.grade_levels:
+    if grade_levels is not None:
+        await session.exec(delete(GradeCoordinatorLink).where(GradeCoordinatorLink.user_id == id))
+        for gl in grade_levels:
             session.add(GradeCoordinatorLink(user_id=id, grade_level=gl))
             
     # Sync HOD Roles
-    await session.exec(delete(HODLink).where(HODLink.user_id == id))
-    if data.hod_subject_names:
-        for sn in data.hod_subject_names:
+    if hod_subject_names is not None:
+        await session.exec(delete(HODLink).where(HODLink.user_id == id))
+        for sn in hod_subject_names:
             session.add(HODLink(user_id=id, subject_name=sn))
             
     await session.commit()
     
-    from sqlalchemy.orm import selectinload
+    # Reload with relations for the response
     statement = select(Users).options(
         selectinload(Users.subjects),
         selectinload(Users.grade_coordinating),
         selectinload(Users.hod_subjects)
     ).where(Users.user_id == id)
     result = await session.exec(statement)
-    user = result.first()
+    updated_user = result.first()
+    return map_user_to_read(updated_user)
+
+@router.delete("/users/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(id: int, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
+    """Deletes a user account. Restricted to Admins. Cannot delete self."""
+    if not current_user.is_admin: 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can delete staff accounts")
     
-    d = user.model_dump()
-    d["subjects"] = user.subjects
-    d["grade_levels"] = [g.grade_level for g in user.grade_coordinating]
-    d["hod_subject_names"] = [h.subject_name for h in user.hod_subjects]
-    return d
+    if id == current_user.user_id: 
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot delete your own account")
+    
+    user = await session.get(Users, id)
+    if user:
+        await session.delete(user)
+        await session.commit()
+    return None

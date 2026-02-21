@@ -4,13 +4,10 @@ import {
   Shield, 
   User as UserIcon, 
   Mail, 
-  Building2,
   Loader2,
   AlertCircle,
-  MoreVertical,
   Pencil,
   Trash2,
-  Save,
   GraduationCap,
   BookOpen,
   ChevronRight,
@@ -19,7 +16,7 @@ import {
   Layers,
   Book
 } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import client from '../api/client';
 import Modal from './Modal';
 
@@ -42,13 +39,13 @@ const UserManagement: React.FC = () => {
     grade_levels: [] as number[],
     hod_subject_names: [] as string[]
   });
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Fetch current user
+  // Fetch Identity
   const { data: me } = useQuery({ 
     queryKey: ['me'], 
-    queryFn: () => client.get('/auth/me').then(r => r.data) 
+    queryFn: () => client.get('/auth/me').then(r => r.data),
+    staleTime: Infinity 
   });
 
   // Fetch Users
@@ -60,7 +57,7 @@ const UserManagement: React.FC = () => {
     }
   });
 
-  // Fetch full hierarchy for assignments
+  // Fetch Curriculum for Assignments
   const { data: hierarchy = [] } = useQuery({
     queryKey: ['curriculum-hierarchy'],
     queryFn: async () => {
@@ -70,19 +67,47 @@ const UserManagement: React.FC = () => {
     enabled: isModalOpen
   });
 
-  // Unique subject names for HOD selection
+  // Derived Selection Lists
   const uniqueSubjectNames = useMemo(() => {
     const names = new Set<string>();
     hierarchy.forEach((s: any) => s.grades.forEach((g: any) => g.subjects.forEach((sub: any) => names.add(sub.subject_name))));
     return Array.from(names).sort();
   }, [hierarchy]);
 
-  // Unique grade levels for Coordinator selection
   const allGradeLevels = useMemo(() => {
     const levels = new Set<number>();
     hierarchy.forEach((s: any) => s.grades.forEach((g: any) => levels.add(g.grade_level)));
     return Array.from(levels).sort((a, b) => a - b);
   }, [hierarchy]);
+
+  // Mutations
+  const userMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      if (isEditing && editingUserId) {
+        return client.patch(`/auth/users/${editingUserId}`, payload);
+      }
+      return client.post('/auth/register', payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      setIsModalOpen(false);
+      resetForm();
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.detail || 'Execution failed. Verify network connectivity.');
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => client.delete(`/auth/users/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      setDeleteTarget(null);
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.detail || "Revoke access failed.");
+    }
+  });
 
   const toggleItem = (listName: 'subject_ids' | 'grade_levels' | 'hod_subject_names', value: any) => {
     setFormData(prev => ({
@@ -111,42 +136,6 @@ const UserManagement: React.FC = () => {
     setExpandedGrade([]);
   };
 
-  const handleCreateOrUpdateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-
-    try {
-      if (isEditing && editingUserId) {
-        await client.patch(`/auth/users/${editingUserId}`, formData);
-      } else {
-        await client.post('/auth/register', formData);
-      }
-      
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setIsModalOpen(false);
-      resetForm();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to process user');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteUser = async () => {
-    if (!deleteTarget) return;
-    setLoading(true);
-    try {
-      await client.delete(`/auth/users/${deleteTarget.id}`);
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setDeleteTarget(null);
-    } catch (err: any) {
-      alert(err.response?.data?.detail || "Delete failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const openEdit = (user: any) => {
     setIsEditing(true);
     setEditingUserId(user.user_id);
@@ -163,109 +152,111 @@ const UserManagement: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const toggleSyllabus = (id: number) => {
-    setExpandedSyllabus(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-  };
-
-  const toggleGrade = (id: number) => {
-    setExpandedGrade(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-  };
+  const nameRef = React.useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (isModalOpen && nameRef.current) {
+      setTimeout(() => nameRef.current?.focus(), 100);
+    }
+  }, [isModalOpen]);
 
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96 text-gray-400">
         <Loader2 className="w-10 h-10 animate-spin mb-4 text-academy-500" />
-        <p className="font-medium">Loading staff records...</p>
+        <p className="font-black uppercase tracking-widest text-[10px]">Accessing Staff Directory</p>
       </div>
     );
   }
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-8 text-gray-900 dark:text-white">
         <div>
-          <h2 className="text-3xl font-extrabold text-gray-900">User Management</h2>
-          <p className="text-gray-500">Manage school staff, teachers, and administrators.</p>
+          <h2 className="text-3xl font-black tracking-tight">Staff Management</h2>
+          <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Oversee operational roles and curriculum hookups.</p>
         </div>
         
         <button 
           onClick={() => { resetForm(); setIsModalOpen(true); }}
-          className="bg-academy-600 hover:bg-academy-700 text-white px-6 py-3 rounded-xl shadow-lg shadow-academy-600/20 font-semibold transition-all flex items-center gap-2"
+          className="bg-academy-600 hover:bg-academy-700 text-white px-6 py-3.5 rounded-2xl shadow-xl shadow-academy-600/20 font-black text-xs uppercase tracking-widest transition-all flex items-center gap-3 active:scale-95"
         >
           <UserPlus className="w-5 h-5" />
-          Add New Staff
+          Onboard Staff
         </button>
       </div>
 
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden text-gray-900">
+      <div className="bg-white dark:bg-gray-800 rounded-[32px] shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors duration-300">
         <table className="w-full text-left">
           <thead>
-            <tr className="text-xs uppercase tracking-wider text-gray-400 font-bold border-b border-gray-100 bg-gray-50/50">
-              <th className="px-8 py-5">Full Name</th>
-              <th className="px-8 py-5">Roles & Scope</th>
-              <th className="px-8 py-5">Direct Assignments</th>
-              <th className="px-8 py-5">Contact</th>
-              <th className="px-8 py-5 text-right">Actions</th>
+            <tr className="text-[10px] uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 font-black border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
+              <th className="px-8 py-6">Staff Profile</th>
+              <th className="px-8 py-6">Authorization Level</th>
+              <th className="px-8 py-6">Active Hooks</th>
+              <th className="px-8 py-6">Operational Contact</th>
+              <th className="px-8 py-6 text-right">Control</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50 text-sm">
+          <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
             {users.map((user: any) => (
-              <tr key={user.user_id} className="hover:bg-gray-50/30 transition-colors group">
-                <td className="px-8 py-5">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 ${user.is_admin ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-academy-50 text-academy-700 border-academy-100'}`}>
+              <tr key={user.user_id} className="hover:bg-gray-50/30 dark:hover:bg-gray-900/30 transition-colors group">
+                <td className="px-8 py-6">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm border-2 shadow-sm ${user.is_admin ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 border-amber-100 dark:border-amber-900/30' : 'bg-academy-50 dark:bg-academy-900/20 text-academy-700 border-academy-100 dark:border-academy-900/30'}`}>
                       {user.full_name.charAt(0)}
                     </div>
-                    <span className="font-bold">{user.full_name}</span>
+                    <div>
+                      <span className="font-black text-gray-900 dark:text-white block tracking-tight">{user.full_name}</span>
+                      <span className="text-[9px] font-black uppercase text-gray-400 tracking-tighter">{user.department}</span>
+                    </div>
                   </div>
                 </td>
-                <td className="px-8 py-5">
+                <td className="px-8 py-6">
                   <div className="flex flex-col gap-1.5 items-start">
                     {user.is_admin && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
-                        <Shield className="w-3 h-3" /> Admin
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200">
+                        <Shield className="w-3 h-3" /> Root Admin
                       </span>
                     )}
                     {user.grade_levels?.length > 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200">
                         <GraduationCap className="w-3 h-3" /> Coordinator (Gr {user.grade_levels.join(', ')})
                       </span>
                     )}
                     {user.hod_subject_names?.length > 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
-                        <BookOpen className="w-3 h-3" /> HOD ({user.hod_subject_names.join(', ')})
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200">
+                        <BookOpen className="w-3 h-3" /> Subject Head ({user.hod_subject_names.join(', ')})
                       </span>
                     )}
                     {!user.is_admin && user.grade_levels?.length === 0 && user.hod_subject_names?.length === 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                        <UserIcon className="w-3 h-3" /> Teacher
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200">
+                        <UserIcon className="w-3 h-3" /> Faculty
                       </span>
                     )}
                   </div>
                 </td>
-                <td className="px-8 py-5">
-                  <div className="flex flex-wrap gap-1 max-w-[200px]">
+                <td className="px-8 py-6">
+                  <div className="flex flex-wrap gap-1.5 max-w-[240px]">
                     {user.subjects?.length === 0 ? (
-                      <span className="text-[10px] text-gray-300 italic">None</span>
+                      <span className="text-[10px] text-gray-300 dark:text-gray-600 font-bold italic tracking-tighter">Zero hooks detected</span>
                     ) : (
                       user.subjects?.map((s: any) => (
-                        <span key={s.subject_id} className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-md text-[10px] font-bold border border-gray-200">
+                        <span key={s.subject_id} className="px-2.5 py-1 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 rounded-lg text-[9px] font-black uppercase border border-gray-200 dark:border-gray-700 shadow-sm">
                           {s.subject_name}
                         </span>
                       ))
                     )}
                   </div>
                 </td>
-                <td className="px-8 py-5 text-gray-500 font-medium">
+                <td className="px-8 py-6 text-gray-500 dark:text-gray-400 font-bold text-xs tracking-tight">
                   {user.email}
                 </td>
-                <td className="px-8 py-5 text-right">
-                  <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => openEdit(user)} className="p-2 hover:bg-academy-50 text-gray-400 hover:text-academy-600 rounded-lg transition-colors">
+                <td className="px-8 py-6 text-right">
+                  <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform group-hover:-translate-x-1">
+                    <button onClick={() => openEdit(user)} className="p-2.5 hover:bg-academy-50 dark:hover:bg-academy-900/30 text-gray-400 hover:text-academy-600 dark:hover:text-academy-400 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
                       <Pencil className="w-4 h-4" />
                     </button>
                     {user.user_id !== me?.user_id && (
-                      <button onClick={() => setDeleteTarget({id: user.user_id, name: user.full_name})} className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-lg transition-colors">
+                      <button onClick={() => setDeleteTarget({id: user.user_id, name: user.full_name})} className="p-2.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     )}
@@ -277,144 +268,102 @@ const UserManagement: React.FC = () => {
         </table>
       </div>
 
-      {/* Add/Edit User Modal */}
       <Modal 
         isOpen={isModalOpen} 
-        onClose={() => { setIsModalOpen(false); resetForm(); }}
-        title={isEditing ? 'Update Staff Member' : 'Register New Staff'}
-        maxWidth="max-w-5xl"
+        onClose={() => { if (!userMutation.isPending) { setIsModalOpen(false); resetForm(); } }}
+        title={isEditing ? 'Refine Staff Identity' : 'Register New Faculty'}
+        maxWidth="max-w-6xl"
       >
-        <form onSubmit={handleCreateOrUpdateUser} className="space-y-6">
-          {error && <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs font-bold border border-red-100 flex items-center gap-2"><AlertCircle className="w-4 h-4" />{error}</div>}
+        <form onSubmit={(e) => { e.preventDefault(); userMutation.mutate(formData); }} className="space-y-8 p-2">
+          {error && (
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-2xl text-xs font-black border border-red-100 dark:border-red-900/30 flex items-center gap-3 animate-in fade-in slide-in-from-top-1">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              {error}
+            </div>
+          )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Left Section: Profile (4 cols) */}
-            <div className="lg:col-span-4 space-y-5 border-r lg:pr-8 border-gray-100">
-              <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest border-b pb-2">Profile Information</h4>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+            {/* Column 1: Core Profile */}
+            <div className="lg:col-span-4 space-y-6 border-r border-gray-100 dark:border-gray-700 pr-10">
+              <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] border-b dark:border-gray-700 pb-3">Operational Identity</h4>
               <div className="space-y-4">
-                <input required className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-academy-500 text-sm" placeholder="Full Name" value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} />
-                <input required type="email" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-academy-500 text-sm" placeholder="Work Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-                <input type="password" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-academy-500 text-sm" placeholder={isEditing ? "Leave blank to keep current" : "Password"} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} required={!isEditing} />
-                <input required className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none text-sm" placeholder="Primary Department" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} />
+                <input required className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Legal Full Name" value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} />
+                <input required type="email" className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Corporate Email Address" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                <input type="password" className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder={isEditing ? "Password (retain current if blank)" : "Initial Password"} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} required={!isEditing} />
+                <input required className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Assigned Department" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} />
               </div>
               
-              <div className="p-4 bg-amber-50 rounded-2xl flex items-center justify-between border border-amber-100 mt-6">
-                <div className="flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-amber-600" />
-                  <span className="text-sm font-bold text-amber-900">System Administrator</span>
+              <div className="p-5 bg-amber-50 dark:bg-amber-900/20 rounded-[24px] flex items-center justify-between border border-amber-100 dark:border-amber-900/30 mt-8 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <Shield className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                  <div>
+                    <span className="text-xs font-black text-amber-900 dark:text-amber-100 block uppercase">Root Privilege</span>
+                    <span className="text-[9px] font-bold text-amber-600/70">Full System Access</span>
+                  </div>
                 </div>
-                <input type="checkbox" className="w-5 h-5 accent-amber-600 cursor-pointer" checked={formData.is_admin} onChange={e => setFormData({...formData, is_admin: e.target.checked})} />
+                <input type="checkbox" className="w-6 h-6 accent-amber-600 cursor-pointer rounded-lg" checked={formData.is_admin} onChange={e => setFormData({...formData, is_admin: e.target.checked})} />
               </div>
             </div>
 
-            {/* Middle Section: Roles (3 cols) */}
-            <div className="lg:col-span-3 space-y-6 border-r lg:pr-8 border-gray-100">
-              <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest border-b pb-2">Global Scopes</h4>
-              
-              <div>
-                <label className="flex items-center gap-2 text-[10px] font-black text-gray-500 uppercase mb-3 tracking-widest">
-                  <GraduationCap className="w-3 h-3 text-indigo-500" /> Grade Coordinator
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {allGradeLevels.map((level) => (
-                    <button
-                      key={level}
-                      type="button"
-                      onClick={() => toggleItem('grade_levels', level)}
-                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
-                        formData.grade_levels.includes(level)
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
-                          : 'bg-white border-gray-200 text-gray-500 hover:border-indigo-300'
-                      }`}
-                    >
-                      Grade {level}
-                    </button>
-                  ))}
+            {/* Column 2: Scope Definitions */}
+            <div className="lg:col-span-3 space-y-8 border-r border-gray-100 dark:border-gray-700 pr-10">
+              <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] border-b dark:border-gray-700 pb-3">Authority Scopes</h4>
+              <div className="space-y-8">
+                <div>
+                  <label className="flex items-center gap-2.5 text-[10px] font-black text-gray-500 uppercase mb-4 tracking-widest"><GraduationCap className="w-4 h-4 text-indigo-500" /> Grade Logic</label>
+                  <div className="flex flex-wrap gap-2.5">
+                    {allGradeLevels.map((level) => (
+                      <button key={level} type="button" onClick={() => toggleItem('grade_levels', level)} className={`px-3.5 py-2 rounded-xl text-[10px] font-black border transition-all ${formData.grade_levels.includes(level) ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-indigo-300'}`}>GR {level}</button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-
-              <div>
-                <label className="flex items-center gap-2 text-[10px] font-black text-gray-500 uppercase mb-3 tracking-widest">
-                  <BookOpen className="w-3 h-3 text-purple-500" /> Head of Dept. (HOD)
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {uniqueSubjectNames.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => toggleItem('hod_subject_names', name)}
-                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
-                        formData.hod_subject_names.includes(name)
-                          ? 'bg-purple-600 border-purple-600 text-white shadow-md'
-                          : 'bg-white border-gray-200 text-gray-500 hover:border-purple-300'
-                      }`}
-                    >
-                      {name}
-                    </button>
-                  ))}
+                <div>
+                  <label className="flex items-center gap-2.5 text-[10px] font-black text-gray-500 uppercase mb-4 tracking-widest"><BookOpen className="w-4 h-4 text-purple-500" /> Subject Lead</label>
+                  <div className="flex flex-wrap gap-2.5">
+                    {uniqueSubjectNames.map((name) => (
+                      <button key={name} type="button" onClick={() => toggleItem('hod_subject_names', name)} className={`px-3 py-2 rounded-xl text-[10px] font-black border transition-all ${formData.hod_subject_names.includes(name) ? 'bg-purple-600 border-purple-600 text-white shadow-lg' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-purple-300'}`}>{name}</button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Right Section: Assignments (5 cols) */}
-            <div className="lg:col-span-5 space-y-4">
-              <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest border-b pb-2">Hierarchical Subject Assignments</h4>
-              
-              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 h-[400px] overflow-y-auto custom-scrollbar">
-                {hierarchy.length === 0 && <p className="text-center text-gray-400 py-20 text-sm">No curriculum data available.</p>}
-                
+            {/* Column 3: Hierarchical Logic */}
+            <div className="lg:col-span-5 space-y-6">
+              <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] border-b dark:border-gray-700 pb-3">Curriculum Hookups</h4>
+              <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-[32px] p-6 h-[440px] overflow-y-auto custom-scrollbar shadow-inner">
                 {hierarchy.map((syllabus: any) => (
-                  <div key={syllabus.syllabus_id} className="mb-4">
-                    <button
-                      type="button"
-                      onClick={() => toggleSyllabus(syllabus.syllabus_id)}
-                      className="w-full flex items-center justify-between p-2 hover:bg-white rounded-lg transition-colors group"
-                    >
-                      <div className="flex items-center gap-2">
+                  <div key={syllabus.syllabus_id} className="mb-6">
+                    <button type="button" onClick={() => setExpandedSyllabus(prev => prev.includes(syllabus.syllabus_id) ? prev.filter(id => id !== syllabus.syllabus_id) : [...prev, syllabus.syllabus_id])} className="w-full flex items-center justify-between p-3 hover:bg-white dark:hover:bg-gray-800 rounded-2xl transition-all group">
+                      <div className="flex items-center gap-3">
                         {expandedSyllabus.includes(syllabus.syllabus_id) ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
-                        <FolderRoot className="w-4 h-4 text-academy-500" />
-                        <span className="text-xs font-black text-gray-700 uppercase tracking-tight">{syllabus.syllabus_name}</span>
-                        <span className="text-[10px] text-gray-400 font-bold ml-1">{syllabus.academic_year}</span>
+                        <FolderRoot className="w-5 h-5 text-academy-500" />
+                        <span className="text-[11px] font-black text-gray-700 dark:text-gray-200 uppercase tracking-wider">{syllabus.syllabus_name}</span>
                       </div>
                     </button>
-
                     {expandedSyllabus.includes(syllabus.syllabus_id) && (
-                      <div className="ml-4 mt-1 border-l-2 border-academy-100 pl-4 space-y-3">
+                      <div className="ml-6 mt-2 border-l-2 border-academy-100 dark:border-academy-900 pl-6 space-y-4 animate-in slide-in-from-top-1">
                         {syllabus.grades.map((grade: any) => (
                           <div key={grade.config_id}>
-                            <button
-                              type="button"
-                              onClick={() => toggleGrade(grade.config_id)}
-                              className="w-full flex items-center justify-between p-1.5 hover:bg-white rounded-lg transition-colors group"
-                            >
-                              <div className="flex items-center gap-2">
-                                {expandedGrade.includes(grade.config_id) ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
-                                <Layers className="w-3.5 h-3.5 text-amber-500" />
-                                <span className="text-xs font-bold text-gray-600 italic">Grade {grade.grade_level}</span>
+                            <button type="button" onClick={() => setExpandedGrade(prev => prev.includes(grade.config_id) ? prev.filter(id => id !== grade.config_id) : [...prev, grade.config_id])} className="w-full flex items-center justify-between p-2 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-colors group">
+                              <div className="flex items-center gap-3">
+                                {expandedGrade.includes(grade.config_id) ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />}
+                                <Layers className="w-4 h-4 text-amber-500" />
+                                <span className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase">Grade {grade.grade_level}</span>
                               </div>
                             </button>
-
                             {expandedGrade.includes(grade.config_id) && (
-                              <div className="ml-4 mt-2 grid grid-cols-1 gap-1">
+                              <div className="ml-6 mt-3 grid grid-cols-1 gap-2 animate-in slide-in-from-left-1">
                                 {grade.subjects.map((subject: any) => (
-                                  <label
-                                    key={subject.subject_id}
-                                    className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer border transition-all ${
-                                      formData.subject_ids.includes(subject.subject_id)
-                                        ? 'bg-academy-600 border-academy-600 text-white shadow-lg shadow-academy-600/20'
-                                        : 'bg-white border-gray-100 text-gray-600 hover:border-academy-300'
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <Book className={`w-3.5 h-3.5 ${formData.subject_ids.includes(subject.subject_id) ? 'text-white' : 'text-blue-500'}`} />
-                                      <span className="text-xs font-bold">{subject.subject_name}</span>
+                                  <label key={subject.subject_id} className={`flex items-center justify-between p-3.5 rounded-[18px] cursor-pointer border-2 transition-all ${formData.subject_ids.includes(subject.subject_id) ? 'bg-academy-600 border-academy-600 text-white shadow-xl scale-[1.02]' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-academy-200'}`}>
+                                    <div className="flex items-center gap-3.5">
+                                      <Book className={`w-4 h-4 ${formData.subject_ids.includes(subject.subject_id) ? 'text-white' : 'text-blue-500'}`} />
+                                      <span className="text-[11px] font-black uppercase tracking-tight">{subject.subject_name}</span>
                                     </div>
-                                    <input
-                                      type="checkbox"
-                                      className="hidden"
-                                      checked={formData.subject_ids.includes(subject.subject_id)}
-                                      onChange={() => toggleItem('subject_ids', subject.subject_id)}
-                                    />
+                                    <input type="checkbox" className="hidden" checked={formData.subject_ids.includes(subject.subject_id)} onChange={() => toggleItem('subject_ids', subject.subject_id)} />
+                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${formData.subject_ids.includes(subject.subject_id) ? 'bg-white border-white' : 'border-gray-200 dark:border-gray-600'}`}>
+                                      {formData.subject_ids.includes(subject.subject_id) && <div className="w-2 h-2 bg-academy-600 rounded-full" />}
+                                    </div>
                                   </label>
                                 ))}
                               </div>
@@ -429,22 +378,40 @@ const UserManagement: React.FC = () => {
             </div>
           </div>
 
-          <div className="pt-6 border-t flex gap-3">
-            <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 text-gray-400 font-bold">Cancel</button>
-            <button type="submit" disabled={loading} className="flex-[2] bg-academy-700 text-white font-bold py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2">
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-              {isEditing ? 'Save All Assignments' : 'Register Staff Member'}
+          <div className="pt-10 border-t border-gray-100 dark:border-gray-700 flex gap-6">
+            <button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} className="flex-1 py-5 font-black text-[10px] uppercase tracking-[0.2em] text-gray-400 hover:text-gray-600 transition-colors">Discard Draft</button>
+            <button 
+              type="submit" 
+              disabled={userMutation.isPending} 
+              className="flex-[2] bg-academy-700 hover:bg-academy-800 text-white font-black py-5 rounded-[24px] shadow-2xl shadow-academy-700/20 transition-all flex items-center justify-center gap-3 active:scale-[0.98] disabled:opacity-50"
+            >
+              {userMutation.isPending ? <Loader2 className="w-6 h-6 animate-spin" /> : <UserPlus className="w-6 h-6" />}
+              <span className="text-xs uppercase tracking-widest">{isEditing ? 'Commit Structural Changes' : 'Execute Registration'}</span>
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Danger Modal */}
-      <Modal isOpen={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="Revoke Access">
-        <div className="space-y-6 text-center p-4">
-          <div className="w-20 h-20 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto border-4 border-red-100"><Trash2 className="w-10 h-10" /></div>
-          <div><h4 className="text-xl font-black text-gray-900 mb-2">Delete {deleteTarget?.name}?</h4><p className="text-sm text-gray-500 leading-relaxed">This will permanently remove the staff member from the portal and revoke all permissions.</p></div>
-          <div className="flex gap-3"><button onClick={() => setDeleteTarget(null)} className="flex-1 py-4 text-gray-400 font-bold">Cancel</button><button onClick={handleDeleteUser} className="flex-1 py-4 bg-red-600 text-white font-bold rounded-2xl shadow-xl shadow-red-600/20 hover:bg-red-700">{loading ? 'Deleting...' : 'Delete User'}</button></div>
+      <Modal isOpen={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="Destructive Revoke">
+        <div className="space-y-8 text-center p-6">
+          <div className="w-24 h-24 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-[32px] flex items-center justify-center mx-auto border-4 border-red-100 dark:border-red-900/30 shadow-inner group">
+            <Trash2 className="w-12 h-12 transition-transform group-hover:rotate-12" />
+          </div>
+          <div className="space-y-3">
+            <h4 className="text-2xl font-black text-gray-900 dark:text-white">Delete {deleteTarget?.name}?</h4>
+            <p className="text-sm text-gray-500 dark:text-gray-400 px-8 leading-relaxed font-medium">Permanently purge this staff member from the system. This will immediately revoke all access and erase logic hooks. This action is terminal.</p>
+          </div>
+          <div className="flex gap-4">
+            <button onClick={() => setDeleteTarget(null)} className="flex-1 py-5 text-gray-400 font-black text-[10px] uppercase tracking-widest">Retain User</button>
+            <button 
+              onClick={() => deleteMutation.mutate(deleteTarget!.id)} 
+              disabled={deleteMutation.isPending}
+              className="flex-[2] bg-red-600 hover:bg-red-700 text-white font-black py-5 rounded-3xl shadow-2xl shadow-red-600/30 active:scale-95 transition-all flex items-center justify-center gap-3"
+            >
+              {deleteMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Trash2 className="w-5 h-5" />}
+              Wipe Credentials
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

@@ -53,6 +53,7 @@ class SyllabusMaster(SQLModel, table=True):
     syllabus_id: Optional[int] = Field(default=None, primary_key=True)
     syllabus_name: str
     academic_year: str
+    pdf_url: Optional[str] = None
     
     # Cascade: If Syllabus is deleted, delete all Grades
     grades: List["GradeConfig"] = Relationship(back_populates="syllabus", cascade_delete=True)
@@ -133,12 +134,12 @@ class Users(SQLModel, table=True):
     # Cascade: If Teacher is deleted, delete their Questions (or we could set to NULL, but cascade is safer for now)
     questions: List["QuestionBank"] = Relationship(back_populates="teacher", cascade_delete=True)
 
-    def can_modify_grade(self) -> bool:
-        """Only Admins can modify grade levels or syllabus links."""
+    def can_manage_grade(self) -> bool:
+        """Only Admins can manage grade levels or syllabus links."""
         return self.is_admin
 
-    def can_modify_subject(self, grade_level: int) -> bool:
-        """Admins and Grade Coordinators can modify subjects within a grade."""
+    def can_manage_subject(self, grade_level: int) -> bool:
+        """Admins and Grade Coordinators can manage subjects within a grade."""
         if self.is_admin: return True
         return any(g.grade_level == grade_level for g in self.grade_coordinating)
 
