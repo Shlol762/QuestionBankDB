@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlmodel import select, delete
+from sqlmodel import select, delete, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Optional
 from src.db.main import get_session
@@ -51,10 +51,16 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+class SetupStatus(BaseModel):
+    setup_required: bool
+
 # --- HELPERS ---
 
 async def validate_assignments(session: AsyncSession, grade_levels: List[int] = None, hod_subject_names: List[str] = None):
-    """Ensures assigned grades and subjects exist in the curriculum."""
+    """
+    Ensures assigned grades and subjects exist in the curriculum.
+    Prevents assigning non-existent curriculum branches to users.
+    """
     if grade_levels:
         for gl in grade_levels:
             grade_stmt = select(GradeConfig).where(GradeConfig.grade_level == gl)
@@ -70,7 +76,10 @@ async def validate_assignments(session: AsyncSession, grade_levels: List[int] = 
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Subject '{sn}' does not exist in the curriculum")
 
 def map_user_to_read(user: Users) -> dict:
-    """Helper to transform User model to UserRead-compatible dict."""
+    """
+    Helper to transform a SQLModel Users object to a UserRead-compatible dictionary.
+    Handles the serialization of relationships and link tables.
+    """
     d = user.model_dump()
     d["subjects"] = [SubjectSimple(subject_id=s.subject_id, subject_name=s.subject_name) for s in user.subjects]
     d["grade_levels"] = [g.grade_level for g in user.grade_coordinating]
@@ -78,6 +87,47 @@ def map_user_to_read(user: Users) -> dict:
     return d
 
 # --- ROUTES ---
+
+@router.get("/setup-status", response_model=SetupStatus)
+async def get_setup_status(session: AsyncSession = Depends(get_session)):
+    """
+    Checks if the system has any registered users.
+    Used by the frontend to trigger the 'First-Run Setup Wizard'.
+    """
+    statement = select(func.count(Users.user_id))
+    result = await session.exec(statement)
+    count = result.first()
+    return {"setup_required": count == 0}
+
+@router.post("/initial-setup", status_code=status.HTTP_201_CREATED)
+async def initial_setup(user_data: UserCreate, session: AsyncSession = Depends(get_session)):
+    """
+    Creates the system's first administrator.
+    Only callable if the database has 0 users. Provides industry-standard 
+    bootstrapping for fresh installations.
+    """
+    # 1. Verification Lock
+    count_stmt = select(func.count(Users.user_id))
+    count = (await session.exec(count_stmt)).first()
+    if count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="System is already configured. Setup wizard is locked."
+        )
+
+    # 2. Force Admin Privilege for initial user
+    new_admin = Users(
+        full_name=user_data.full_name,
+        email=user_data.email,
+        password_hash=get_password_hash(user_data.password),
+        department=user_data.department,
+        is_admin=True # Mandatory for setup
+    )
+    
+    session.add(new_admin)
+    await session.commit()
+    
+    return {"message": "Primary administrator account created. Welcome to the portal."}
 
 @router.get("/me", response_model=UserRead)
 async def get_me(current_user: Users = Depends(get_current_user)):
@@ -233,15 +283,31 @@ async def update_user(
 
 @router.delete("/users/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(id: int, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    """Deletes a user account. Restricted to Admins. Cannot delete self."""
+    """
+    Deletes a user account. 
+    Restricted to Admins. 
+    Safety Lock: Prevents deleting self and prevents deleting the system's final administrator.
+    """
     if not current_user.is_admin: 
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can delete staff accounts")
     
     if id == current_user.user_id: 
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot delete your own account")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Security Protocol: You cannot delete your own account.")
     
-    user = await session.get(Users, id)
-    if user:
-        await session.delete(user)
-        await session.commit()
+    target_user = await session.get(Users, id)
+    if not target_user:
+        return None
+
+    # Safety Lock: Prevent deletion of the final system administrator
+    if target_user.is_admin:
+        admin_count_stmt = select(func.count(Users.user_id)).where(Users.is_admin == True)
+        admin_count = (await session.exec(admin_count_stmt)).first()
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Security Lock: This is the system's final administrator. Deletion is blocked to prevent permanent lockout."
+            )
+
+    await session.delete(target_user)
+    await session.commit()
     return None
