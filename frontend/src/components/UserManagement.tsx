@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   UserPlus, 
   Shield, 
@@ -159,6 +159,9 @@ const UserManagement: React.FC = () => {
     }
   }, [isModalOpen]);
 
+  // Calculate total administrators for the Safety Lock
+  const adminCount = useMemo(() => users.filter((u: any) => u.is_admin).length, [users]);
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96 text-gray-400">
@@ -256,7 +259,12 @@ const UserManagement: React.FC = () => {
                       <Pencil className="w-4 h-4" />
                     </button>
                     {user.user_id !== me?.user_id && (
-                      <button onClick={() => setDeleteTarget({id: user.user_id, name: user.full_name})} className="p-2.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+                      <button 
+                        onClick={() => setDeleteTarget({id: user.user_id, name: user.full_name})} 
+                        disabled={user.is_admin && adminCount <= 1}
+                        title={user.is_admin && adminCount <= 1 ? "Security Lock: Final Administrator" : "Delete User"}
+                        className={`p-2.5 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 ${user.is_admin && adminCount <= 1 ? 'opacity-20 cursor-not-allowed text-gray-300' : 'text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400'}`}
+                      >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     )}
