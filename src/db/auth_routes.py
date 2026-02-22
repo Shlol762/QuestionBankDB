@@ -6,18 +6,21 @@ from typing import List, Optional
 from src.db.main import get_session
 from src.db.models import Users, GradeCoordinatorLink, HODLink, UserSubjectLink, GradeConfig, Subject
 from src.db.auth_utils import get_password_hash, verify_password, create_access_token, get_current_user
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # --- SCHEMAS ---
 
-class SubjectSimple(BaseModel):
+class BaseAuthModel(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+class SubjectSimple(BaseAuthModel):
     subject_id: int
     subject_name: str
 
-class UserRead(BaseModel):
+class UserRead(BaseAuthModel):
     user_id: int
     full_name: str
     email: EmailStr
@@ -27,7 +30,7 @@ class UserRead(BaseModel):
     grade_levels: List[int] = [] 
     hod_subject_names: List[str] = []
 
-class UserCreate(BaseModel):
+class UserCreate(BaseAuthModel):
     full_name: str
     email: EmailStr
     password: str
@@ -37,7 +40,7 @@ class UserCreate(BaseModel):
     grade_levels: List[int] = []
     hod_subject_names: List[str] = []
 
-class UserUpdate(BaseModel):
+class UserUpdate(BaseAuthModel):
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
     password: Optional[str] = None
@@ -70,7 +73,8 @@ async def validate_assignments(session: AsyncSession, grade_levels: List[int] = 
     
     if hod_subject_names:
         for sn in hod_subject_names:
-            sub_stmt = select(Subject).where(Subject.subject_name == sn)
+            # Case-insensitive validation
+            sub_stmt = select(Subject).where(func.lower(Subject.subject_name) == sn.lower())
             sub_res = await session.exec(sub_stmt)
             if not sub_res.first():
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Subject '{sn}' does not exist in the curriculum")

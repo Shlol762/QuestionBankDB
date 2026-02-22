@@ -152,6 +152,17 @@ const UserManagement: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+        ...formData,
+        full_name: formData.full_name.trim(),
+        email: formData.email.trim(),
+        department: formData.department.trim(),
+    };
+    userMutation.mutate(payload);
+  };
+
   const nameRef = React.useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (isModalOpen && nameRef.current) {
@@ -282,7 +293,7 @@ const UserManagement: React.FC = () => {
         title={isEditing ? 'Refine Staff Identity' : 'Register New Faculty'}
         maxWidth="max-w-6xl"
       >
-        <form onSubmit={(e) => { e.preventDefault(); userMutation.mutate(formData); }} className="space-y-8 p-2">
+        <form onSubmit={handleSubmit} className="space-y-8 p-2">
           {error && (
             <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-2xl text-xs font-black border border-red-100 dark:border-red-900/30 flex items-center gap-3 animate-in fade-in slide-in-from-top-1">
               <AlertCircle className="w-5 h-5 flex-shrink-0" />

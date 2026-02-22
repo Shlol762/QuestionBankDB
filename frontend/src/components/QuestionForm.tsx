@@ -60,7 +60,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     question_text: initialData?.question_text || '',
     answer_text: initialData?.answer_text || '',
     image_url: initialData?.image_url || '',
-    marks: initialData?.marks || 5,
+    marks: initialData?.marks !== undefined ? initialData.marks : 5,
     difficulty: initialData?.difficulty || 'Medium',
     q_type: initialData?.q_type || 'MCQ',
     options: initialData?.options || (initialData?.q_type === 'Match the Following' ? { pairs: defaultPairs } : defaultOptions)
@@ -160,6 +160,18 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Client-side Validation
+    if (file.size > 50 * 1024 * 1024) {
+        setError("Image exceeds the 50MB limit.");
+        return;
+    }
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+        setError("Invalid file type. Only JPG, PNG, GIF, and WEBP are allowed.");
+        return;
+    }
+
     setUploading(true);
     setError('');
     const uploadData = new FormData();
@@ -167,8 +179,8 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     try {
       const res = await client.post('/questions/upload-image', uploadData);
       setFormData(prev => ({ ...prev, image_url: res.data.image_url }));
-    } catch (err) {
-      setError("Image upload failed. Ensure the file is under 5MB.");
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Image upload failed.");
     } finally {
       setUploading(false);
     }
@@ -180,23 +192,48 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     
     // Validation
     if (!formData.topic_id) return setError("Please specify a topic.");
+    
+    const trimmedQuestion = formData.question_text.trim();
+    if (!trimmedQuestion) return setError("Question text cannot be empty.");
+
     if (formData.q_type === 'MCQ') {
-      if (Object.values(formData.options).some(v => !String(v).trim())) return setError("All MCQ choices must be filled.");
-      if (!formData.answer_text) return setError("Select the correct choice for this MCQ.");
+      // Ensure all options have trimmed values
+      if (Object.values(formData.options).some(v => !String(v).trim())) {
+          return setError("All MCQ choices must be filled.");
+      }
+      
+      // Ensure Answer Key exists in Options (Client-side mirror of backend logic)
+      const validKeys = Object.keys(formData.options);
+      if (!formData.answer_text || !validKeys.includes(formData.answer_text)) {
+           return setError("Selected answer must match one of the available options.");
+      }
     }
+
     if (formData.q_type === 'Match the Following') {
       const pairs = formData.options.pairs || [];
       if (pairs.length < 2) return setError("Minimum 2 pairs required for Matching questions.");
       if (pairs.some((p: MatchPair) => !p.left.trim() || !p.right.trim())) return setError("All match pairs must be complete.");
     }
+    
+    if (formData.marks < 0) return setError("Marks cannot be negative.");
 
     const payload = {
       ...formData,
       topic_id: parseInt(formData.topic_id),
+      question_text: trimmedQuestion,
+      answer_text: formData.q_type === 'Match the Following' ? "Pairs matched" : formData.answer_text.trim(),
       marks: parseInt(formData.marks.toString()),
       options: (formData.q_type === 'MCQ' || formData.q_type === 'Match the Following') ? formData.options : null,
-      answer_text: formData.q_type === 'Match the Following' ? "Pairs matched" : formData.answer_text
     };
+
+    // Sanitize MCQ options values
+    if (payload.q_type === 'MCQ' && payload.options) {
+        const sanitizedOptions: any = {};
+        Object.keys(payload.options).forEach(k => {
+            sanitizedOptions[k] = payload.options[k].trim();
+        });
+        payload.options = sanitizedOptions;
+    }
 
     mutation.mutate(payload);
   };
@@ -412,7 +449,14 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Points</label>
-                      <input type="number" value={formData.marks} onChange={(e) => setFormData(prev => ({...prev, marks: parseInt(e.target.value)}))} className="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-black text-center text-sm dark:text-white shadow-sm" min="1" max="100" />
+                      <input 
+                        type="number" 
+                        value={formData.marks} 
+                        onChange={(e) => setFormData(prev => ({...prev, marks: parseInt(e.target.value)}))} 
+                        className="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-black text-center text-sm dark:text-white shadow-sm" 
+                        min="0" 
+                        max="100" 
+                      />
                     </div>
                   </div>
                 </div>
@@ -436,7 +480,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                       <div className="p-5 bg-white dark:bg-gray-800 rounded-2xl shadow-sm text-academy-500"><ImageIcon className="w-10 h-10" /></div>
                       <div>
                         <p className="text-sm font-bold text-gray-600 dark:text-gray-400">Import Diagram</p>
-                        <p className="text-[10px] text-gray-400 dark:text-gray-600 uppercase font-black tracking-tighter mt-1">PNG, JPG up to 5MB</p>
+                        <p className="text-[10px] text-gray-400 dark:text-gray-600 uppercase font-black tracking-tighter mt-1">PNG, JPG up to 50MB</p>
                       </div>
                     </div>
                   )}

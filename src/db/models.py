@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
 from enum import Enum
-from sqlmodel import SQLModel, Field, Relationship
+from sqlmodel import SQLModel, Field, Relationship, Session
 from sqlalchemy import JSON, Column
+from pydantic import ConfigDict
 
 # --- ENUMS ---
 class DifficultyLevel(str, Enum):
@@ -18,9 +19,15 @@ class QuestionType(str, Enum):
     LONG_ANSWER = "Long Answer"
 
 # ==========================================
+# BASE MODEL CONFIG
+# ==========================================
+class BaseSQLModel(SQLModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+# ==========================================
 # LINK TABLE: TEACHER <-> SUBJECT
 # ==========================================
-class UserSubjectLink(SQLModel, table=True):
+class UserSubjectLink(BaseSQLModel, table=True):
     __tablename__ = "user_subject_link"
     
     user_id: int = Field(foreign_key="users.user_id", primary_key=True, ondelete="CASCADE")
@@ -29,7 +36,7 @@ class UserSubjectLink(SQLModel, table=True):
 # ==========================================
 # LINK TABLE: GRADE COORDINATOR <-> GRADE LEVEL
 # ==========================================
-class GradeCoordinatorLink(SQLModel, table=True):
+class GradeCoordinatorLink(BaseSQLModel, table=True):
     __tablename__ = "grade_coordinator_link"
     
     user_id: int = Field(foreign_key="users.user_id", primary_key=True, ondelete="CASCADE")
@@ -38,7 +45,7 @@ class GradeCoordinatorLink(SQLModel, table=True):
 # ==========================================
 # LINK TABLE: HOD <-> SUBJECT NAME
 # ==========================================
-class HODLink(SQLModel, table=True):
+class HODLink(BaseSQLModel, table=True):
     __tablename__ = "hod_link"
     
     user_id: int = Field(foreign_key="users.user_id", primary_key=True, ondelete="CASCADE")
@@ -47,7 +54,7 @@ class HODLink(SQLModel, table=True):
 # ==========================================
 # LEVEL 1: THE CONTEXT (Syllabus)
 # ==========================================
-class SyllabusMaster(SQLModel, table=True):
+class SyllabusMaster(BaseSQLModel, table=True):
     __tablename__ = "syllabus_master"
 
     syllabus_id: Optional[int] = Field(default=None, primary_key=True)
@@ -64,7 +71,7 @@ class SyllabusMaster(SQLModel, table=True):
 # ==========================================
 # LEVEL 2: THE GRADE
 # ==========================================
-class GradeConfig(SQLModel, table=True):
+class GradeConfig(BaseSQLModel, table=True):
     __tablename__ = "grade_config"
 
     config_id: Optional[int] = Field(default=None, primary_key=True)
@@ -82,7 +89,7 @@ class GradeConfig(SQLModel, table=True):
 # ==========================================
 # LEVEL 3: THE SUBJECT
 # ==========================================
-class Subject(SQLModel, table=True):
+class Subject(BaseSQLModel, table=True):
     __tablename__ = "subjects"
     
     subject_id: Optional[int] = Field(default=None, primary_key=True)
@@ -100,7 +107,7 @@ class Subject(SQLModel, table=True):
 # ==========================================
 # LEVEL 4: THE TOPIC
 # ==========================================
-class Topic(SQLModel, table=True):
+class Topic(BaseSQLModel, table=True):
     __tablename__ = "topics"
     
     topic_id: Optional[int] = Field(default=None, primary_key=True)
@@ -117,7 +124,7 @@ class Topic(SQLModel, table=True):
 # ==========================================
 # LEVEL 5: THE USERS
 # ==========================================
-class Users(SQLModel, table=True):
+class Users(BaseSQLModel, table=True):
     __tablename__ = "users"
 
     user_id: Optional[int] = Field(default=None, primary_key=True)
@@ -146,15 +153,20 @@ class Users(SQLModel, table=True):
     def can_modify_topic(self, subject_id: int, subject_name: str, grade_level: int) -> bool:
         """Admins, Coordinators, HODs, and Assigned Teachers can modify topics."""
         if self.is_admin: return True
-        # HOD for the subject name
-        if any(h.subject_name == subject_name for h in self.hod_subjects):
+        
+        # Normalized comparison for HOD (Case-Insensitive)
+        search_name = subject_name.strip().lower()
+        if any(h.subject_name.strip().lower() == search_name for h in self.hod_subjects):
             return True
+            
         # Grade Coordinator for the grade
         if any(g.grade_level == grade_level for g in self.grade_coordinating):
             return True
+            
         # Assigned Teacher for the specific subject ID
         if any(s.subject_id == subject_id for s in self.subjects):
             return True
+            
         return False
 
     def __repr__(self):
@@ -163,7 +175,7 @@ class Users(SQLModel, table=True):
 # ==========================================
 # LEVEL 6: THE CONTENT (Questions)
 # ==========================================
-class QuestionBank(SQLModel, table=True):
+class QuestionBank(BaseSQLModel, table=True):
     __tablename__ = "question_bank"
 
     question_id: Optional[int] = Field(default=None, primary_key=True)

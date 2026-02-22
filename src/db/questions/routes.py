@@ -1,14 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from typing import List, Optional
+from typing import List, Optional, Any
 import os
 import uuid
+import puremagic
 from datetime import datetime
 from src.db.main import get_session
 from src.db.models import QuestionBank, Users, Topic, DifficultyLevel, QuestionType, Subject
 from src.db.auth_utils import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/questions", tags=["Question Management"])
@@ -25,14 +26,34 @@ class TopicSimple(BaseModel):
     subject_id: int
 
 class QuestionCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    
     topic_id: int
     question_text: str
     answer_text: str
     options: Optional[dict] = None
     image_url: Optional[str] = None
-    marks: int
+    marks: int = Field(ge=0)  # ge=0 allows grace marks (0)
     difficulty: DifficultyLevel = DifficultyLevel.MEDIUM
     q_type: QuestionType = QuestionType.MCQ
+
+    @model_validator(mode='after')
+    def verify_mcq_integrity(self) -> 'QuestionCreate':
+        """
+        Validates that Multiple Choice Questions (MCQ) have:
+        1. A non-empty options dictionary.
+        2. An answer_text that matches one of the option keys (e.g., 'A', 'B').
+        """
+        if self.q_type == QuestionType.MCQ:
+            if not self.options:
+                raise ValueError("Options must be provided for MCQ questions.")
+            
+            # Ensure answer_text corresponds to a valid option key
+            # We strip whitespace to be forgiving, as keys like " A " are bad practice but might exist.
+            valid_keys = [k.strip() for k in self.options.keys()]
+            if self.answer_text.strip() not in valid_keys:
+                raise ValueError(f"The answer '{self.answer_text}' is not a valid option key. Available: {valid_keys}")
+        return self
 
 class QuestionRead(QuestionCreate):
     question_id: int
@@ -42,17 +63,43 @@ class QuestionRead(QuestionCreate):
     topic: Optional[TopicSimple] = None
 
 class QuestionUpdate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    
     topic_id: Optional[int] = None
     question_text: Optional[str] = None
     answer_text: Optional[str] = None
+    options: Optional[dict] = None
     image_url: Optional[str] = None
-    marks: Optional[int] = None
+    marks: Optional[int] = Field(default=None, ge=0)
     difficulty: Optional[DifficultyLevel] = None
     q_type: Optional[QuestionType] = None
     is_active: Optional[bool] = None
 
 # --- CONSTANTS ---
 UPLOAD_DIR = "uploads"
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+ALLOWED_IMAGE_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+
+# --- HELPERS ---
+
+def validate_question_logic(question: QuestionBank):
+    """
+    Runtime validation for QuestionBank objects.
+    Used during updates to ensure the final state of the object is valid.
+    """
+    if question.q_type == QuestionType.MCQ:
+        if not question.options:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail="Integrity Error: MCQ questions must have options."
+            )
+        
+        valid_keys = [str(k).strip() for k in question.options.keys()]
+        if question.answer_text.strip() not in valid_keys:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Integrity Error: Answer '{question.answer_text}' is not in options {valid_keys}"
+            )
 
 # --- ROUTES ---
 
@@ -61,16 +108,43 @@ async def upload_question_image(
     file: UploadFile = File(...),
     current_user: Users = Depends(get_current_user)
 ):
-    """Uploads an image for a question and returns its path."""
+    """
+    Uploads an image for a question.
+    Enforces a 50MB size limit and verifies the magic numbers (MIME type).
+    """
     if not os.path.exists(UPLOAD_DIR):
         os.makedirs(UPLOAD_DIR)
     
-    file_extension = os.path.splitext(file.filename)[1]
+    # 1. Size Validation
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)}MB"
+        )
+    
+    # 2. MIME Type Validation (Deep Check)
+    try:
+        exts = puremagic.from_string(content)
+        # puremagic returns a list of possibilities; check if any match allowed images
+        is_valid = any(m.mime_type in ALLOWED_IMAGE_MIMES for m in exts)
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_IMAGE_MIMES)}"
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not verify file type"
+        )
+
+    file_extension = os.path.splitext(file.filename)[1].lower()
     unique_filename = f"{uuid.uuid4()}{file_extension}"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
     
     with open(file_path, "wb") as buffer:
-        buffer.write(await file.read())
+        buffer.write(content)
     
     return {"image_url": f"/static/{unique_filename}"}
 
@@ -192,8 +266,13 @@ async def update_question(
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
-    """Updates a question. Author, Admin, HOD, or Grade Coordinator."""
-    stmt = select(QuestionBank).where(QuestionBank.question_id == question_id).options(
+    """
+    Updates a question. Author, Admin, HOD, or Grade Coordinator.
+    Uses 'with_for_update' to prevent race conditions (BT-10).
+    Validates logical integrity of the final object state (BT-03).
+    """
+    # Use with_for_update() to lock the row for the duration of this transaction
+    stmt = select(QuestionBank).where(QuestionBank.question_id == question_id).with_for_update().options(
         selectinload(QuestionBank.topic).selectinload(Topic.subject).selectinload(Subject.grade)
     )
     result = await session.exec(stmt)
@@ -211,13 +290,18 @@ async def update_question(
     if question.teacher_id != current_user.user_id and not can_manage:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to update this question")
     
+    # Apply updates
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(question, key, value)
     
+    # Logic Validation (ensure integrity of the NEW state)
+    validate_question_logic(question)
+    
     session.add(question)
     await session.commit()
     
+    # Refresh logic for response
     stmt = select(QuestionBank).where(QuestionBank.question_id == question_id).options(
         selectinload(QuestionBank.teacher),
         selectinload(QuestionBank.topic)
@@ -232,7 +316,8 @@ async def delete_question(
     current_user: Users = Depends(get_current_user)
 ):
     """Deletes a question. Author, Admin, HOD, or Grade Coordinator."""
-    stmt = select(QuestionBank).where(QuestionBank.question_id == question_id).options(
+    # Use with_for_update() to prevent race conditions during deletion check
+    stmt = select(QuestionBank).where(QuestionBank.question_id == question_id).with_for_update().options(
         selectinload(QuestionBank.topic).selectinload(Topic.subject).selectinload(Subject.grade)
     )
     result = await session.exec(stmt)
