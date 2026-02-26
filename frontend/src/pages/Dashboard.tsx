@@ -387,9 +387,8 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                                             <div className="flex items-center gap-4">
                                               {q.image_url && (
                                                 <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-gray-900 overflow-hidden flex-shrink-0 border-2 border-white dark:border-gray-700 shadow-sm">
-                                                  <img src={`http://localhost:8000${q.image_url}`} className="w-full h-full object-cover" alt="" />
-                                                </div>
-                                              )}
+                                                                                  <img src={`${import.meta.env.VITE_API_BASE_URL}${q.image_url}`} className="w-full h-full object-cover" alt="" />
+                                                                                </div>                                              )}
                                               <div>
                                                 <p className="font-bold text-gray-900 dark:text-white line-clamp-1 max-w-sm">{q.question_text}</p>
                                                 <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-1.5 font-black uppercase tracking-widest">ID #{q.question_id} • {q.topic?.topic_name}</p>

@@ -278,7 +278,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
                       <div className="flex items-center gap-2">
                         <h3 className="font-black text-gray-900 dark:text-white tracking-tight">{syllabus.syllabus_name}</h3>
                         {syllabus.pdf_url && (
-                          <a href={`http://localhost:8000${syllabus.pdf_url}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 text-academy-600 dark:text-academy-400 hover:bg-academy-100 dark:hover:bg-academy-900/50 rounded-lg transition-colors" title="View Syllabus PDF">
+                          <a href={`${import.meta.env.VITE_API_BASE_URL}${syllabus.pdf_url}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 text-academy-600 dark:text-academy-400 hover:bg-academy-100 dark:hover:bg-academy-900/50 rounded-lg transition-colors" title="View Syllabus PDF">
                             <FileText className="w-4 h-4" />
                           </a>
                         )}
