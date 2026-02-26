@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { Toaster } from 'react-hot-toast';
 import { Loader2, WifiOff } from 'lucide-react';
 import { useAuthStore } from './store/authStore';
 
@@ -101,6 +102,34 @@ function App() {
 
   return (
     <Router>
+      <Toaster 
+        position="bottom-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: isDarkMode ? '#1f2937' : '#ffffff',
+            color: isDarkMode ? '#f9fafb' : '#111827',
+            border: `1px solid ${isDarkMode ? '#374151' : '#e5e7eb'}`,
+            boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+            fontWeight: 'bold',
+            fontSize: '14px',
+            borderRadius: '16px',
+            padding: '16px',
+          },
+          error: {
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#ffffff',
+            },
+          },
+          success: {
+            iconTheme: {
+              primary: '#22c55e',
+              secondary: '#ffffff',
+            },
+          },
+        }}
+      />
       <Routes>
         {/* --- GUARD: SETUP FLOW --- */}
         {setupRequired ? (

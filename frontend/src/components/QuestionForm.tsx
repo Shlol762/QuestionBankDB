@@ -17,6 +17,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import toast from 'react-hot-toast';
 import client from '../api/client';
 import { useAuthStore } from '../store/authStore';
 
@@ -152,10 +153,11 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['questions'] });
+      toast.success(isEditing ? 'Question updated!' : 'Question created!');
       onSuccess();
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || "Failed to save question.");
+      toast.error(err.response?.data?.detail || "Failed to save question.");
     }
   });
 
@@ -181,7 +183,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     if (!file) return;
 
     if (file.size > 50 * 1024 * 1024) {
-        alert("Image exceeds 50MB limit");
+        toast.error("Image exceeds 50MB limit");
         return;
     }
 
@@ -191,8 +193,9 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     try {
       const res = await client.post('/questions/upload-image', uploadData);
       setValue('image_url', res.data.image_url);
+      toast.success("Image uploaded!");
     } catch (err: any) {
-      alert("Upload failed");
+      toast.error("Upload failed");
     } finally {
       setUploading(false);
     }
