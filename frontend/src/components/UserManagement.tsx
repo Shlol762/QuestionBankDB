@@ -22,6 +22,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import client from '../api/client';
 import Modal from './Modal';
+import Pagination from './Pagination';
 import { useAuthStore } from '../store/authStore';
 
 const userSchema = z.object({
@@ -37,8 +38,11 @@ const userSchema = z.object({
 
 type UserFormData = z.infer<typeof userSchema>;
 
+const ITEMS_PER_PAGE = 10;
+
 const UserManagement: React.FC = () => {
   const queryClient = useQueryClient();
+  const [page, setPage] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
@@ -65,17 +69,23 @@ const UserManagement: React.FC = () => {
 
   const formData = watch();
 
-  // Fetch Users
-  const { data: users = [], isLoading } = useQuery({
-    queryKey: ['users'],
+  // Fetch Paginated Users
+  const { data: usersData, isLoading } = useQuery({
+    queryKey: ['users', page, ITEMS_PER_PAGE],
     queryFn: async () => {
-      const res = await client.get('/auth/users');
-      // Handle both array (legacy) and object (new structure) responses
-      const data = res.data;
-      if (Array.isArray(data)) return data;
-      return data?.users || [];
-    }
+      const res = await client.get('/auth/users', {
+        params: {
+          limit: ITEMS_PER_PAGE,
+          offset: page * ITEMS_PER_PAGE
+        }
+      });
+      return res.data;
+    },
+    placeholderData: { items: [], total: 0 }
   });
+  
+  const users = usersData?.items || [];
+  const totalUsers = usersData?.total || 0;
 
   // Fetch Curriculum for Assignments
   const { data: hierarchy = [] } = useQuery({
@@ -197,7 +207,7 @@ const UserManagement: React.FC = () => {
   // Calculate total administrators for the Safety Lock
   const adminCount = useMemo(() => users.filter((u: any) => u.is_admin).length, [users]);
 
-  if (isLoading) {
+  if (isLoading && !usersData) { // Show loading only on initial fetch
     return (
       <div className="flex flex-col items-center justify-center h-96 text-gray-400">
         <Loader2 className="w-10 h-10 animate-spin mb-4 text-academy-500" />
@@ -224,91 +234,113 @@ const UserManagement: React.FC = () => {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-[32px] shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors duration-300">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="text-[10px] uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 font-black border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
-              <th className="px-8 py-6">Staff Profile</th>
-              <th className="px-8 py-6">Authorization Level</th>
-              <th className="px-8 py-6">Active Hooks</th>
-              <th className="px-8 py-6">Operational Contact</th>
-              <th className="px-8 py-6 text-right">Control</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
-            {users.map((user: any) => (
-              <tr key={user.user_id} className="hover:bg-gray-50/30 dark:hover:bg-gray-900/30 transition-colors group">
-                <td className="px-8 py-6">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm border-2 shadow-sm ${user.is_admin ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 border-amber-100 dark:border-amber-900/30' : 'bg-academy-50 dark:bg-academy-900/20 text-academy-700 border-academy-100 dark:border-academy-900/30'}`}>
-                      {user.full_name.charAt(0)}
-                    </div>
-                    <div>
-                      <span className="font-black text-gray-900 dark:text-white block tracking-tight">{user.full_name}</span>
-                      <span className="text-[9px] font-black uppercase text-gray-400 tracking-tighter">{user.department}</span>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-8 py-6">
-                  <div className="flex flex-col gap-1.5 items-start">
-                    {user.is_admin && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200">
-                        <Shield className="w-3 h-3" /> Root Admin
-                      </span>
-                    )}
-                    {user.grade_levels?.length > 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200">
-                        <GraduationCap className="w-3 h-3" /> Coordinator (Gr {user.grade_levels.join(', ')})
-                      </span>
-                    )}
-                    {user.hod_subject_names?.length > 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200">
-                        <BookOpen className="w-3 h-3" /> Subject Head ({user.hod_subject_names.join(', ')})
-                      </span>
-                    )}
-                    {!user.is_admin && user.grade_levels?.length === 0 && user.hod_subject_names?.length === 0 && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200">
-                        <UserIcon className="w-3 h-3" /> Faculty
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-8 py-6">
-                  <div className="flex flex-wrap gap-1.5 max-w-[240px]">
-                    {user.subjects?.length === 0 ? (
-                      <span className="text-[10px] text-gray-300 dark:text-gray-600 font-bold italic tracking-tighter">Zero hooks detected</span>
-                    ) : (
-                      user.subjects?.map((s: any) => (
-                        <span key={s.subject_id} className="px-2.5 py-1 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 rounded-lg text-[9px] font-black uppercase border border-gray-200 dark:border-gray-700 shadow-sm">
-                          {s.subject_name}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </td>
-                <td className="px-8 py-6 text-gray-500 dark:text-gray-400 font-bold text-xs tracking-tight">
-                  {user.email}
-                </td>
-                <td className="px-8 py-6 text-right">
-                  <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform group-hover:-translate-x-1">
-                    <button onClick={() => openEdit(user)} className="p-2.5 hover:bg-academy-50 dark:hover:bg-academy-900/30 text-gray-400 hover:text-academy-600 dark:hover:text-academy-400 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    {user.user_id !== me?.user_id && (
-                      <button 
-                        onClick={() => setDeleteTarget({id: user.user_id, name: user.full_name})} 
-                        disabled={user.is_admin && adminCount <= 1}
-                        title={user.is_admin && adminCount <= 1 ? "Security Lock: Final Administrator" : "Delete User"}
-                        className={`p-2.5 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 ${user.is_admin && adminCount <= 1 ? 'opacity-20 cursor-not-allowed text-gray-300' : 'text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400'}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 font-black border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
+                <th className="px-8 py-6">Staff Profile</th>
+                <th className="px-8 py-6">Authorization Level</th>
+                <th className="px-8 py-6">Active Hooks</th>
+                <th className="px-8 py-6">Operational Contact</th>
+                <th className="px-8 py-6 text-right">Control</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+              {isLoading && (
+                <tr>
+                  <td colSpan={5} className="text-center p-12">
+                    <Loader2 className="w-8 h-8 text-academy-500 animate-spin mx-auto" />
+                  </td>
+                </tr>
+              )}
+              {!isLoading && users.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="text-center p-12 text-gray-400 font-medium italic">
+                    No staff members found.
+                  </td>
+                </tr>
+              )}
+              {users.map((user: any) => (
+                <tr key={user.user_id} className="hover:bg-gray-50/30 dark:hover:bg-gray-900/30 transition-colors group">
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm border-2 shadow-sm ${user.is_admin ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 border-amber-100 dark:border-amber-900/30' : 'bg-academy-50 dark:bg-academy-900/20 text-academy-700 border-academy-100 dark:border-academy-900/30'}`}>
+                        {user.full_name.charAt(0)}
+                      </div>
+                      <div>
+                        <span className="font-black text-gray-900 dark:text-white block tracking-tight">{user.full_name}</span>
+                        <span className="text-[9px] font-black uppercase text-gray-400 tracking-tighter">{user.department}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="flex flex-col gap-1.5 items-start">
+                      {user.is_admin && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200">
+                          <Shield className="w-3 h-3" /> Root Admin
+                        </span>
+                      )}
+                      {user.grade_levels?.length > 0 && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200">
+                          <GraduationCap className="w-3 h-3" /> Coordinator (Gr {user.grade_levels.join(', ')})
+                        </span>
+                      )}
+                      {user.hod_subject_names?.length > 0 && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200">
+                          <BookOpen className="w-3 h-3" /> Subject Head ({user.hod_subject_names.join(', ')})
+                        </span>
+                      )}
+                      {!user.is_admin && user.grade_levels?.length === 0 && user.hod_subject_names?.length === 0 && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200">
+                          <UserIcon className="w-3 h-3" /> Faculty
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="flex flex-wrap gap-1.5 max-w-[240px]">
+                      {user.subjects?.length === 0 ? (
+                        <span className="text-[10px] text-gray-300 dark:text-gray-600 font-bold italic tracking-tighter">Zero hooks detected</span>
+                      ) : (
+                        user.subjects?.map((s: any) => (
+                          <span key={s.subject_id} className="px-2.5 py-1 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 rounded-lg text-[9px] font-black uppercase border border-gray-200 dark:border-gray-700 shadow-sm">
+                            {s.subject_name}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-8 py-6 text-gray-500 dark:text-gray-400 font-bold text-xs tracking-tight">
+                    {user.email}
+                  </td>
+                  <td className="px-8 py-6 text-right">
+                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform group-hover:-translate-x-1">
+                      <button onClick={() => openEdit(user)} className="p-2.5 hover:bg-academy-50 dark:hover:bg-academy-900/30 text-gray-400 hover:text-academy-600 dark:hover:text-academy-400 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      {user.user_id !== me?.user_id && (
+                        <button 
+                          onClick={() => setDeleteTarget({id: user.user_id, name: user.full_name})} 
+                          disabled={user.is_admin && adminCount <= 1}
+                          title={user.is_admin && adminCount <= 1 ? "Security Lock: Final Administrator" : "Delete User"}
+                          className={`p-2.5 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 ${user.is_admin && adminCount <= 1 ? 'opacity-20 cursor-not-allowed text-gray-300' : 'text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400'}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Pagination 
+          currentPage={page}
+          totalItems={totalUsers}
+          itemsPerPage={ITEMS_PER_PAGE}
+          onPageChange={setPage}
+        />
       </div>
 
       <Modal 

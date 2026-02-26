@@ -31,11 +31,14 @@ import QuestionForm from '../components/QuestionForm';
 import CurriculumManager from '../components/CurriculumManager';
 import UserManagement from '../components/UserManagement';
 import Modal from '../components/Modal';
+import Pagination from '../components/Pagination';
 
 interface DashboardProps {
   isDarkMode: boolean;
   setIsDarkMode: (val: boolean) => void;
 }
+
+const ITEMS_PER_PAGE = 10;
 
 const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   // Persistence for active tab
@@ -47,7 +50,8 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   
-  // Search & Filter State
+  // Search, Filter & Pagination State
+  const [page, setPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -68,11 +72,19 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
     localStorage.setItem('dashboard-active-tab', activeTab);
   }, [activeTab]);
 
-  // Debounce search
+  // Debounce search and reset page
   useEffect(() => {
-    const handler = setTimeout(() => setDebouncedSearch(searchQuery), 400);
+    const handler = setTimeout(() => {
+      setPage(0);
+      setDebouncedSearch(searchQuery);
+    }, 400);
     return () => clearTimeout(handler);
   }, [searchQuery]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(0);
+  }, [filterType, filterDifficulty]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -120,18 +132,24 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   const isAdmin = user?.is_admin || false;
 
   // Questions Query
-  const { data: questions = [], isLoading: qLoading } = useQuery({
-    queryKey: ['questions', debouncedSearch, filterType, filterDifficulty],
+  const { data: questionsData, isLoading: qLoading } = useQuery({
+    queryKey: ['questions', page, debouncedSearch, filterType, filterDifficulty],
     queryFn: async () => {
       const params = new URLSearchParams();
+      params.append('limit', String(ITEMS_PER_PAGE));
+      params.append('offset', String(page * ITEMS_PER_PAGE));
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (filterType) params.append('q_type', filterType);
       if (filterDifficulty) params.append('difficulty', filterDifficulty);
       const res = await client.get(`/questions/?${params.toString()}`);
       return res.data;
     },
-    enabled: !!user && activeTab === 'questions'
+    enabled: !!user && activeTab === 'questions',
+    placeholderData: { items: [], total: 0 }
   });
+
+  const questions = questionsData?.items || [];
+  const totalQuestions = questionsData?.total || 0;
 
   // Delete Mutation
   const deleteMutation = useMutation({
