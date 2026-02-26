@@ -362,64 +362,69 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                       <th className="px-8 py-5 text-right">Actions</th>
                     </tr>
                   </thead>
-                <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
-                    {qLoading ? (
-                      <tr><td colSpan={5} className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-academy-500" /></td></tr>
-                    ) : questions.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-32 text-center">
-                          <div className="flex flex-col items-center justify-center space-y-4">
-                            <div className="w-20 h-20 bg-gray-50 dark:bg-gray-900 rounded-3xl flex items-center justify-center text-gray-200 dark:text-gray-800">
-                              <Search className="w-10 h-10" />
-                            </div>
-                            <div>
-                              <p className="text-gray-900 dark:text-white font-black uppercase tracking-widest text-xs">No Records Found</p>
-                              <p className="text-gray-400 dark:text-gray-500 text-sm font-medium mt-1">Adjust your filters or start by adding a new question.</p>
-                            </div>
-                            <button onClick={() => setIsAddingQuestion(true)} className="mt-2 text-academy-600 dark:text-academy-400 font-black text-[10px] uppercase tracking-widest hover:underline">+ Create First Question</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      questions.map((q: any) => (
-                        <tr key={q.question_id} className="hover:bg-gray-50/50 dark:hover:bg-gray-900/50 transition-colors group">
-                          <td className="px-8 py-6">
-                            <div className="flex items-center gap-4">
-                              {q.image_url && (
-                                <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-gray-900 overflow-hidden flex-shrink-0 border-2 border-white dark:border-gray-700 shadow-sm">
-                                  <img src={`http://localhost:8000${q.image_url}`} className="w-full h-full object-cover" alt="" />
-                                </div>
-                              )}
-                              <div>
-                                <p className="font-bold text-gray-900 dark:text-white line-clamp-1 max-w-sm">{q.question_text}</p>
-                                <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-1.5 font-black uppercase tracking-widest">ID #{q.question_id} • {q.topic?.topic_name}</p>
+                                  <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                                    {qLoading && questions.length === 0 ? (
+                                      <tr><td colSpan={5} className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-academy-500" /></td></tr>
+                                    ) : !qLoading && questions.length === 0 ? (
+                                      <tr>
+                                        <td colSpan={5} className="py-32 text-center">
+                                          <div className="flex flex-col items-center justify-center space-y-4">
+                                            <div className="w-20 h-20 bg-gray-50 dark:bg-gray-900 rounded-3xl flex items-center justify-center text-gray-200 dark:text-gray-800">
+                                              <Search className="w-10 h-10" />
+                                            </div>
+                                            <div>
+                                              <p className="text-gray-900 dark:text-white font-black uppercase tracking-widest text-xs">No Records Found</p>
+                                              <p className="text-gray-400 dark:text-gray-500 text-sm font-medium mt-1">Adjust your filters or start by adding a new question.</p>
+                                            </div>
+                                            <button onClick={() => setIsAddingQuestion(true)} className="mt-2 text-academy-600 dark:text-academy-400 font-black text-[10px] uppercase tracking-widest hover:underline">+ Create First Question</button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ) : (
+                                      questions.map((q: any) => (
+                                        <tr key={q.question_id} className="hover:bg-gray-50/50 dark:hover:bg-gray-900/50 transition-colors group">
+                                          <td className="px-8 py-6">
+                                            <div className="flex items-center gap-4">
+                                              {q.image_url && (
+                                                <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-gray-900 overflow-hidden flex-shrink-0 border-2 border-white dark:border-gray-700 shadow-sm">
+                                                  <img src={`http://localhost:8000${q.image_url}`} className="w-full h-full object-cover" alt="" />
+                                                </div>
+                                              )}
+                                              <div>
+                                                <p className="font-bold text-gray-900 dark:text-white line-clamp-1 max-w-sm">{q.question_text}</p>
+                                                <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-1.5 font-black uppercase tracking-widest">ID #{q.question_id} • {q.topic?.topic_name}</p>
+                                              </div>
+                                            </div>
+                                          </td>
+                                          <td className="px-8 py-6">
+                                            <span className="px-3 py-1 bg-academy-50 dark:bg-academy-900/50 text-academy-700 dark:text-academy-400 rounded-lg text-[9px] font-black uppercase tracking-widest">{q.q_type}</span>
+                                          </td>
+                                          <td className="px-8 py-6">
+                                            <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
+                                              q.difficulty === 'Easy' ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700' :
+                                              q.difficulty === 'Medium' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700' : 'bg-red-50 dark:bg-red-900/30 text-red-700'
+                                            }`}>{q.difficulty}</span>
+                                          </td>
+                                          <td className="px-8 py-6 font-black text-gray-900 dark:text-white text-center text-sm">{q.marks}</td>
+                                          <td className="px-8 py-6 text-right">
+                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform group-hover:-translate-x-1">
+                                              <button onClick={() => setEditingQuestion(q)} className="p-2.5 hover:bg-academy-50 dark:hover:bg-academy-900/30 text-gray-400 hover:text-academy-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Pencil className="w-4 h-4" /></button>
+                                              <button onClick={() => setDeleteTarget(q)} className="p-2.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Trash2 className="w-4 h-4" /></button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))
+                                    )}
+                                  </tbody>
+                                </table>
                               </div>
+                              <Pagination 
+                                currentPage={page}
+                                totalItems={totalQuestions}
+                                itemsPerPage={ITEMS_PER_PAGE}
+                                onPageChange={setPage}
+                              />
                             </div>
-                          </td>
-                          <td className="px-8 py-6">
-                            <span className="px-3 py-1 bg-academy-50 dark:bg-academy-900/50 text-academy-700 dark:text-academy-400 rounded-lg text-[9px] font-black uppercase tracking-widest">{q.q_type}</span>
-                          </td>
-                          <td className="px-8 py-6">
-                            <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
-                              q.difficulty === 'Easy' ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700' :
-                              q.difficulty === 'Medium' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700' : 'bg-red-50 dark:bg-red-900/30 text-red-700'
-                            }`}>{q.difficulty}</span>
-                          </td>
-                          <td className="px-8 py-6 font-black text-gray-900 dark:text-white text-center text-sm">{q.marks}</td>
-                          <td className="px-8 py-6 text-right">
-                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform group-hover:-translate-x-1">
-                              <button onClick={() => setEditingQuestion(q)} className="p-2.5 hover:bg-academy-50 dark:hover:bg-academy-900/30 text-gray-400 hover:text-academy-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Pencil className="w-4 h-4" /></button>
-                              <button onClick={() => setDeleteTarget(q)} className="p-2.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Trash2 className="w-4 h-4" /></button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
             <Modal isOpen={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="Destructive Action">
               <div className="space-y-8 text-center pt-2">
                 <div className="w-24 h-24 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-3xl flex items-center justify-center mx-auto border-4 border-red-100 dark:border-red-900/30 shadow-inner group">
