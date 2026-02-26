@@ -3,7 +3,6 @@ import {
   UserPlus, 
   Shield, 
   User as UserIcon, 
-  Mail, 
   Loader2,
   AlertCircle,
   Pencil,
@@ -14,11 +13,29 @@ import {
   ChevronDown,
   FolderRoot,
   Layers,
-  Book
+  Book,
+  RefreshCw
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 import client from '../api/client';
 import Modal from './Modal';
+import { useAuthStore } from '../store/authStore';
+
+const userSchema = z.object({
+  full_name: z.string().min(1, "Full name is required"),
+  email: z.string().email("Invalid email address"),
+  password: z.string().optional(),
+  department: z.string().min(1, "Department is required"),
+  is_admin: z.boolean(),
+  subject_ids: z.array(z.number()),
+  grade_levels: z.array(z.number()),
+  hod_subject_names: z.array(z.string())
+});
+
+type UserFormData = z.infer<typeof userSchema>;
 
 const UserManagement: React.FC = () => {
   const queryClient = useQueryClient();
@@ -26,34 +43,37 @@ const UserManagement: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{id: number, name: string} | null>(null);
+  const [passwordResetSuccess, setPasswordResetSuccess] = useState(false);
   const [expandedSyllabus, setExpandedSyllabus] = useState<number[]>([]);
   const [expandedGrade, setExpandedGrade] = useState<number[]>([]);
   
-  const [formData, setFormData] = useState({
-    full_name: '',
-    email: '',
-    password: '',
-    department: '',
-    is_admin: false,
-    subject_ids: [] as number[],
-    grade_levels: [] as number[],
-    hod_subject_names: [] as string[]
-  });
-  const [error, setError] = useState('');
+  const { user: me } = useAuthStore();
 
-  // Fetch Identity
-  const { data: me } = useQuery({ 
-    queryKey: ['me'], 
-    queryFn: () => client.get('/auth/me').then(r => r.data),
-    staleTime: Infinity 
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<UserFormData>({
+    resolver: zodResolver(userSchema),
+    defaultValues: {
+      full_name: '',
+      email: '',
+      password: '',
+      department: '',
+      is_admin: false,
+      subject_ids: [],
+      grade_levels: [],
+      hod_subject_names: []
+    }
   });
+
+  const formData = watch();
 
   // Fetch Users
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
       const res = await client.get('/auth/users');
-      return res.data;
+      // Handle both array (legacy) and object (new structure) responses
+      const data = res.data;
+      if (Array.isArray(data)) return data;
+      return data?.users || [];
     }
   });
 
@@ -84,6 +104,8 @@ const UserManagement: React.FC = () => {
   const userMutation = useMutation({
     mutationFn: async (payload: any) => {
       if (isEditing && editingUserId) {
+        // Remove password if empty to avoid overwriting
+        if (!payload.password) delete payload.password;
         return client.patch(`/auth/users/${editingUserId}`, payload);
       }
       return client.post('/auth/register', payload);
@@ -92,9 +114,6 @@ const UserManagement: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setIsModalOpen(false);
       resetForm();
-    },
-    onError: (err: any) => {
-      setError(err.response?.data?.detail || 'Execution failed. Verify network connectivity.');
     }
   });
 
@@ -108,30 +127,36 @@ const UserManagement: React.FC = () => {
       alert(err.response?.data?.detail || "Revoke access failed.");
     }
   });
+  
+  const passwordResetMutation = useMutation({
+    mutationFn: (userId: number) => client.post(`/auth/users/${userId}/reset-password`),
+    onSuccess: () => {
+        setPasswordResetSuccess(true);
+        setTimeout(() => setPasswordResetSuccess(false), 3000);
+    }
+  });
 
   const toggleItem = (listName: 'subject_ids' | 'grade_levels' | 'hod_subject_names', value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [listName]: (prev[listName] as any[]).includes(value)
-        ? (prev[listName] as any[]).filter(v => v !== value)
-        : [...(prev[listName] as any[]), value]
-    }));
+    const currentList = formData[listName] as any[];
+    const newList = currentList.includes(value)
+      ? currentList.filter(v => v !== value)
+      : [...currentList, value];
+    setValue(listName, newList);
   };
 
   const resetForm = () => {
     setIsEditing(false);
     setEditingUserId(null);
-    setFormData({ 
-      full_name: '', 
-      email: '', 
-      password: '', 
-      department: '', 
-      is_admin: false, 
+    reset({
+      full_name: '',
+      email: '',
+      password: '',
+      department: '',
+      is_admin: false,
       subject_ids: [],
       grade_levels: [],
       hod_subject_names: []
     });
-    setError('');
     setExpandedSyllabus([]);
     setExpandedGrade([]);
   };
@@ -139,7 +164,7 @@ const UserManagement: React.FC = () => {
   const openEdit = (user: any) => {
     setIsEditing(true);
     setEditingUserId(user.user_id);
-    setFormData({
+    reset({
       full_name: user.full_name,
       email: user.email,
       password: '', 
@@ -152,13 +177,12 @@ const UserManagement: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = (data: UserFormData) => {
     const payload = {
-        ...formData,
-        full_name: formData.full_name.trim(),
-        email: formData.email.trim(),
-        department: formData.department.trim(),
+        ...data,
+        full_name: data.full_name.trim(),
+        email: data.email.trim(),
+        department: data.department.trim(),
     };
     userMutation.mutate(payload);
   };
@@ -293,11 +317,11 @@ const UserManagement: React.FC = () => {
         title={isEditing ? 'Refine Staff Identity' : 'Register New Faculty'}
         maxWidth="max-w-6xl"
       >
-        <form onSubmit={handleSubmit} className="space-y-8 p-2">
-          {error && (
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 p-2">
+          {userMutation.isError && (
             <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-2xl text-xs font-black border border-red-100 dark:border-red-900/30 flex items-center gap-3 animate-in fade-in slide-in-from-top-1">
               <AlertCircle className="w-5 h-5 flex-shrink-0" />
-              {error}
+              {(userMutation.error as any)?.response?.data?.detail || 'Execution failed. Verify network connectivity.'}
             </div>
           )}
 
@@ -306,11 +330,32 @@ const UserManagement: React.FC = () => {
             <div className="lg:col-span-4 space-y-6 border-r border-gray-100 dark:border-gray-700 pr-10">
               <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] border-b dark:border-gray-700 pb-3">Operational Identity</h4>
               <div className="space-y-4">
-                <input required className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Legal Full Name" value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} />
-                <input required type="email" className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Corporate Email Address" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-                <input type="password" className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder={isEditing ? "Password (retain current if blank)" : "Initial Password"} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} required={!isEditing} />
-                <input required className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Assigned Department" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} />
+                <input {...register("full_name")} className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Legal Full Name" />
+                {errors.full_name && <p className="text-red-500 text-[10px] font-bold">{errors.full_name.message}</p>}
+                
+                <input {...register("email")} type="email" className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Corporate Email Address" />
+                {errors.email && <p className="text-red-500 text-[10px] font-bold">{errors.email.message}</p>}
+                
+                <input {...register("password")} type="password" className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder={isEditing ? "Password (retain current if blank)" : "Initial Password"} />
+                
+                <input {...register("department")} className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Assigned Department" />
+                {errors.department && <p className="text-red-500 text-[10px] font-bold">{errors.department.message}</p>}
               </div>
+
+                {isEditing && me?.is_admin && editingUserId !== me?.user_id && (
+                    <div className="pt-4">
+                        <button
+                            type="button"
+                            onClick={() => passwordResetMutation.mutate(editingUserId!)}
+                            disabled={passwordResetMutation.isPending}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-3 text-xs font-black text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-lg disabled:opacity-50"
+                        >
+                            {passwordResetMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                            Force Password Reset
+                        </button>
+                        {passwordResetSuccess && <p className="text-emerald-500 text-xs font-bold mt-2 text-center">Password has been reset to "password"</p>}
+                    </div>
+                )}
               
               <div className="p-5 bg-amber-50 dark:bg-amber-900/20 rounded-[24px] flex items-center justify-between border border-amber-100 dark:border-amber-900/30 mt-8 shadow-sm">
                 <div className="flex items-center gap-3">
@@ -320,7 +365,7 @@ const UserManagement: React.FC = () => {
                     <span className="text-[9px] font-bold text-amber-600/70">Full System Access</span>
                   </div>
                 </div>
-                <input type="checkbox" className="w-6 h-6 accent-amber-600 cursor-pointer rounded-lg" checked={formData.is_admin} onChange={e => setFormData({...formData, is_admin: e.target.checked})} />
+                <input type="checkbox" className="w-6 h-6 accent-amber-600 cursor-pointer rounded-lg" {...register("is_admin")} />
               </div>
             </div>
 

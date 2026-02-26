@@ -7,6 +7,9 @@ from src.db.auth_routes import router as auth_router
 from src.db.curriculum_routes import router as curriculum_router
 from src.db.questions.routes import router as question_router
 from src.db.stats_routes import router as stats_router
+from src.limiter import limiter
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 import os
 
 
@@ -26,6 +29,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Configure CORS
 # This allows our React frontend (running on localhost:5173) to talk to this API

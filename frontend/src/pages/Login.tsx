@@ -2,10 +2,9 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap, Lock, Mail, Loader2, ChevronRight, AlertCircle } from 'lucide-react';
 import client from '../api/client';
+import { useAuthStore } from '../store/authStore';
 
-interface LoginProps {
-  isDarkMode?: boolean;
-}
+interface LoginProps {}
 
 const Login: React.FC<LoginProps> = ({ isDarkMode }) => {
   const [email, setEmail] = useState('');
@@ -13,6 +12,7 @@ const Login: React.FC<LoginProps> = ({ isDarkMode }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuthStore();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +25,7 @@ const Login: React.FC<LoginProps> = ({ isDarkMode }) => {
       formData.append('password', password);
 
       const response = await client.post('/auth/login', formData);
-      localStorage.setItem('token', response.data.access_token);
+      login(response.data.access_token);
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Login failed. Please check your credentials.');

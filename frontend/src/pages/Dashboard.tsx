@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   BookOpen, 
   PlusCircle, 
@@ -13,7 +13,6 @@ import {
   Pencil,
   Trash2,
   X,
-  User as UserIcon,
   Mail,
   GraduationCap,
   Key,
@@ -21,7 +20,9 @@ import {
   Moon,
   Sun,
   Monitor,
-  Type
+  Type,
+  AlertCircle,
+  CheckCircle2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
@@ -52,6 +53,12 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   const [filterType, setFilterType] = useState('');
   const [filterDifficulty, setFilterDifficulty] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+
+  // Password Form State
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const passwordVaultRef = useRef<HTMLDivElement>(null);
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -84,6 +91,31 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
     queryFn: () => client.get('/auth/me').then(r => r.data),
     staleTime: Infinity
   });
+  
+  const passwordMutation = useMutation({
+    mutationFn: (payload: any) => client.patch('/auth/me/password', payload),
+    onSuccess: () => {
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+    },
+  });
+
+  const handlePasswordChange = (e: React.FormEvent) => {
+    e.preventDefault();
+    passwordMutation.reset();
+    if (newPassword !== confirmPassword) {
+        passwordMutation.mutate(undefined, {
+            onError: () => {},
+            onSuccess: () => {}
+        });
+        return;
+    }
+    passwordMutation.mutate({
+        current_password: currentPassword,
+        new_password: newPassword
+    });
+  }
 
   const isAdmin = user?.is_admin || false;
 
@@ -179,12 +211,55 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Base Complexity</label>
-                    <select className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white">
-                      <option>Easy</option><option selected>Medium</option><option>Hard</option>
+                    <select defaultValue="Medium" className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white">
+                      <option>Easy</option><option>Medium</option><option>Hard</option>
                     </select>
                   </div>
                 </div>
               </div>
+            </div>
+            
+            <div id="password-vault" ref={passwordVaultRef} className="bg-white dark:bg-gray-800 rounded-3xl p-8 border border-gray-100 dark:border-gray-700 shadow-sm space-y-6">
+                <div className="flex items-center gap-3 border-b border-gray-50 dark:border-gray-700 pb-4">
+                    <Key className="w-5 h-5 text-red-500" />
+                    <h3 className="font-black text-gray-900 dark:text-white uppercase text-[10px] tracking-widest">Security</h3>
+                </div>
+
+                {passwordMutation.isError && (
+                    <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-2xl text-xs font-black border border-red-100 dark:border-red-900/30 flex items-center gap-3">
+                        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                        {(passwordMutation.error as any)?.response?.data?.detail || "Passwords do not match."}
+                    </div>
+                )}
+
+                {passwordMutation.isSuccess && (
+                     <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 rounded-2xl text-xs font-black border border-emerald-100 dark:border-emerald-900/30 flex items-center gap-3">
+                        <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+                        Password updated successfully.
+                    </div>
+                )}
+
+                <form onSubmit={handlePasswordChange} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Current Password</label>
+                            <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required className="w-full mt-1 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm" autoComplete="current-password" />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">New Password</label>
+                            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required className="w-full mt-1 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm" autoComplete="new-password" />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Confirm New Password</label>
+                            <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required className="w-full mt-1 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm" autoComplete="new-password" />
+                        </div>
+                    </div>
+                    <div className="flex justify-end pt-2">
+                        <button type="submit" disabled={passwordMutation.isPending} className="bg-academy-600 hover:bg-academy-700 text-white px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg disabled:opacity-50">
+                            {passwordMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Changes"}
+                        </button>
+                    </div>
+                </form>
             </div>
           </div>
         );
@@ -353,7 +428,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   };
 
   return (
-    <div className={`flex h-screen w-full ${isDarkMode ? 'dark' : ''} bg-gray-50 dark:bg-gray-950 overflow-hidden font-sans transition-colors duration-300`}>
+    <div className={`flex h-screen w-full bg-gray-50 dark:bg-gray-950 overflow-hidden font-sans transition-colors duration-300`}>
       <aside className="w-72 bg-academy-900 dark:bg-black text-white flex flex-col shadow-2xl z-20 border-r border-white/5">
         <div className="p-8 flex items-center gap-4">
           <div className="bg-academy-500 p-2.5 rounded-2xl shadow-xl shadow-academy-500/30 rotate-3"><BookOpen className="w-7 h-7 text-white" /></div>

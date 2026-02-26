@@ -14,11 +14,10 @@ import {
 import client from '../api/client';
 
 interface SetupProps {
-  isDarkMode: boolean;
   onComplete: () => void;
 }
 
-const Setup: React.FC<SetupProps> = ({ isDarkMode, onComplete }) => {
+const Setup: React.FC<SetupProps> = ({ onComplete }) => {
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',

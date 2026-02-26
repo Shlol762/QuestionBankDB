@@ -13,11 +13,13 @@ import {
   Pencil,
   Trash2,
   FileText,
-  Upload
+  Upload,
+  FileX
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import client from '../api/client';
 import Modal from './Modal';
+import { useAuthStore } from '../store/authStore';
 
 interface CurriculumManagerProps {
   onAddQuestion?: (topic: any) => void;
@@ -42,14 +44,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
   const [uploadProgress, setUploadProgress] = useState(0);
   
   // 1. Get Identity
-  const { data: user } = useQuery({
-    queryKey: ['me'],
-    queryFn: async () => {
-      const res = await client.get('/auth/me');
-      return res.data;
-    },
-    staleTime: Infinity
-  });
+  const { user } = useAuthStore();
 
   const isAdmin = user?.is_admin || false;
   const assignedSubjectIds = user?.subjects?.map((s: any) => s.subject_id) || [];
@@ -123,6 +118,18 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
     }
   });
 
+  const removePdfMutation = useMutation({
+    mutationFn: async (syllabusId: number) => {
+      return client.patch(`/curriculum/syllabuses/${syllabusId}`, { pdf_url: null });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['curriculum-hierarchy'] });
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.detail || "Failed to remove PDF");
+    }
+  });
+
   const uploadMutation = useMutation({
     mutationFn: async ({ syllabusId, file }: { syllabusId: number, file: File }) => {
       const formData = new FormData();
@@ -145,6 +152,13 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
       setUploadProgress(0);
     }
   });
+
+  const triggerUpload = (id: number) => {
+    setUploadingSyllabusId(id);
+    if (fileInputRef.current) {
+        fileInputRef.current.click();
+    }
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -279,6 +293,11 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
                           <button onClick={(e) => { e.stopPropagation(); triggerUpload(syllabus.syllabus_id); }} className="p-2 hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-academy-600 rounded-lg transition-colors" title="Update Syllabus PDF">
                             {uploadingSyllabusId === syllabus.syllabus_id ? <Loader2 className="w-4 h-4 animate-spin text-academy-500" /> : <Upload className="w-4 h-4" />}
                           </button>
+                          {syllabus.pdf_url && (
+                            <button onClick={(e) => { e.stopPropagation(); removePdfMutation.mutate(syllabus.syllabus_id); }} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-lg transition-colors" title="Remove Syllabus PDF">
+                              {removePdfMutation.isPending && removePdfMutation.variables === syllabus.syllabus_id ? <Loader2 className="w-4 h-4 animate-spin text-red-500" /> : <FileX className="w-4 h-4" />}
+                            </button>
+                          )}
                           <button onClick={(e) => { e.stopPropagation(); openEdit('syllabus', syllabus); }} className="p-2 hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-academy-600 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button>
                           <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'syllabus', id: syllabus.syllabus_id, name: syllabus.syllabus_name}); }} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                           <button onClick={(e) => { e.stopPropagation(); setModalType('grade'); setModalData({ parentId: syllabus.syllabus_id }); setIsEditing(false); }} className="ml-2 bg-academy-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">Add Grade</button>

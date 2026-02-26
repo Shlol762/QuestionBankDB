@@ -1,3 +1,6 @@
+import os
+os.environ["TESTING"] = "true"
+
 import pytest
 import pytest_asyncio
 import asyncio

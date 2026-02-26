@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Optional, Any
@@ -7,7 +7,7 @@ import uuid
 import puremagic
 from datetime import datetime
 from src.db.main import get_session
-from src.db.models import QuestionBank, Users, Topic, DifficultyLevel, QuestionType, Subject
+from src.db.models import QuestionBank, Users, Topic, DifficultyLevel, QuestionType, Subject, Page
 from src.db.auth_utils import get_current_user
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from sqlalchemy.orm import selectinload
@@ -181,30 +181,31 @@ async def create_question(
     result = await session.exec(stmt)
     return result.first()
 
-@router.get("/", response_model=List[QuestionRead])
+@router.get("/", response_model=Page[QuestionRead])
 async def list_questions(
     topic_id: Optional[int] = None,
     difficulty: Optional[DifficultyLevel] = None,
     q_type: Optional[QuestionType] = None,
     search: Optional[str] = None,
     session: AsyncSession = Depends(get_session),
-    current_user: Users = Depends(get_current_user)
+    current_user: Users = Depends(get_current_user),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0)
 ):
-    """Lists questions. Admins see all, others see based on permissions."""
-    statement = select(QuestionBank).options(
-        selectinload(QuestionBank.teacher),
-        selectinload(QuestionBank.topic)
-    )
+    """Lists questions with pagination. Admins see all, others see based on permissions."""
     
     from src.db.models import GradeConfig
     from sqlalchemy import or_, func
 
+    # Base statement for both count and data fetching
+    base_stmt = select(QuestionBank)
+    
     if not current_user.is_admin:
         teacher_subject_ids = [s.subject_id for s in current_user.subjects]
         hod_subject_names = [h.subject_name for h in current_user.hod_subjects]
         coordinator_grade_levels = [g.grade_level for g in current_user.grade_coordinating]
         
-        statement = statement.join(Topic).join(Subject).join(GradeConfig)
+        base_stmt = base_stmt.join(Topic).join(Subject).join(GradeConfig)
         
         filters = []
         if teacher_subject_ids:
@@ -215,21 +216,34 @@ async def list_questions(
             filters.append(GradeConfig.grade_level.in_(coordinator_grade_levels))
         
         if filters:
-            statement = statement.where(or_(*filters))
+            base_stmt = base_stmt.where(or_(*filters))
         else:
-            statement = statement.where(QuestionBank.teacher_id == current_user.user_id)
+            # If a user has no roles, only show their own questions
+            base_stmt = base_stmt.where(QuestionBank.teacher_id == current_user.user_id)
     
+    # Apply standard filters
     if topic_id:
-        statement = statement.where(QuestionBank.topic_id == topic_id)
+        base_stmt = base_stmt.where(QuestionBank.topic_id == topic_id)
     if difficulty:
-        statement = statement.where(QuestionBank.difficulty == difficulty)
+        base_stmt = base_stmt.where(QuestionBank.difficulty == difficulty)
     if q_type:
-        statement = statement.where(QuestionBank.q_type == q_type)
+        base_stmt = base_stmt.where(QuestionBank.q_type == q_type)
     if search:
-        statement = statement.where(func.lower(QuestionBank.question_text).contains(search.lower()))
+        base_stmt = base_stmt.where(func.lower(QuestionBank.question_text).contains(search.lower()))
+
+    # Count total matching records
+    count_stmt = select(func.count()).select_from(base_stmt.subquery())
+    total = (await session.exec(count_stmt)).one()
     
-    result = await session.exec(statement)
-    return result.all()
+    # Get the paginated data
+    data_stmt = base_stmt.options(
+        selectinload(QuestionBank.teacher),
+        selectinload(QuestionBank.topic)
+    ).offset(offset).limit(limit)
+    
+    items = (await session.exec(data_stmt)).all()
+    
+    return Page(items=items, total=total)
 
 @router.get("/{question_id}", response_model=QuestionRead)
 async def get_question(

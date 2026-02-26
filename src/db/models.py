@@ -199,3 +199,21 @@ class QuestionBank(BaseSQLModel, table=True):
     def __repr__(self):
         short_text = (self.question_text[:30] + '..') if len(self.question_text) > 30 else self.question_text
         return f"<Question(id={self.question_id}, text='{short_text}')>"
+
+
+# ==========================================
+# PAGINATION GENERIC MODELS
+# ==========================================
+from pydantic.generics import GenericModel
+from typing import TypeVar, Generic
+
+T = TypeVar('T')
+
+class Page(GenericModel, Generic[T]):
+    """
+    Standardized paginated response model.
+    """
+    items: List[T]
+    total: int
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)

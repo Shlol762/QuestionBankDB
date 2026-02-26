@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, WifiOff } from 'lucide-react';
+import { useAuthStore } from './store/authStore';
 
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -17,6 +18,8 @@ import client from './api/client';
  * 3. Handles system-level loading and connectivity error states.
  */
 function App() {
+  const { fetchMe, isAuthenticated, isLoading: isAuthLoading } = useAuthStore();
+  
   // --- STATE: THEME ---
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('theme') === 'dark';
@@ -43,6 +46,11 @@ function App() {
     retry: 2
   });
 
+  // --- EFFECT: AUTH ---
+  useEffect(() => {
+    fetchMe();
+  }, [fetchMe]);
+
   // --- EFFECT: DARK MODE SYNC ---
   useEffect(() => {
     const root = document.documentElement;
@@ -56,7 +64,7 @@ function App() {
   }, [isDarkMode]);
 
   // --- RENDER: SYSTEM LOADING ---
-  if (isStatusLoading) {
+  if (isStatusLoading || isAuthLoading) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 transition-colors">
         <Loader2 className="w-12 h-12 animate-spin text-academy-600 mb-4" />
@@ -97,27 +105,27 @@ function App() {
         {/* --- GUARD: SETUP FLOW --- */}
         {setupRequired ? (
           <>
-            <Route path="/setup" element={<Setup isDarkMode={isDarkMode} onComplete={() => retryStatus()} />} />
+            <Route path="/setup" element={<Setup onComplete={() => retryStatus()} />} />
             {/* Catch-all redirect to setup while system is unconfigured */}
             <Route path="*" element={<Navigate to="/setup" replace />} />
           </>
         ) : (
           /* --- FLOW: OPERATIONAL --- */
           <>
-            <Route path="/login" element={<Login isDarkMode={isDarkMode} />} />
+            <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" replace />} />
             <Route 
               path="/dashboard" 
-              element={<Dashboard isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />} 
+              element={isAuthenticated ? <Dashboard isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> : <Navigate to="/login" replace />} 
             />
             
             {/* Standard Navigation Redirects */}
-            <Route path="/" element={<Navigate to="/login" replace />} />
+            <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
             
             {/* Industry Practice: Prevent access to /setup if already configured */}
             <Route path="/setup" element={<Navigate to="/login" replace />} />
             
             {/* 404 handling - Redirect unknown routes back to login/dashboard */}
-            <Route path="*" element={<Navigate to="/login" replace />} />
+            <Route path="*" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
           </>
         )}
       </Routes>

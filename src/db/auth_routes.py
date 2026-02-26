@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import select, delete, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Optional
 from src.db.main import get_session
-from src.db.models import Users, GradeCoordinatorLink, HODLink, UserSubjectLink, GradeConfig, Subject
+from src.db.models import Users, GradeCoordinatorLink, HODLink, UserSubjectLink, GradeConfig, Subject, Page
 from src.db.auth_utils import get_password_hash, verify_password, create_access_token, get_current_user
+from src.limiter import limiter
 from pydantic import BaseModel, EmailStr, ConfigDict
 from sqlalchemy.orm import selectinload
 
@@ -56,6 +57,10 @@ class Token(BaseModel):
 
 class SetupStatus(BaseModel):
     setup_required: bool
+
+class PasswordUpdate(BaseModel):
+    current_password: str
+    new_password: str
 
 # --- HELPERS ---
 
@@ -138,24 +143,69 @@ async def get_me(current_user: Users = Depends(get_current_user)):
     """Returns the profile of the currently logged-in user."""
     return map_user_to_read(current_user)
 
-@router.get("/users", response_model=List[UserRead])
-async def list_users(
+@router.patch("/me/password", status_code=status.HTTP_204_NO_CONTENT)
+async def update_my_password(
+    data: PasswordUpdate,
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
-    """Lists all users. Restricted to Admins."""
+    """Updates the current user's password."""
+    if not verify_password(data.current_password, current_user.password_hash):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect current password")
+    
+    current_user.password_hash = get_password_hash(data.new_password)
+    session.add(current_user)
+    await session.commit()
+    return None
+
+@router.get("/users", response_model=Page[UserRead])
+async def list_users(
+    session: AsyncSession = Depends(get_session),
+    current_user: Users = Depends(get_current_user),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0)
+):
+    """Lists all users with pagination. Restricted to Admins."""
     if not current_user.is_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can access the staff directory")
     
-    statement = select(Users).options(
+    # Count total users
+    count_stmt = select(func.count(Users.user_id))
+    total = (await session.exec(count_stmt)).one()
+
+    # Fetch paginated user data
+    data_stmt = select(Users).options(
         selectinload(Users.subjects),
         selectinload(Users.grade_coordinating),
         selectinload(Users.hod_subjects)
-    ).order_by(Users.full_name)
+    ).order_by(Users.full_name).offset(offset).limit(limit)
     
-    result = await session.exec(statement)
-    users = result.all()
-    return [map_user_to_read(u) for u in users]
+    users = (await session.exec(data_stmt)).all()
+    
+    # Map to the response model
+    items = [map_user_to_read(u) for u in users]
+    
+    return Page(items=items, total=total)
+    
+@router.post("/users/{user_id}/reset-password", status_code=status.HTTP_200_OK)
+async def reset_user_password(
+    user_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: Users = Depends(get_current_user)
+):
+    """Resets a user's password to a default value. Admin only."""
+    if not current_user.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can reset passwords")
+
+    user = await session.get(Users, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+    user.password_hash = get_password_hash("password")
+    session.add(user)
+    await session.commit()
+
+    return {"message": f"Password for {user.full_name} has been reset."}
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register_user(
@@ -205,7 +255,9 @@ async def register_user(
     return {"message": f"Staff member '{user_data.full_name}' registered successfully"}
 
 @router.post("/login", response_model=Token)
+@limiter.limit("5/minute")
 async def login_for_access_token(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: AsyncSession = Depends(get_session)
 ):

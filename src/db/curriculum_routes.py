@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Optional
@@ -6,7 +6,7 @@ import os
 import uuid
 import puremagic
 from src.db.main import get_session
-from src.db.models import SyllabusMaster, GradeConfig, Subject, Topic, Users
+from src.db.models import SyllabusMaster, GradeConfig, Subject, Topic, Users, Page
 from src.db.auth_utils import get_current_user
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -107,24 +107,48 @@ async def upload_syllabus_pdf(
     
     # 1. Size Validation
     content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
+    file_size = len(content)
+    
+    # DEBUG LOGGING
+    with open("upload_debug.log", "a") as f:
+        f.write(f"--- Upload Attempt ---\n")
+        f.write(f"Filename: {file.filename}\n")
+        f.write(f"Size: {file_size} bytes\n")
+        f.write(f"Content Start (hex): {content[:20].hex()}\n")
+        f.write(f"Content Start (text): {str(content[:20])}\n")
+    
+    if file_size == 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty.")
+        
+    if file_size > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)}MB"
+            detail=f"File too large ({file_size} bytes). Maximum size is {MAX_FILE_SIZE // (1024 * 1024)}MB"
         )
     
     # 2. MIME Type Validation (Deep Check)
+    is_pdf = False
+    detected_str = "None"
     try:
-        exts = puremagic.from_string(content)
-        # Verify that the detected MIME type is PDF
-        is_pdf = any(m.mime_type in ALLOWED_MIME_TYPES for m in exts)
+        # Manual Check for standard PDF header as fallback
+        if content.startswith(b"%PDF-"):
+            is_pdf = True
+            detected_str = "Manual %PDF- match"
+        else:
+            exts = puremagic.from_string(content)
+            detected_mimes = [m.mime_type for m in exts]
+            detected_str = ", ".join(detected_mimes)
+            is_pdf = any(mime in ALLOWED_MIME_TYPES for mime in detected_mimes)
+        
         if not is_pdf:
              raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, 
-                detail="Invalid file type. Only PDF files are allowed"
+                detail=f"Invalid file type. Size: {file_size} bytes. Detected: {detected_str}. Only PDF allowed."
             )
-    except Exception:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Could not verify file type")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Verification error: {str(e)}")
 
     unique_filename = f"{uuid.uuid4()}.pdf"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
@@ -167,7 +191,7 @@ async def get_full_hierarchy(
         selectinload(SyllabusMaster.grades)
         .selectinload(GradeConfig.subjects)
         .selectinload(Subject.topics)
-    )
+    ).order_by(SyllabusMaster.syllabus_id)
     result = await session.exec(statement)
     syllabuses = result.all()
 
@@ -206,22 +230,36 @@ async def get_full_hierarchy(
 
     return filtered_syllabuses
 
-@router.get("/syllabuses", response_model=List[SyllabusRead])
+@router.get("/syllabuses", response_model=Page[SyllabusRead])
 async def get_all_syllabuses(
     session: AsyncSession = Depends(get_session),
-    current_user: Users = Depends(get_current_user)
+    current_user: Users = Depends(get_current_user),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0)
 ):
-    """Lists available syllabuses. Admins see all, others see based on their assignments."""
-    statement = select(SyllabusMaster)
-    result = await session.exec(statement)
-    return result.all()
+    """Lists available syllabuses with pagination."""
+    count_stmt = select(func.count(SyllabusMaster.syllabus_id))
+    total = (await session.exec(count_stmt)).one()
+    
+    data_stmt = select(SyllabusMaster).order_by(SyllabusMaster.syllabus_id).offset(offset).limit(limit)
+    items = (await session.exec(data_stmt)).all()
+    
+    return Page(items=items, total=total)
 
-@router.get("/subjects", response_model=List[SubjectRead])
-async def get_all_subjects(session: AsyncSession = Depends(get_session)):
-    """Lists all subjects in the system."""
-    statement = select(Subject)
-    result = await session.exec(statement)
-    return result.all()
+@router.get("/subjects", response_model=Page[SubjectRead])
+async def get_all_subjects(
+    session: AsyncSession = Depends(get_session),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0)
+):
+    """Lists all subjects in the system with pagination."""
+    count_stmt = select(func.count(Subject.subject_id))
+    total = (await session.exec(count_stmt)).one()
+    
+    data_stmt = select(Subject).offset(offset).limit(limit)
+    items = (await session.exec(data_stmt)).all()
+    
+    return Page(items=items, total=total)
 
 # --- ROUTES: GRADES ---
 
@@ -249,12 +287,23 @@ async def create_grade(data: GradeCreate, session: AsyncSession = Depends(get_se
     await session.refresh(new_item)
     return new_item
 
-@router.get("/grades/{syllabus_id}", response_model=List[GradeRead])
-async def get_grades_by_syllabus(syllabus_id: int, session: AsyncSession = Depends(get_session)):
-    """Lists all grades within a specific syllabus."""
-    statement = select(GradeConfig).where(GradeConfig.syllabus_id == syllabus_id)
-    result = await session.exec(statement)
-    return result.all()
+@router.get("/grades/{syllabus_id}", response_model=Page[GradeRead])
+async def get_grades_by_syllabus(
+    syllabus_id: int, 
+    session: AsyncSession = Depends(get_session),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0)
+):
+    """Lists all grades within a specific syllabus with pagination."""
+    base_stmt = select(GradeConfig).where(GradeConfig.syllabus_id == syllabus_id)
+    
+    count_stmt = select(func.count()).select_from(base_stmt.subquery())
+    total = (await session.exec(count_stmt)).one()
+    
+    data_stmt = base_stmt.offset(offset).limit(limit)
+    items = (await session.exec(data_stmt)).all()
+    
+    return Page(items=items, total=total)
 
 # --- ROUTES: SUBJECTS ---
 
@@ -283,12 +332,23 @@ async def create_subject(data: SubjectCreate, session: AsyncSession = Depends(ge
     await session.refresh(new_item)
     return new_item
 
-@router.get("/subjects/{config_id}", response_model=List[SubjectRead])
-async def get_subjects_by_grade(config_id: int, session: AsyncSession = Depends(get_session)):
-    """Lists all subjects for a specific Grade configuration."""
-    statement = select(Subject).where(Subject.config_id == config_id)
-    result = await session.exec(statement)
-    return result.all()
+@router.get("/subjects/{config_id}", response_model=Page[SubjectRead])
+async def get_subjects_by_grade(
+    config_id: int, 
+    session: AsyncSession = Depends(get_session),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0)
+):
+    """Lists all subjects for a specific Grade configuration with pagination."""
+    base_stmt = select(Subject).where(Subject.config_id == config_id)
+    
+    count_stmt = select(func.count()).select_from(base_stmt.subquery())
+    total = (await session.exec(count_stmt)).one()
+    
+    data_stmt = base_stmt.offset(offset).limit(limit)
+    items = (await session.exec(data_stmt)).all()
+    
+    return Page(items=items, total=total)
 
 # --- UPDATE/DELETE ROUTES ---
 
@@ -436,16 +496,35 @@ async def delete_topic(id: int, session: AsyncSession = Depends(get_session), cu
     await session.commit()
     return None
 
-@router.get("/topics", response_model=List[TopicRead])
-async def get_all_topics(session: AsyncSession = Depends(get_session)):
-    """Lists every topic in the database."""
-    statement = select(Topic)
-    result = await session.exec(statement)
-    return result.all()
+@router.get("/topics", response_model=Page[TopicRead])
+async def get_all_topics(
+    session: AsyncSession = Depends(get_session),
+    limit: int = Query(default=100, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0)
+):
+    """Lists every topic in the database with pagination."""
+    count_stmt = select(func.count(Topic.topic_id))
+    total = (await session.exec(count_stmt)).one()
+    
+    data_stmt = select(Topic).offset(offset).limit(limit)
+    items = (await session.exec(data_stmt)).all()
+    
+    return Page(items=items, total=total)
 
-@router.get("/topics/subject/{subject_id}", response_model=List[TopicRead])
-async def get_topics_by_subject(subject_id: int, session: AsyncSession = Depends(get_session)):
-    """Lists all topics for a specific subject."""
-    statement = select(Topic).where(Topic.subject_id == subject_id)
-    result = await session.exec(statement)
-    return result.all()
+@router.get("/topics/subject/{subject_id}", response_model=Page[TopicRead])
+async def get_topics_by_subject(
+    subject_id: int, 
+    session: AsyncSession = Depends(get_session),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0)
+):
+    """Lists all topics for a specific subject with pagination."""
+    base_stmt = select(Topic).where(Topic.subject_id == subject_id)
+    
+    count_stmt = select(func.count()).select_from(base_stmt.subquery())
+    total = (await session.exec(count_stmt)).one()
+
+    data_stmt = base_stmt.offset(offset).limit(limit)
+    items = (await session.exec(data_stmt)).all()
+
+    return Page(items=items, total=total)
