@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Save, 
   Image as ImageIcon, 
   X, 
   Loader2, 
@@ -14,7 +13,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm, useFieldArray, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
@@ -85,7 +84,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   const defaultOptions = { A: '', B: '', C: '', D: '' };
   const defaultPairs = [{ left: '', right: '' }, { left: '', right: '' }];
 
-  const { register, control, handleSubmit, watch, setValue, formState: { errors } } = useForm<QuestionFormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<QuestionFormData>({
     resolver: zodResolver(questionSchema),
     defaultValues: {
       topic_id: initialData?.topic_id?.toString() || '',
@@ -103,7 +102,6 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   const currentOptions = watch('options');
   const currentAnswer = watch('answer_text');
   const currentImageUrl = watch('image_url');
-  const selectedTopicId = watch('topic_id');
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(
     initialData?.topic?.subject_id?.toString() || ''
@@ -286,7 +284,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                       ))}
                     </select>
                   </div>
-                  {errors.topic_id && <p className="text-red-500 text-[10px] font-bold">{errors.topic_id.message}</p>}
+                  {errors.topic_id && <p className="text-red-500 text-[10px] font-bold">{errors.topic_id.message as string}</p>}
                 </div>
               </div>
 
@@ -297,7 +295,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                   className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 outline-none min-h-[140px] text-lg font-bold placeholder:text-gray-300 dark:placeholder:text-gray-700 dark:text-white transition-all"
                   placeholder="Draft your question here..."
                 />
-                {errors.question_text && <p className="text-red-500 text-[10px] font-bold">{errors.question_text.message}</p>}
+                {errors.question_text && <p className="text-red-500 text-[10px] font-bold">{errors.question_text.message as string}</p>}
               </div>
 
               {/* Dynamic Type Fields */}
@@ -327,8 +325,8 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                       </div>
                     ))}
                   </div>
-                  {errors.options && <p className="text-red-500 text-[10px] font-bold">{errors.options.message}</p>}
-                  {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message}</p>}
+                  {errors.options && <p className="text-red-500 text-[10px] font-bold">{errors.options.message as string}</p>}
+                  {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
                 </div>
               ) : currentQType === 'True/False' ? (
                 <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -374,7 +372,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                       </div>
                     ))}
                   </div>
-                  {errors.options && <p className="text-red-500 text-[10px] font-bold">{errors.options.message}</p>}
+                  {errors.options && <p className="text-red-500 text-[10px] font-bold">{errors.options.message as string}</p>}
                 </div>
               ) : (
                 <div className="space-y-1.5">
@@ -384,7 +382,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                     className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 outline-none min-h-[120px] font-bold dark:text-white placeholder:text-gray-300 dark:placeholder:text-gray-700 transition-all"
                     placeholder="Provide the expected solution..."
                   />
-                  {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message}</p>}
+                  {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
                 </div>
               )}
             </div>
@@ -426,7 +424,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                         min="0" 
                         max="100" 
                       />
-                      {errors.marks && <p className="text-red-500 text-[10px] font-bold">{errors.marks.message}</p>}
+                      {errors.marks && <p className="text-red-500 text-[10px] font-bold">{errors.marks.message as string}</p>}
                     </div>
                   </div>
                 </div>
@@ -442,6 +440,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                     </div>
                   ) : currentImageUrl ? (
                     <div className="relative w-full h-full p-4 animate-in fade-in zoom-in-95">
+                      {/* Note: The CLI didn't finish externalizing URLs yet! */}
                       <img src={`http://localhost:8000${currentImageUrl}`} alt="Preview" className="w-full h-[220px] object-contain rounded-2xl shadow-lg" />
                       <button onClick={(e) => { e.preventDefault(); setValue('image_url', ''); }} className="absolute top-6 right-6 p-2 bg-red-600 text-white rounded-xl shadow-xl hover:bg-red-700 transition-all active:scale-90"><X className="w-4 h-4" /></button>
                     </div>
