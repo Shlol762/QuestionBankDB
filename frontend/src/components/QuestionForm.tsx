@@ -19,6 +19,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
 import client from '../api/client';
 import { useAuthStore } from '../store/authStore';
+import { useSettingsStore } from '../store/settingsStore';
 
 interface QuestionFormProps {
   initialData?: any;
@@ -78,6 +79,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const { user } = useAuthStore();
+  const { defaultMarks, defaultDifficulty } = useSettingsStore();
   
   const isEditing = !!initialData?.question_id;
 
@@ -91,8 +93,8 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
       question_text: initialData?.question_text || '',
       answer_text: initialData?.answer_text || '',
       image_url: initialData?.image_url || '',
-      marks: initialData?.marks !== undefined ? initialData.marks : 5,
-      difficulty: initialData?.difficulty || 'Medium',
+      marks: initialData?.marks !== undefined ? initialData.marks : defaultMarks,
+      difficulty: initialData?.difficulty || defaultDifficulty,
       q_type: initialData?.q_type || 'MCQ',
       options: initialData ? initialData.options : (initialData?.q_type === 'Match the Following' ? { pairs: defaultPairs } : defaultOptions)
     }
@@ -441,7 +443,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                   ) : currentImageUrl ? (
                     <div className="relative w-full h-full p-4 animate-in fade-in zoom-in-95">
                       {/* Note: The CLI didn't finish externalizing URLs yet! */}
-                      <img src={`http://localhost:8000${currentImageUrl}`} alt="Preview" className="w-full h-[220px] object-contain rounded-2xl shadow-lg" />
+                      <img src={`${import.meta.env.VITE_API_BASE_URL || ''}${currentImageUrl}`} alt="Preview" className="w-full h-[220px] object-contain rounded-2xl shadow-lg" />
                       <button onClick={(e) => { e.preventDefault(); setValue('image_url', ''); }} className="absolute top-6 right-6 p-2 bg-red-600 text-white rounded-xl shadow-xl hover:bg-red-700 transition-all active:scale-90"><X className="w-4 h-4" /></button>
                     </div>
                   ) : (

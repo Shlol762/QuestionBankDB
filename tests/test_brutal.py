@@ -259,10 +259,10 @@ async def test_sql_injection_attempt(client: AsyncClient):
 
     payload = "' OR 1=1 --"
     res = await client.get(f"/questions/?search={payload}", headers=headers)
-    
-    assert res.status_code == 200
-    assert isinstance(res.json(), list)
 
+    assert res.status_code == 200
+    assert "items" in res.json()
+    
 @pytest.mark.asyncio
 async def test_concurrent_question_update(client: AsyncClient):
     """

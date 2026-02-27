@@ -136,11 +136,10 @@ async def test_unauthorized_data_modification(client: AsyncClient):
     # The register response didn't return ID?
     # We can get it from `me` endpoint or list users.
     
-    # Login as Admin to list users (already logged in)
+            # Login as Admin to list users (already logged in)
     users_res = await client.get("/auth/users", headers=admin_headers)
-    users = users_res.json()
-    user_a = next(u for u in users if u["email"] == "a@test.com")
-    
+    users = users_res.json()["items"]
+    user_a = next(u for u in users if u["email"] == "a@test.com")    
     # Update Teacher A to assign subject
     await client.patch(f"/auth/users/{user_a['user_id']}", json={"subject_ids": [sub_id]}, headers=admin_headers)
 

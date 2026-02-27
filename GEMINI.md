@@ -1,74 +1,99 @@
-# Question Bank API
+# Question Bank Platform
 
 ## Project Overview
-Question Bank API is a FastAPI-based backend service designed to manage an educational question bank. It uses a hierarchical structure (Syllabus -> Grade -> Subject -> Topic -> Question) to organize content and includes user management for teachers who create the questions.
+Question Bank Platform is a mature, full-stack application designed to manage an educational question bank. It features a robust FastAPI backend and a modern React/Vite frontend. The system uses a hierarchical curriculum structure (Syllabus -> Grade -> Subject -> Topic -> Question) to meticulously organize content and includes comprehensive role-based access control (RBAC) for administrators and teaching faculty.
 
-The project is currently in early development, with the core database schema and application structure established.
+## Core Technologies
+### Backend
+- **Framework:** FastAPI
+- **ORM:** SQLModel (SQLAlchemy + Pydantic v2)
+- **Database:** PostgreSQL (async via `asyncpg`)
+- **Security:** OAuth2 with JWT, BCrypt password hashing, rate limiting
+- **Testing:** Pytest (asyncio)
 
-## Main Technologies
-- **Framework:** [FastAPI](https://fastapi.tiangolo.com/)
-- **ORM:** [SQLModel](https://sqlmodel.tiangolo.com/) (built on SQLAlchemy and Pydantic)
-- **Database:** PostgreSQL (with async support via `asyncpg`)
-- **Server:** [Uvicorn](https://www.uvicorn.org/)
-- **Configuration:** [Pydantic Settings](https://docs.pydantic.dev/latest/usage/pydantic_settings/)
+### Frontend
+- **Framework:** React 18 with Vite
+- **Language:** TypeScript
+- **State Management:** Zustand, React Query (@tanstack/react-query)
+- **Styling:** Tailwind CSS, Lucide React icons
+- **Form Handling:** React Hook Form with Zod validation
 
 ## Project Structure
 ```
 E:\QuestionBankDB\
-├── runserver.py          # Entry point for running the FastAPI server
-├── src/
-│   ├── __init__.py      # App initialization and lifespan (db init)
-│   ├── config.py        # Configuration management (Pydantic Settings)
-│   └── db/
-│       ├── main.py      # Database engine and session setup
-│       ├── models.py    # SQLModel definitions for all entities
-│       └── questions/
-│           └── routes.py # (In Progress) Question-related API routes
-└── .env                  # Local environment variables (ignored by git)
+├── .github/              # GitHub Actions workflows for CI/CD
+├── frontend/             # React/Vite frontend application
+│   ├── src/
+│   │   ├── api/          # Axios client and API utilities
+│   │   ├── components/   # Reusable UI components (Modals, Forms, Managers)
+│   │   ├── pages/        # Main application views (Dashboard, Login, Setup)
+│   │   └── store/        # Zustand state stores (auth, settings)
+│   ├── package.json
+│   └── vite.config.ts
+├── src/                  # FastAPI backend application
+│   ├── db/
+│   │   ├── migrations/   # Alembic migrations (if adopted)
+│   │   ├── questions/    # Question-specific API routes
+│   │   ├── auth_routes.py # JWT Authentication and User Management
+│   │   ├── auth_utils.py  # Password hashing and token generation
+│   │   ├── curriculum_routes.py # Curriculum hierarchy management
+│   │   └── models.py      # SQLModel definitions and Pydantic schemas
+│   ├── config.py         # Environment configuration
+│   └── limiter.py        # Rate limiting logic
+├── tests/                # Comprehensive Pytest suite (Brutal testing)
+├── requirements.txt      # Python dependencies
+└── runserver.py          # Uvicorn entry point
 ```
+
+## Security Features
+- **Role-Based Access Control (RBAC):** Differentiates between 'Root Administrators', 'Grade Coordinators', 'Subject Heads', and 'Faculty'.
+- **JWT Authentication:** Secure API access via stateless JWTs.
+- **Input Validation:** Strict Pydantic validation on the backend and Zod on the frontend.
+- **SQL Injection Prevention:** Utilization of SQLModel/SQLAlchemy ORM.
+- **File Upload Security:** Magic number (MIME) validation and file size restrictions for PDFs and Images.
+- **Setup Lockout:** Initial admin setup is locked after the first execution to prevent unauthorized takeovers.
 
 ## Building and Running
 
-### Prerequisites
-- Python 3.8+
-- PostgreSQL database
-
-### Installation
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd QuestionBankDB
-   ```
-
-2. **Set up a virtual environment:**
+### Backend Setup
+1. **Set up virtual environment:**
    ```bash
    python -m venv env
    env\Scripts\activate  # Windows
-   # source env/bin/activate  # Linux/macOS
    ```
-
-3. **Install Dependencies:**
-   *(Note: No requirements.txt found, common dependencies for this stack include:)*
+2. **Install Dependencies:**
    ```bash
-   pip install fastapi uvicorn sqlmodel pydantic-settings asyncpg
+   pip install -r requirements.txt
    ```
+3. **Configuration:**
+   Create a `.env` file in the project root:
+   ```env
+   POSTGRES_URL=postgresql+asyncpg://user:password@localhost/dbname
+   JWT_SECRET_KEY=your_super_secret_key
+   ```
+4. **Execution:**
+   ```bash
+   python runserver.py
+   ```
+   API docs at `http://127.0.0.1:8000/docs`
 
-### Configuration
-Create a `.env` file in the root directory with your database connection string:
-```env
-POSTGRES_URL=postgresql+asyncpg://user:password@localhost/dbname
-```
-
-### Execution
-Run the development server:
-```bash
-python runserver.py
-```
-The API will be available at `http://127.0.0.1:8000`. You can access the interactive documentation at `http://127.0.0.1:8000/docs`.
+### Frontend Setup
+1. **Navigate and Install:**
+   ```bash
+   cd frontend
+   npm install
+   ```
+2. **Configuration:**
+   Create a `.env` file in `frontend/`:
+   ```env
+   VITE_API_BASE_URL=http://localhost:8000
+   ```
+3. **Execution:**
+   ```bash
+   npm run dev
+   ```
 
 ## Development Conventions
-- **Asynchronous Operations:** Use `async`/`await` for all database interactions and route handlers to maintain performance.
-- **Data Models:** Define all database tables as `SQLModel` classes in `src/db/models.py`. Ensure `Relationship` fields are correctly set up for the hierarchy.
-- **API Routes:** Organize routes by domain within `src/db/` (e.g., `src/db/questions/routes.py`). Register routers in `src/__init__.py`.
-- **Database Migrations:** Currently, the project uses `SQLModel.metadata.create_all` on startup (`src/db/main.py`). Future development should consider using Alembic for migrations.
-- **Environment Variables:** All configuration should be managed via the `Settings` class in `src/config.py`.
+- **Asynchronous Flow:** Use `async`/`await` across the stack.
+- **Atomic Commits:** Maintain clear, concise commit messages detailing the "why".
+- **Validation:** Always verify changes with the exhaustive `pytest` suite before finalizing.

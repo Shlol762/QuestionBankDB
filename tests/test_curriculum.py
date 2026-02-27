@@ -38,8 +38,8 @@ async def test_create_and_read_curriculum_hierarchy(client: AsyncClient):
     # 5. Read back and verify
     res = await client.get(f"/curriculum/topics/subject/{sub_id}")
     assert res.status_code == 200
-    assert len(res.json()) == 1
-    assert res.json()[0]["topic_name"] == "Quantum Mechanics"
+    assert len(res.json()["items"]) == 1    
+    assert res.json()["items"][0]["topic_name"] == "Quantum Mechanics"
 
 @pytest.mark.asyncio
 async def test_create_orphaned_grade(client: AsyncClient):

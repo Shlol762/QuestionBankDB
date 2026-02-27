@@ -26,12 +26,14 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import client from '../api/client';
 import QuestionForm from '../components/QuestionForm';
 import CurriculumManager from '../components/CurriculumManager';
 import UserManagement from '../components/UserManagement';
 import Modal from '../components/Modal';
 import Pagination from '../components/Pagination';
+import { useSettingsStore } from '../store/settingsStore';
 
 interface DashboardProps {
   isDarkMode: boolean;
@@ -50,6 +52,9 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   
+  // Settings Store
+  const { defaultMarks, defaultDifficulty, setDefaultMarks, setDefaultDifficulty } = useSettingsStore();
+
   // Search, Filter & Pagination State
   const [page, setPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -159,7 +164,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
       setDeleteTarget(null);
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || "Could not delete question.");
+      toast.error(err.response?.data?.detail || "Could not delete question.");
     }
   });
 
@@ -225,12 +230,12 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Initial Marks</label>
-                    <input type="number" defaultValue={5} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white" />
+                    <input type="number" value={defaultMarks} onChange={(e) => setDefaultMarks(Number(e.target.value))} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white" />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Base Complexity</label>
-                    <select defaultValue="Medium" className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white">
-                      <option>Easy</option><option>Medium</option><option>Hard</option>
+                    <select value={defaultDifficulty} onChange={(e) => setDefaultDifficulty(e.target.value as any)} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white">
+                      <option value="Easy">Easy</option><option value="Medium">Medium</option><option value="Hard">Hard</option>
                     </select>
                   </div>
                 </div>

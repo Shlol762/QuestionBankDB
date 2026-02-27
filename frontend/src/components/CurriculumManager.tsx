@@ -17,6 +17,7 @@ import {
   FileX
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import client from '../api/client';
 import Modal from './Modal';
 import { useAuthStore } from '../store/authStore';
@@ -114,7 +115,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
       setDeleteTarget(null);
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || "Delete operation failed.");
+      toast.error(err.response?.data?.detail || "Delete operation failed.");
     }
   });
 
@@ -126,7 +127,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
       queryClient.invalidateQueries({ queryKey: ['curriculum-hierarchy'] });
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || "Failed to remove PDF");
+      toast.error(err.response?.data?.detail || "Failed to remove PDF");
     }
   });
 
@@ -148,7 +149,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
       setUploadProgress(0);
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || "Upload failed");
+      toast.error(err.response?.data?.detail || "Upload failed");
       setUploadProgress(0);
     }
   });

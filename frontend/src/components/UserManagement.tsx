@@ -20,6 +20,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import toast from 'react-hot-toast';
 import client from '../api/client';
 import Modal from './Modal';
 import Pagination from './Pagination';
@@ -134,7 +135,7 @@ const UserManagement: React.FC = () => {
       setDeleteTarget(null);
     },
     onError: (err: any) => {
-      alert(err.response?.data?.detail || "Revoke access failed.");
+      toast.error(err.response?.data?.detail || "Revoke access failed.");
     }
   });
   
