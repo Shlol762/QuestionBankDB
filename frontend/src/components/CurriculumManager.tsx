@@ -58,7 +58,7 @@ const SubjectNode = ({ subject, grade, isAdmin, hodSubjects, assignedSubjectIds,
   // Lazy load topics
   const { data, isLoading } = useQuery({
     queryKey: ['topics', subject.subject_id],
-    queryFn: () => client.get(`/curriculum/topics/subject/${subject.subject_id}?limit=1000`).then(r => r.data),
+    queryFn: () => client.get(`/curriculum/topics/subject/${subject.subject_id}?limit=500`).then(r => r.data),
     enabled: isExpanded
   });
 
@@ -118,7 +118,7 @@ const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectId
   // Lazy load subjects
   const { data, isLoading } = useQuery({
     queryKey: ['subjects', grade.config_id],
-    queryFn: () => client.get(`/curriculum/subjects/${grade.config_id}?limit=1000`).then(r => r.data),
+    queryFn: () => client.get(`/curriculum/subjects/${grade.config_id}?limit=500`).then(r => r.data),
     enabled: isExpanded
   });
 
@@ -328,7 +328,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
   const { data: syllabusesData, isLoading, isRefetching } = useQuery({
     queryKey: ['syllabuses'],
     queryFn: async () => {
-      const res = await client.get('/curriculum/syllabuses?limit=1000');
+      const res = await client.get('/curriculum/syllabuses?limit=500');
       return res.data;
     }
   });
