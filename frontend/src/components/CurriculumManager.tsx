@@ -26,6 +26,269 @@ interface CurriculumManagerProps {
   onAddQuestion?: (topic: any) => void;
 }
 
+// --- Helper Components for Lazy Loading ---
+
+const TopicNode = ({ topic, subject, canModifyTopic, onAddQuestion, openEdit, setDeleteTarget }: any) => {
+  return (
+    <div className="group/topic flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl text-xs font-bold transition-all hover:border-academy-300 dark:hover:border-academy-500 hover:shadow-sm">
+      <div className="flex items-center gap-2.5">
+        <Tag className="w-3.5 h-3.5 text-emerald-500" />
+        <span className="text-gray-600 dark:text-gray-300 group-hover/topic:text-gray-900 dark:group-hover/topic:text-white">{topic.topic_name}</span>
+      </div>
+      <div className="flex items-center gap-1 opacity-0 group-hover/topic:opacity-100 transition-opacity">
+        <button onClick={(e) => { e.stopPropagation(); onAddQuestion?.({ ...topic, subject_id: subject.subject_id }); }} className="mr-2 text-[9px] font-black uppercase text-academy-600 dark:text-academy-400 hover:text-academy-800 dark:hover:text-academy-200 flex items-center gap-1 px-1.5 py-1 hover:bg-academy-50 dark:hover:bg-academy-900/30 rounded-md transition-all">
+          <Plus className="w-3 h-3" /> Question
+        </button>
+        {canModifyTopic && (
+          <>
+            <button onClick={(e) => { e.stopPropagation(); openEdit('topic', topic); }} className="p-1.5 text-gray-300 hover:text-academy-600 rounded-md transition-colors" title="Edit Topic"><Pencil className="w-3.5 h-3.5" /></button>
+            <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'topic', id: topic.topic_id, name: topic.topic_name}); }} className="p-1.5 text-gray-300 hover:text-red-600 rounded-md transition-colors" title="Delete Topic"><Trash2 className="w-3.5 h-3.5" /></button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const SubjectNode = ({ subject, grade, isAdmin, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, openTopicModal }: any) => {
+  const isExpanded = expanded.includes(`sub-${subject.subject_id}`);
+  const canModifySubject = isAdmin || grade.isCoordinator;
+  const canModifyTopic = isAdmin || grade.isCoordinator || hodSubjects.includes(subject.subject_name) || assignedSubjectIds.includes(subject.subject_id);
+
+  // Lazy load topics
+  const { data, isLoading } = useQuery({
+    queryKey: ['topics', subject.subject_id],
+    queryFn: () => client.get(`/curriculum/topics/subject/${subject.subject_id}?limit=1000`).then(r => r.data),
+    enabled: isExpanded
+  });
+
+  const topics = data?.items || [];
+
+  return (
+    <div className="border-l border-gray-100 dark:border-gray-800 pl-4">
+      <div 
+        className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all group/sub ${isExpanded ? 'text-academy-600 dark:text-academy-400 font-black' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`} 
+        onClick={(e) => { e.stopPropagation(); toggleExpand(`sub-${subject.subject_id}`); }}
+      >
+        <div className="flex items-center gap-3">
+          <Book className={`w-4 h-4 ${isExpanded ? 'text-academy-500' : 'text-gray-300'}`} />
+          <span className="text-sm font-bold tracking-tight">{subject.subject_name}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity">
+            {canModifySubject && (
+              <>
+                <button onClick={(e) => { e.stopPropagation(); openEdit('subject', subject); }} className="p-1 text-gray-400 hover:text-academy-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+                <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'subject', id: subject.subject_id, name: subject.subject_name}); }} className="p-1 text-gray-400 hover:text-red-600 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+              </>
+            )}
+            {canModifyTopic && (
+              <button onClick={(e) => { e.stopPropagation(); openTopicModal(subject.subject_id); }} className="ml-2 text-[9px] font-black uppercase text-academy-600 dark:text-academy-400 bg-academy-50 dark:bg-academy-900/30 px-2 py-1 rounded-md hover:bg-academy-600 hover:text-white transition-all">+ Topic</button>
+            )}
+          </div>
+          {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="ml-8 mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 pb-4 animate-in slide-in-from-top-1">
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin text-gray-400 my-2" />
+          ) : (
+            <>
+              {topics.map((topic: any) => (
+                <TopicNode key={`t-${topic.topic_id}`} topic={topic} subject={subject} canModifyTopic={canModifyTopic} onAddQuestion={onAddQuestion} openEdit={openEdit} setDeleteTarget={setDeleteTarget} />
+              ))}
+              {topics.length === 0 && (
+                <p className="col-span-full text-[10px] text-gray-400 italic py-2 ml-1">No topics defined yet.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, openSubjectModal, openTopicModal }: any) => {
+  const isExpanded = expanded.includes(`g-${grade.config_id}`);
+  const isCoordinator = gradeLevels.includes(grade.grade_level);
+  const enrichedGrade = { ...grade, isCoordinator };
+
+  // Lazy load subjects
+  const { data, isLoading } = useQuery({
+    queryKey: ['subjects', grade.config_id],
+    queryFn: () => client.get(`/curriculum/subjects/${grade.config_id}?limit=1000`).then(r => r.data),
+    enabled: isExpanded
+  });
+
+  const subjects = useMemo(() => {
+    const rawSubjects = data?.items || [];
+    if (isAdmin) return rawSubjects;
+    return rawSubjects.filter((subject: any) => {
+      if (isCoordinator) return true;
+      if (hodSubjects.includes(subject.subject_name)) return true;
+      return assignedSubjectIds.includes(subject.subject_id);
+    });
+  }, [data, isAdmin, isCoordinator, hodSubjects, assignedSubjectIds]);
+
+  return (
+    <div className="border-l-2 border-gray-100 dark:border-gray-800 pl-4">
+      <div 
+        className={`flex items-center justify-between p-3 rounded-2xl cursor-pointer transition-all group/grade ${isExpanded ? 'bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700' : 'hover:bg-white dark:hover:bg-gray-800/50'}`} 
+        onClick={(e) => { e.stopPropagation(); toggleExpand(`g-${grade.config_id}`); }}
+      >
+        <div className="flex items-center gap-3">
+          <Layers className={`w-4 h-4 ${isExpanded ? 'text-amber-500' : 'text-gray-300'}`} />
+          <span className="font-black text-xs uppercase tracking-widest text-gray-700 dark:text-gray-300">Grade {grade.grade_level}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 opacity-0 group-hover/grade:opacity-100 transition-opacity">
+            {isAdmin && (
+              <>
+                <button onClick={(e) => { e.stopPropagation(); openEdit('grade', grade); }} className="p-1.5 text-gray-400 hover:text-academy-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+                <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'grade', id: grade.config_id, name: `Grade ${grade.grade_level}`}); }} className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+              </>
+            )}
+            {(isAdmin || isCoordinator) && (
+              <button onClick={(e) => { e.stopPropagation(); openSubjectModal(grade.config_id); }} className="ml-2 text-[10px] font-black uppercase text-academy-600 dark:text-academy-400 border border-academy-100 dark:border-academy-800 px-2 py-1 rounded-lg hover:bg-academy-600 hover:text-white transition-all">+ Subject</button>
+            )}
+          </div>
+          {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="ml-8 mt-3 space-y-2 animate-in slide-in-from-top-1 duration-150">
+          {isLoading ? (
+            <Loader2 className="w-5 h-5 animate-spin text-gray-400 my-2" />
+          ) : (
+            <>
+              {subjects.map((subject: any) => (
+                <SubjectNode 
+                  key={`sub-${subject.subject_id}`} 
+                  subject={subject} 
+                  grade={enrichedGrade}
+                  isAdmin={isAdmin}
+                  hodSubjects={hodSubjects}
+                  assignedSubjectIds={assignedSubjectIds}
+                  expanded={expanded}
+                  toggleExpand={toggleExpand}
+                  openEdit={openEdit}
+                  setDeleteTarget={setDeleteTarget}
+                  onAddQuestion={onAddQuestion}
+                  openTopicModal={openTopicModal}
+                />
+              ))}
+              {subjects.length === 0 && (
+                <p className="text-[10px] text-gray-400 italic py-1 ml-4">No subjects accessible or registered.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingSyllabusId, uploadProgress, removePdfMutation, openGradeModal, openSubjectModal, openTopicModal }: any) => {
+  const isExpanded = expanded.includes(`s-${syllabus.syllabus_id}`);
+
+  // Lazy load grades
+  const { data, isLoading } = useQuery({
+    queryKey: ['grades', syllabus.syllabus_id],
+    queryFn: () => client.get(`/curriculum/grades/${syllabus.syllabus_id}?limit=100`).then(r => r.data),
+    enabled: isExpanded
+  });
+
+  const grades = data?.items || [];
+
+  return (
+    <div className="border border-gray-100 dark:border-gray-700 rounded-2xl overflow-hidden shadow-sm transition-all hover:shadow-md bg-white dark:bg-gray-800">
+      <div 
+        className={`flex items-center justify-between p-4 cursor-pointer group transition-colors ${isExpanded ? 'bg-academy-50/30 dark:bg-academy-900/10 border-b border-gray-50 dark:border-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}`} 
+        onClick={() => toggleExpand(`s-${syllabus.syllabus_id}`)}
+      >
+        <div className="flex items-center gap-4">
+          <div className="p-2.5 bg-academy-100 dark:bg-academy-900/50 text-academy-700 dark:text-academy-400 rounded-xl transition-transform group-hover:scale-110">
+            <FolderRoot className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-black text-gray-900 dark:text-white tracking-tight">{syllabus.syllabus_name}</h3>
+              {syllabus.pdf_url && (
+                <a href={`${import.meta.env.VITE_API_BASE_URL}${syllabus.pdf_url}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 text-academy-600 dark:text-academy-400 hover:bg-academy-100 dark:hover:bg-academy-900/50 rounded-lg transition-colors" title="View Syllabus PDF">
+                  <FileText className="w-4 h-4" />
+                </a>
+              )}
+            </div>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-widest">{syllabus.academic_year}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            {isAdmin && (
+              <>
+                <button onClick={(e) => { e.stopPropagation(); triggerUpload(syllabus.syllabus_id); }} className="p-2 hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-academy-600 rounded-lg transition-colors" title="Update Syllabus PDF">
+                  {uploadingSyllabusId === syllabus.syllabus_id ? <Loader2 className="w-4 h-4 animate-spin text-academy-500" /> : <Upload className="w-4 h-4" />}
+                </button>
+                {syllabus.pdf_url && (
+                  <button onClick={(e) => { e.stopPropagation(); removePdfMutation.mutate(syllabus.syllabus_id); }} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-lg transition-colors" title="Remove Syllabus PDF">
+                    {removePdfMutation.isPending && removePdfMutation.variables === syllabus.syllabus_id ? <Loader2 className="w-4 h-4 animate-spin text-red-500" /> : <FileX className="w-4 h-4" />}
+                  </button>
+                )}
+                <button onClick={(e) => { e.stopPropagation(); openEdit('syllabus', syllabus); }} className="p-2 hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-academy-600 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button>
+                <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'syllabus', id: syllabus.syllabus_id, name: syllabus.syllabus_name}); }} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={(e) => { e.stopPropagation(); openGradeModal(syllabus.syllabus_id); }} className="ml-2 bg-academy-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">Add Grade</button>
+              </>
+            )}
+          </div>
+          {isExpanded ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronRight className="w-5 h-5 text-gray-400" />}
+        </div>
+      </div>
+
+      {uploadingSyllabusId === syllabus.syllabus_id && uploadProgress > 0 && uploadProgress < 100 && (
+        <div className="h-1 bg-gray-100 dark:bg-gray-700 w-full overflow-hidden">
+          <div className="h-full bg-academy-500 transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+        </div>
+      )}
+
+      {isExpanded && (
+        <div className="bg-gray-50/30 dark:bg-gray-900/10 px-6 py-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
+          {isLoading ? (
+            <Loader2 className="w-6 h-6 animate-spin text-gray-400 my-2 mx-auto" />
+          ) : (
+            <>
+              {grades.map((grade: any) => (
+                <GradeNode 
+                  key={`g-${grade.config_id}`} 
+                  grade={grade}
+                  isAdmin={isAdmin}
+                  gradeLevels={gradeLevels}
+                  hodSubjects={hodSubjects}
+                  assignedSubjectIds={assignedSubjectIds}
+                  expanded={expanded}
+                  toggleExpand={toggleExpand}
+                  openEdit={openEdit}
+                  setDeleteTarget={setDeleteTarget}
+                  onAddQuestion={onAddQuestion}
+                  openSubjectModal={openSubjectModal}
+                  openTopicModal={openTopicModal}
+                />
+              ))}
+              {grades.length === 0 && (
+                <p className="text-[10px] text-gray-400 italic py-2">No grade levels added to this syllabus.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- Main Manager Component ---
+
 const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) => {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -61,31 +324,16 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
   // Delete Confirmation State
   const [deleteTarget, setDeleteTarget] = useState<{type: string, id: number, name: string} | null>(null);
 
-  const { data: rawHierarchy = [], isLoading, isRefetching } = useQuery({
-    queryKey: ['curriculum-hierarchy'],
+  // FETCH ROOT SYLLABUSES ONLY
+  const { data: syllabusesData, isLoading, isRefetching } = useQuery({
+    queryKey: ['syllabuses'],
     queryFn: async () => {
-      const res = await client.get('/curriculum/hierarchy');
+      const res = await client.get('/curriculum/syllabuses?limit=1000');
       return res.data;
     }
   });
 
-  // 2. Filter the tree based on permissions
-  const hierarchy = useMemo(() => {
-    if (isAdmin) return rawHierarchy;
-
-    return rawHierarchy.map((syllabus: any) => {
-      const filteredGrades = (syllabus.grades || []).map((grade: any) => {
-        const isCoordinator = gradeLevels.includes(grade.grade_level);
-        const filteredSubjects = (grade.subjects || []).filter((subject: any) => {
-          if (isCoordinator) return true;
-          if (hodSubjects.includes(subject.subject_name)) return true;
-          return assignedSubjectIds.includes(subject.subject_id);
-        });
-        return { ...grade, subjects: filteredSubjects, isCoordinator };
-      }).filter((grade: any) => grade.subjects.length > 0);
-      return { ...syllabus, grades: filteredGrades };
-    }).filter((syllabus: any) => syllabus.grades.length > 0);
-  }, [rawHierarchy, isAdmin, assignedSubjectIds, gradeLevels, hodSubjects]);
+  const syllabuses = syllabusesData?.items || [];
 
   const toggleExpand = (id: string) => {
     saveExpanded(expanded.includes(id) ? expanded.filter(i => i !== id) : [...expanded, id]);
@@ -98,7 +346,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['curriculum-hierarchy'] });
+      queryClient.invalidateQueries(); // Invalidate everything since it could be nested
       setModalType(null);
       setModalData({});
       setIsEditing(false);
@@ -111,7 +359,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
   const deleteMutation = useMutation({
     mutationFn: async (url: string) => client.delete(url),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['curriculum-hierarchy'] });
+      queryClient.invalidateQueries();
       setDeleteTarget(null);
     },
     onError: (err: any) => {
@@ -124,7 +372,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
       return client.patch(`/curriculum/syllabuses/${syllabusId}`, { pdf_url: null });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['curriculum-hierarchy'] });
+      queryClient.invalidateQueries({ queryKey: ['syllabuses'] });
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.detail || "Failed to remove PDF");
@@ -144,7 +392,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
       return client.patch(`/curriculum/syllabuses/${syllabusId}`, { pdf_url: uploadRes.data.pdf_url });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['curriculum-hierarchy'] });
+      queryClient.invalidateQueries({ queryKey: ['syllabuses'] });
       setUploadingSyllabusId(null);
       setUploadProgress(0);
     },
@@ -218,6 +466,10 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
     if (type === 'topic') setModalData({ id: item.topic_id, name: item.topic_name, parentId: item.subject_id });
   };
 
+  const openGradeModal = (parentId: number) => { setModalType('grade'); setModalData({ parentId }); setIsEditing(false); };
+  const openSubjectModal = (parentId: number) => { setModalType('subject'); setModalData({ parentId }); setIsEditing(false); };
+  const openTopicModal = (parentId: number) => { setModalType('topic'); setModalData({ parentId }); setIsEditing(false); };
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96 text-gray-400">
@@ -237,7 +489,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
           <p className="text-gray-500 dark:text-gray-400 font-medium">{isAdmin ? "Architect and manage the school's educational hierarchy." : "View and manage content for your assigned curriculum segments."}</p>
         </div>
         <button 
-          onClick={() => queryClient.invalidateQueries({ queryKey: ['curriculum-hierarchy'] })} 
+          onClick={() => queryClient.invalidateQueries()} 
           disabled={isRefetching}
           className="flex items-center gap-2 px-4 py-2 text-academy-600 dark:text-academy-400 hover:bg-academy-50 dark:hover:bg-academy-900/30 rounded-xl transition-all font-bold disabled:opacity-50"
         >
@@ -259,164 +511,33 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
         </div>
 
         <div className="p-6 space-y-4 min-h-[200px]">
-          {hierarchy.length === 0 ? (
+          {syllabuses.length === 0 ? (
             <div className="text-center py-20">
               <div className="w-16 h-16 bg-gray-50 dark:bg-gray-900 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300 dark:text-gray-700"><FolderRoot className="w-8 h-8" /></div>
               <p className="text-gray-400 dark:text-gray-600 font-medium italic">{isAdmin ? "The curriculum is currently empty. Start by defining a syllabus." : "No assigned subjects or grades found."}</p>
             </div>
           ) : (
-            hierarchy.map((syllabus: any) => (
-              <div key={`s-${syllabus.syllabus_id}`} className="border border-gray-100 dark:border-gray-700 rounded-2xl overflow-hidden shadow-sm transition-all hover:shadow-md bg-white dark:bg-gray-800">
-                <div 
-                  className={`flex items-center justify-between p-4 cursor-pointer group transition-colors ${expanded.includes(`s-${syllabus.syllabus_id}`) ? 'bg-academy-50/30 dark:bg-academy-900/10 border-b border-gray-50 dark:border-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}`} 
-                  onClick={() => toggleExpand(`s-${syllabus.syllabus_id}`)}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="p-2.5 bg-academy-100 dark:bg-academy-900/50 text-academy-700 dark:text-academy-400 rounded-xl transition-transform group-hover:scale-110">
-                      <FolderRoot className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-black text-gray-900 dark:text-white tracking-tight">{syllabus.syllabus_name}</h3>
-                        {syllabus.pdf_url && (
-                          <a href={`${import.meta.env.VITE_API_BASE_URL}${syllabus.pdf_url}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 text-academy-600 dark:text-academy-400 hover:bg-academy-100 dark:hover:bg-academy-900/50 rounded-lg transition-colors" title="View Syllabus PDF">
-                            <FileText className="w-4 h-4" />
-                          </a>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-gray-400 dark:text-gray-500 font-black uppercase tracking-widest">{syllabus.academic_year}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {isAdmin && (
-                        <>
-                          <button onClick={(e) => { e.stopPropagation(); triggerUpload(syllabus.syllabus_id); }} className="p-2 hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-academy-600 rounded-lg transition-colors" title="Update Syllabus PDF">
-                            {uploadingSyllabusId === syllabus.syllabus_id ? <Loader2 className="w-4 h-4 animate-spin text-academy-500" /> : <Upload className="w-4 h-4" />}
-                          </button>
-                          {syllabus.pdf_url && (
-                            <button onClick={(e) => { e.stopPropagation(); removePdfMutation.mutate(syllabus.syllabus_id); }} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-lg transition-colors" title="Remove Syllabus PDF">
-                              {removePdfMutation.isPending && removePdfMutation.variables === syllabus.syllabus_id ? <Loader2 className="w-4 h-4 animate-spin text-red-500" /> : <FileX className="w-4 h-4" />}
-                            </button>
-                          )}
-                          <button onClick={(e) => { e.stopPropagation(); openEdit('syllabus', syllabus); }} className="p-2 hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-academy-600 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button>
-                          <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'syllabus', id: syllabus.syllabus_id, name: syllabus.syllabus_name}); }} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
-                          <button onClick={(e) => { e.stopPropagation(); setModalType('grade'); setModalData({ parentId: syllabus.syllabus_id }); setIsEditing(false); }} className="ml-2 bg-academy-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">Add Grade</button>
-                        </>
-                      )}
-                    </div>
-                    {expanded.includes(`s-${syllabus.syllabus_id}`) ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronRight className="w-5 h-5 text-gray-400" />}
-                  </div>
-                </div>
-
-                {uploadingSyllabusId === syllabus.syllabus_id && uploadProgress > 0 && uploadProgress < 100 && (
-                  <div className="h-1 bg-gray-100 dark:bg-gray-700 w-full overflow-hidden">
-                    <div className="h-full bg-academy-500 transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
-                  </div>
-                )}
-
-                {expanded.includes(`s-${syllabus.syllabus_id}`) && (
-                  <div className="bg-gray-50/30 dark:bg-gray-900/10 px-6 py-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
-                    {(syllabus.grades || []).map((grade: any) => (
-                      <div key={`g-${grade.config_id}`} className="border-l-2 border-gray-100 dark:border-gray-800 pl-4">
-                        <div 
-                          className={`flex items-center justify-between p-3 rounded-2xl cursor-pointer transition-all group/grade ${expanded.includes(`g-${grade.config_id}`) ? 'bg-white dark:bg-gray-800 shadow-sm border border-gray-100 dark:border-gray-700' : 'hover:bg-white dark:hover:bg-gray-800/50'}`} 
-                          onClick={(e) => { e.stopPropagation(); toggleExpand(`g-${grade.config_id}`); }}
-                        >
-                          <div className="flex items-center gap-3">
-                            <Layers className={`w-4 h-4 ${expanded.includes(`g-${grade.config_id}`) ? 'text-amber-500' : 'text-gray-300'}`} />
-                            <span className="font-black text-xs uppercase tracking-widest text-gray-700 dark:text-gray-300">Grade {grade.grade_level}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-1 opacity-0 group-hover/grade:opacity-100 transition-opacity">
-                              {isAdmin && (
-                                <>
-                                  <button onClick={(e) => { e.stopPropagation(); openEdit('grade', grade); }} className="p-1.5 text-gray-400 hover:text-academy-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                                  <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'grade', id: grade.config_id, name: `Grade ${grade.grade_level}`}); }} className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                                </>
-                              )}
-                              {(isAdmin || grade.isCoordinator) && (
-                                <button onClick={(e) => { e.stopPropagation(); setModalType('subject'); setModalData({ parentId: grade.config_id }); setIsEditing(false); }} className="ml-2 text-[10px] font-black uppercase text-academy-600 dark:text-academy-400 border border-academy-100 dark:border-academy-800 px-2 py-1 rounded-lg hover:bg-academy-600 hover:text-white transition-all">+ Subject</button>
-                              )}
-                            </div>
-                            {expanded.includes(`g-${grade.config_id}`) ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
-                          </div>
-                        </div>
-
-                        {expanded.includes(`g-${grade.config_id}`) && (
-                          <div className="ml-8 mt-3 space-y-2 animate-in slide-in-from-top-1 duration-150">
-                            {(grade.subjects || []).map((subject: any) => {
-                              const canModifySubject = isAdmin || grade.isCoordinator;
-                              const canModifyTopic = isAdmin || grade.isCoordinator || hodSubjects.includes(subject.subject_name) || assignedSubjectIds.includes(subject.subject_id);
-
-                              return (
-                                <div key={`sub-${subject.subject_id}`} className="border-l border-gray-100 dark:border-gray-800 pl-4">
-                                  <div 
-                                    className={`flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all group/sub ${expanded.includes(`sub-${subject.subject_id}`) ? 'text-academy-600 dark:text-academy-400 font-black' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`} 
-                                    onClick={(e) => { e.stopPropagation(); toggleExpand(`sub-${subject.subject_id}`); }}
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <Book className={`w-4 h-4 ${expanded.includes(`sub-${subject.subject_id}`) ? 'text-academy-500' : 'text-gray-300'}`} />
-                                      <span className="text-sm font-bold tracking-tight">{subject.subject_name}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <div className="flex items-center gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity">
-                                        {canModifySubject && (
-                                          <>
-                                            <button onClick={(e) => { e.stopPropagation(); openEdit('subject', subject); }} className="p-1 text-gray-400 hover:text-academy-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                                            <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'subject', id: subject.subject_id, name: subject.subject_name}); }} className="p-1 text-gray-400 hover:text-red-600 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                                          </>
-                                        )}
-                                        {canModifyTopic && (
-                                          <button onClick={(e) => { e.stopPropagation(); setModalType('topic'); setModalData({ parentId: subject.subject_id }); setIsEditing(false); }} className="ml-2 text-[9px] font-black uppercase text-academy-600 dark:text-academy-400 bg-academy-50 dark:bg-academy-900/30 px-2 py-1 rounded-md hover:bg-academy-600 hover:text-white transition-all">+ Topic</button>
-                                        )}
-                                      </div>
-                                      {expanded.includes(`sub-${subject.subject_id}`) ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
-                                    </div>
-                                  </div>
-
-                                  {expanded.includes(`sub-${subject.subject_id}`) && (
-                                    <div className="ml-8 mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 pb-4 animate-in slide-in-from-top-1">
-                                      {(subject.topics || []).map((topic: any) => (
-                                        <div key={`t-${topic.topic_id}`} className="group/topic flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl text-xs font-bold transition-all hover:border-academy-300 dark:hover:border-academy-500 hover:shadow-sm">
-                                          <div className="flex items-center gap-2.5">
-                                            <Tag className="w-3.5 h-3.5 text-emerald-500" />
-                                            <span className="text-gray-600 dark:text-gray-300 group-hover/topic:text-gray-900 dark:group-hover/topic:text-white">{topic.topic_name}</span>
-                                          </div>
-                                          <div className="flex items-center gap-1 opacity-0 group-hover/topic:opacity-100 transition-opacity">
-                                            <button onClick={(e) => { e.stopPropagation(); onAddQuestion?.({ ...topic, subject_id: subject.subject_id }); }} className="mr-2 text-[9px] font-black uppercase text-academy-600 dark:text-academy-400 hover:text-academy-800 dark:hover:text-academy-200 flex items-center gap-1 px-1.5 py-1 hover:bg-academy-50 dark:hover:bg-academy-900/30 rounded-md transition-all">
-                                              <Plus className="w-3 h-3" /> Question
-                                            </button>
-                                            {canModifyTopic && (
-                                              <>
-                                                <button onClick={() => openEdit('topic', topic)} className="p-1.5 text-gray-300 hover:text-academy-600 rounded-md transition-colors" title="Edit Topic"><Pencil className="w-3.5 h-3.5" /></button>
-                                                <button onClick={() => setDeleteTarget({type:'topic', id: topic.topic_id, name: topic.topic_name})} className="p-1.5 text-gray-300 hover:text-red-600 rounded-md transition-colors" title="Delete Topic"><Trash2 className="w-3.5 h-3.5" /></button>
-                                              </>
-                                            )}
-                                          </div>
-                                        </div>
-                                      ))}
-                                      {subject.topics?.length === 0 && (
-                                        <p className="col-span-full text-[10px] text-gray-400 italic py-2 ml-1">No topics defined yet.</p>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                            {grade.subjects?.length === 0 && (
-                              <p className="text-[10px] text-gray-400 italic py-1 ml-4">No subjects registered.</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {syllabus.grades?.length === 0 && (
-                      <p className="text-[10px] text-gray-400 italic py-2">No grade levels added to this syllabus.</p>
-                    )}
-                  </div>
-                )}
-              </div>
+            syllabuses.map((syllabus: any) => (
+              <SyllabusNode 
+                key={`s-${syllabus.syllabus_id}`} 
+                syllabus={syllabus}
+                isAdmin={isAdmin}
+                gradeLevels={gradeLevels}
+                hodSubjects={hodSubjects}
+                assignedSubjectIds={assignedSubjectIds}
+                expanded={expanded}
+                toggleExpand={toggleExpand}
+                openEdit={openEdit}
+                setDeleteTarget={setDeleteTarget}
+                onAddQuestion={onAddQuestion}
+                triggerUpload={triggerUpload}
+                uploadingSyllabusId={uploadingSyllabusId}
+                uploadProgress={uploadProgress}
+                removePdfMutation={removePdfMutation}
+                openGradeModal={openGradeModal}
+                openSubjectModal={openSubjectModal}
+                openTopicModal={openTopicModal}
+              />
             ))
           )}
         </div>

@@ -4,9 +4,11 @@ import { GraduationCap, Lock, Mail, Loader2, ChevronRight, AlertCircle } from 'l
 import client from '../api/client';
 import { useAuthStore } from '../store/authStore';
 
-interface LoginProps {}
+interface LoginProps {
+  isDarkMode?: boolean;
+}
 
-const Login: React.FC<LoginProps> = ({ isDarkMode }) => {
+const Login: React.FC<LoginProps> = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
