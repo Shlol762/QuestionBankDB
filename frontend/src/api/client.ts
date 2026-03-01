@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const client = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '', // Empty string makes Axios use the current origin (the Vite dev server, which will then proxy to the backend)
 });
 
 // Add a request interceptor to include the JWT token in all requests
