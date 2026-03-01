@@ -204,12 +204,11 @@ class QuestionBank(BaseSQLModel, table=True):
 # ==========================================
 # PAGINATION GENERIC MODELS
 # ==========================================
-from pydantic.generics import GenericModel
 from typing import TypeVar, Generic
 
 T = TypeVar('T')
 
-class Page(GenericModel, Generic[T]):
+class Page(BaseSQLModel, Generic[T]):
     """
     Standardized paginated response model.
     """

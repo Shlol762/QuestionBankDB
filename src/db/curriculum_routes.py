@@ -108,18 +108,10 @@ async def upload_syllabus_pdf(
     # 1. Size Validation
     content = await file.read()
     file_size = len(content)
-    
-    # DEBUG LOGGING
-    with open("upload_debug.log", "a") as f:
-        f.write(f"--- Upload Attempt ---\n")
-        f.write(f"Filename: {file.filename}\n")
-        f.write(f"Size: {file_size} bytes\n")
-        f.write(f"Content Start (hex): {content[:20].hex()}\n")
-        f.write(f"Content Start (text): {str(content[:20])}\n")
-    
+
     if file_size == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty.")
-        
+
     if file_size > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
