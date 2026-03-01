@@ -468,11 +468,12 @@ source venv/bin/activate
 # On Windows:
 venv\Scripts\activate
 
-# Install the project's core dependencies
-pip install fastapi uvicorn sqlmodel asyncpg python-jose[cryptography] passlib[bcrypt] pydantic-settings slowapi puremagic python-multipart
+
+# Install all required dependencies
+pip install -r requirements.txt
 ```
 
-> **Note:** The `requirements.txt` in this repository reflects the developer's full global environment and includes many unrelated packages. The `pip install` command above installs only the packages needed to run this project. For reproducible deployments, pin the versions used in your environment (e.g. via `pip freeze > requirements.txt` after the install above).
+> **Note:** The `requirements.txt` file in this repository lists all the required Python packages (with pinned versions) to run and test this project. For reproducible deployments, always use `pip install -r requirements.txt` to ensure your environment matches the expected dependencies.
 
 ---
 
