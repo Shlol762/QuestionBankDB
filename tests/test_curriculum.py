@@ -8,11 +8,11 @@ async def test_create_and_read_curriculum_hierarchy(client: AsyncClient):
     # Authenticate
     try:
         await client.post("/auth/initial-setup", json={
-            "full_name": "Admin", "email": "admin@test.com", "password": "pass", "department": "IT"
+            "full_name": "Admin", "email": "admin@test.com", "password": "password123", "department": "IT"
         })
     except:
         pass
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     
@@ -47,11 +47,11 @@ async def test_create_orphaned_grade(client: AsyncClient):
     # Authenticate
     try:
         await client.post("/auth/initial-setup", json={
-            "full_name": "Admin", "email": "admin@test.com", "password": "pass", "department": "IT"
+            "full_name": "Admin", "email": "admin@test.com", "password": "password123", "department": "IT"
         })
     except:
         pass
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 

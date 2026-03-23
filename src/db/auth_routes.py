@@ -7,7 +7,7 @@ from src.db.main import get_session
 from src.db.models import Users, GradeCoordinatorLink, HODLink, UserSubjectLink, GradeConfig, Subject, Page
 from src.db.auth_utils import get_password_hash, verify_password, create_access_token, get_current_user
 from src.limiter import limiter
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -41,6 +41,13 @@ class UserCreate(BaseAuthModel):
     grade_levels: List[int] = []
     hod_subject_names: List[str] = []
 
+    @field_validator('password')
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters')
+        return v
+
 class UserUpdate(BaseAuthModel):
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
@@ -50,6 +57,13 @@ class UserUpdate(BaseAuthModel):
     subject_ids: Optional[List[int]] = None
     grade_levels: Optional[List[int]] = None
     hod_subject_names: Optional[List[str]] = None
+
+    @field_validator('password')
+    @classmethod
+    def password_strength(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v) < 8:
+            raise ValueError('Password must be at least 8 characters')
+        return v
 
 class Token(BaseModel):
     access_token: str
@@ -70,19 +84,28 @@ async def validate_assignments(session: AsyncSession, grade_levels: List[int] = 
     Prevents assigning non-existent curriculum branches to users.
     """
     if grade_levels:
-        for gl in grade_levels:
-            grade_stmt = select(GradeConfig).where(GradeConfig.grade_level == gl)
-            grade_res = await session.exec(grade_stmt)
-            if not grade_res.first():
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Grade level {gl} does not exist in the curriculum")
-    
+        grade_stmt = select(func.count(GradeConfig.config_id)).where(
+            GradeConfig.grade_level.in_(grade_levels)
+        )
+        found = (await session.exec(grade_stmt)).one()
+        if found < len(set(grade_levels)):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "One or more grade levels do not exist in the curriculum",
+            )
+
     if hod_subject_names:
-        for sn in hod_subject_names:
-            # Case-insensitive validation
-            sub_stmt = select(Subject).where(func.lower(Subject.subject_name) == sn.lower())
-            sub_res = await session.exec(sub_stmt)
-            if not sub_res.first():
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Subject '{sn}' does not exist in the curriculum")
+        normalized = [name.lower() for name in hod_subject_names]
+        sub_stmt = select(Subject.subject_name).where(
+            func.lower(Subject.subject_name).in_(normalized)
+        )
+        found_names = {name.lower() for name in (await session.exec(sub_stmt)).all()}
+        missing = [name for name in hod_subject_names if name.lower() not in found_names]
+        if missing:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Subjects not found in curriculum: {', '.join(missing)}",
+            )
 
 def map_user_to_read(user: Users) -> dict:
     """
@@ -208,7 +231,9 @@ async def reset_user_password(
     return {"message": f"Password for {user.full_name} has been reset."}
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 async def register_user(
+    request: Request,
     user_data: UserCreate, 
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)

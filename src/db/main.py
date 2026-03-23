@@ -12,9 +12,10 @@ async_engine = create_async_engine(
 
 
 async def init_db():
-    async with async_engine.begin() as conn:
-        from .models import SyllabusMaster, GradeConfig, Subject, Topic, Users, QuestionBank
-        await conn.run_sync(SQLModel.metadata.create_all)
+    if settings.TESTING:
+        async with async_engine.begin() as conn:
+            from .models import SyllabusMaster, GradeConfig, Subject, Topic, Users, QuestionBank
+            await conn.run_sync(SQLModel.metadata.create_all)
 
 
 async def get_session() -> AsyncSession:
@@ -25,5 +26,9 @@ async def get_session() -> AsyncSession:
     )
 
     async with async_session() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
         

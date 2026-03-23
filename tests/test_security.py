@@ -25,11 +25,11 @@ async def test_erroneous_registration_data(client: AsyncClient):
     # Authenticate as Admin first
     try:
         await client.post("/auth/initial-setup", json={
-            "full_name": "Admin", "email": "admin@test.com", "password": "pass", "department": "IT"
+            "full_name": "Admin", "email": "admin@test.com", "password": "password123", "department": "IT"
         })
     except:
         pass
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -49,11 +49,11 @@ async def test_duplicate_registration_attempt(client: AsyncClient):
     # Authenticate as Admin first
     try:
         await client.post("/auth/initial-setup", json={
-            "full_name": "Admin", "email": "admin@test.com", "password": "pass", "department": "IT"
+            "full_name": "Admin", "email": "admin@test.com", "password": "password123", "department": "IT"
         })
     except:
         pass
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -78,27 +78,27 @@ async def test_unauthorized_data_modification(client: AsyncClient):
     # Authenticate as Admin first
     try:
         await client.post("/auth/initial-setup", json={
-            "full_name": "Admin", "email": "admin@test.com", "password": "pass", "department": "IT"
+            "full_name": "Admin", "email": "admin@test.com", "password": "password123", "department": "IT"
         })
     except:
         pass
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     admin_headers = {"Authorization": f"Bearer {token}"}
 
     # 1. Register Teacher A and Teacher B
     await client.post("/auth/register", json={
-        "full_name": "Teacher A", "email": "a@test.com", "password": "pass", "department": "X"
+        "full_name": "Teacher A", "email": "a@test.com", "password": "password123", "department": "X"
     }, headers=admin_headers)
     await client.post("/auth/register", json={
-        "full_name": "Teacher B", "email": "b@test.com", "password": "pass", "department": "X"
+        "full_name": "Teacher B", "email": "b@test.com", "password": "password123", "department": "X"
     }, headers=admin_headers)
 
     # 2. Get tokens
-    login_a = await client.post("/auth/login", data={"username": "a@test.com", "password": "pass"})
+    login_a = await client.post("/auth/login", data={"username": "a@test.com", "password": "password123"})
     token_a = login_a.json()["access_token"]
     
-    login_b = await client.post("/auth/login", data={"username": "b@test.com", "password": "pass"})
+    login_b = await client.post("/auth/login", data={"username": "b@test.com", "password": "password123"})
     token_b = login_b.json()["access_token"]
 
     # 3. Teacher A creates a Syllabus and Topic (needed for question)

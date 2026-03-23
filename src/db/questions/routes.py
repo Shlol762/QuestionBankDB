@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query, Request
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Optional, Any
@@ -9,6 +9,7 @@ from datetime import datetime
 from src.db.main import get_session
 from src.db.models import QuestionBank, Users, Topic, DifficultyLevel, QuestionType, Subject, Page
 from src.db.auth_utils import get_current_user
+from src.limiter import limiter
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from sqlalchemy.orm import selectinload
 
@@ -104,7 +105,9 @@ def validate_question_logic(question: QuestionBank):
 # --- ROUTES ---
 
 @router.post("/upload-image")
+@limiter.limit("20/minute")
 async def upload_question_image(
+    request: Request,
     file: UploadFile = File(...),
     current_user: Users = Depends(get_current_user)
 ):
@@ -231,6 +234,8 @@ async def list_questions(
     if search:
         base_stmt = base_stmt.where(func.lower(QuestionBank.question_text).contains(search.lower()))
 
+    base_stmt = base_stmt.where(QuestionBank.is_active == True)
+
     # Count total matching records
     count_stmt = select(func.count()).select_from(base_stmt.subquery())
     total = (await session.exec(count_stmt)).one()
@@ -259,6 +264,8 @@ async def get_question(
     result = await session.exec(statement)
     question = result.first()
     if not question:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Question not found")
+    if not question.is_active and not current_user.is_admin:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Question not found")
     
     # Permission Check

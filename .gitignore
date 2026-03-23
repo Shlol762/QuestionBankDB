@@ -20,3 +20,4 @@ frontend/dist/
 
 
 *.log
+upload_debug.log

@@ -7,9 +7,12 @@ from src.db.auth_routes import router as auth_router
 from src.db.curriculum_routes import router as curriculum_router
 from src.db.questions.routes import router as question_router
 from src.db.stats_routes import router as stats_router
+from src.db.main import async_engine
 from src.limiter import limiter
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
+from fastapi.responses import JSONResponse
 import os
 
 
@@ -57,3 +60,16 @@ app.include_router(stats_router)
 @app.get("/ping")
 def ping():
     return {"message": "pong"}
+
+
+@app.get("/health")
+async def health_check():
+    try:
+        async with async_engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "reachable"}
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "database": "unreachable"},
+        )

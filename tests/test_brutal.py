@@ -12,9 +12,9 @@ async def test_duplicate_topic_case_sensitivity(client: AsyncClient):
     """
     # Setup: Admin login, Syllabus, Grade, Subject
     await client.post("/auth/initial-setup", json={
-        "full_name": "Admin", "email": "admin@test.com", "password": "pass", "department": "IT"
+        "full_name": "Admin", "email": "admin@test.com", "password": "password123", "department": "IT"
     })
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -39,7 +39,7 @@ async def test_negative_marks_question(client: AsyncClient):
     Scenario: Teacher accidentally enters -5 marks for a question.
     Expected: Should be blocked (ge=0).
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -61,7 +61,7 @@ async def test_mcq_without_options(client: AsyncClient):
     Scenario: Teacher creates an MCQ but forgets to provide options.
     Expected: Should be blocked (Value Error in validator).
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -86,7 +86,7 @@ async def test_hod_permission_leak(client: AsyncClient):
     Expected: HOD SHOULD see both (Intentional Feature), but not unrelated subjects.
     """
     # Setup: Create Syllabus 2, Grade 10, Subject 'Math'
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -99,13 +99,13 @@ async def test_hod_permission_leak(client: AsyncClient):
     await client.post("/auth/register", json={
         "full_name": "HOD Math",
         "email": "hod@math.com",
-        "password": "pass",
+        "password": "password123",
         "department": "Math",
         "hod_subject_names": ["Math"]
     }, headers=headers)
 
     # Login as HOD
-    login_hod = await client.post("/auth/login", data={"username": "hod@math.com", "password": "pass"})
+    login_hod = await client.post("/auth/login", data={"username": "hod@math.com", "password": "password123"})
     token_hod = login_hod.json()["access_token"]
     headers_hod = {"Authorization": f"Bearer {token_hod}"}
 
@@ -130,7 +130,7 @@ async def test_mcq_answer_integrity(client: AsyncClient):
     Scenario: Teacher sets correct answer to 'E' but only provides options A, B, C, D.
     Expected: Should be blocked.
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -154,7 +154,7 @@ async def test_malicious_file_upload_extension_bypass(client: AsyncClient):
     Scenario: User uploads a script renamed to .pdf.
     Expected: System should check magic numbers (MIME) and block it (400).
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -173,7 +173,7 @@ async def test_question_image_no_extension_check(client: AsyncClient):
     Scenario: Teacher uploads 'virus.exe' as a question image.
     Expected: Should be blocked (400).
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -190,7 +190,7 @@ async def test_extreme_long_input(client: AsyncClient):
     Scenario: User pastes 1MB string into the question text.
     Expected: System should handle it gracefully (likely 201 or 422 if max length set).
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -213,7 +213,7 @@ async def test_cascading_deletion_purge(client: AsyncClient):
     Scenario: Delete a Syllabus.
     Expected: Grades, Subjects, Topics, and Questions under it should be GONE.
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -253,7 +253,7 @@ async def test_sql_injection_attempt(client: AsyncClient):
     Scenario: Search for questions using a malicious payload.
     Expected: Should be handled safely by the ORM.
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -270,7 +270,7 @@ async def test_concurrent_question_update(client: AsyncClient):
     Scenario: Two updates to the same question at once.
     Expected: Database should handle it without corruption due to row locking.
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -306,7 +306,7 @@ async def test_whitespace_syllabus_block(client: AsyncClient):
     Scenario: User enters " " as syllabus name.
     Expected: Should be blocked (422 due to str_strip_whitespace=True or DB error).
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -322,7 +322,7 @@ async def test_initial_setup_lockout_bypass(client: AsyncClient):
     Expected: 403 Forbidden.
     """
     res = await client.post("/auth/initial-setup", json={
-        "full_name": "Hacker", "email": "hacker@test.com", "password": "pass", "department": "Evil"
+        "full_name": "Hacker", "email": "hacker@test.com", "password": "password123", "department": "Evil"
     })
     assert res.status_code == 403
     assert "already configured" in res.json()["detail"]
@@ -345,7 +345,7 @@ async def test_delete_last_admin(client: AsyncClient):
     Scenario: Admin tries to delete themselves (or the only other admin).
     Expected: Blocked.
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "pass"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 

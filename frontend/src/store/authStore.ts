@@ -23,14 +23,14 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  isAuthenticated: !!localStorage.getItem('token'),
+  isAuthenticated: !!sessionStorage.getItem('token'),
   isLoading: true,
   login: (token: string) => {
-    localStorage.setItem('token', token);
+    sessionStorage.setItem('token', token);
     set({ isAuthenticated: true });
   },
   logout: () => {
-    localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
     set({ user: null, isAuthenticated: false });
   },
   fetchMe: async () => {
@@ -40,7 +40,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ user: response.data, isAuthenticated: true });
     } catch (error) {
       set({ user: null, isAuthenticated: false });
-      localStorage.removeItem('token');
+      sessionStorage.removeItem('token');
     } finally {
       set({ isLoading: false });
     }

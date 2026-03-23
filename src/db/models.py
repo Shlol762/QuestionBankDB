@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, TypeVar, Generic
 from enum import Enum
 from sqlmodel import SQLModel, Field, Relationship, Session
 from sqlalchemy import JSON, Column
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict
 
 # --- ENUMS ---
 class DifficultyLevel(str, Enum):
@@ -141,9 +141,13 @@ class Users(BaseSQLModel, table=True):
     # Cascade: If Teacher is deleted, delete their Questions (or we could set to NULL, but cascade is safer for now)
     questions: List["QuestionBank"] = Relationship(back_populates="teacher", cascade_delete=True)
 
-    def can_manage_grade(self) -> bool:
-        """Only Admins can manage grade levels or syllabus links."""
-        return self.is_admin
+    def can_manage_grade(self, grade_level: Optional[int] = None) -> bool:
+        """Admins can manage all grades; coordinators can manage their assigned grades."""
+        if self.is_admin:
+            return True
+        if grade_level is None:
+            return False
+        return any(g.grade_level == grade_level for g in self.grade_coordinating)
 
     def can_manage_subject(self, grade_level: int) -> bool:
         """Admins and Grade Coordinators can manage subjects within a grade."""
@@ -204,12 +208,10 @@ class QuestionBank(BaseSQLModel, table=True):
 # ==========================================
 # PAGINATION GENERIC MODELS
 # ==========================================
-from pydantic.generics import GenericModel
-from typing import TypeVar, Generic
 
 T = TypeVar('T')
 
-class Page(GenericModel, Generic[T]):
+class Page(BaseModel, Generic[T]):
     """
     Standardized paginated response model.
     """

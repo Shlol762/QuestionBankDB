@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query, Request
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Optional
@@ -8,6 +8,7 @@ import puremagic
 from src.db.main import get_session
 from src.db.models import SyllabusMaster, GradeConfig, Subject, Topic, Users, Page
 from src.db.auth_utils import get_current_user
+from src.limiter import limiter
 from pydantic import BaseModel, ConfigDict, Field
 
 router = APIRouter(prefix="/curriculum", tags=["Curriculum Management"])
@@ -91,7 +92,9 @@ ALLOWED_MIME_TYPES = ["application/pdf"]
 # --- ROUTES: SYLLABUS ---
 
 @router.post("/upload-pdf")
+@limiter.limit("20/minute")
 async def upload_syllabus_pdf(
+    request: Request,
     file: UploadFile = File(...),
     current_user: Users = Depends(get_current_user)
 ):
@@ -108,14 +111,6 @@ async def upload_syllabus_pdf(
     # 1. Size Validation
     content = await file.read()
     file_size = len(content)
-    
-    # DEBUG LOGGING
-    with open("upload_debug.log", "a") as f:
-        f.write(f"--- Upload Attempt ---\n")
-        f.write(f"Filename: {file.filename}\n")
-        f.write(f"Size: {file_size} bytes\n")
-        f.write(f"Content Start (hex): {content[:20].hex()}\n")
-        f.write(f"Content Start (text): {str(content[:20])}\n")
     
     if file_size == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty.")
@@ -181,6 +176,7 @@ async def create_syllabus(data: SyllabusCreate, session: AsyncSession = Depends(
 
 @router.get("/hierarchy", response_model=List[SyllabusHierarchyRead])
 async def get_full_hierarchy(
+    syllabus_id: Optional[int] = None,
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
@@ -192,6 +188,8 @@ async def get_full_hierarchy(
         .selectinload(GradeConfig.subjects)
         .selectinload(Subject.topics)
     ).order_by(SyllabusMaster.syllabus_id)
+    if syllabus_id:
+        statement = statement.where(SyllabusMaster.syllabus_id == syllabus_id)
     result = await session.exec(statement)
     syllabuses = result.all()
 
@@ -266,8 +264,8 @@ async def get_all_subjects(
 @router.post("/grades", response_model=GradeRead, status_code=status.HTTP_201_CREATED)
 async def create_grade(data: GradeCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
     """Adds a Grade level. Admin only."""
-    if not current_user.can_manage_grade(): 
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can manage grades")
+    if not current_user.can_manage_grade(data.grade_level): 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to manage this grade")
     
     syllabus = await session.get(SyllabusMaster, data.syllabus_id)
     if not syllabus:
@@ -379,11 +377,12 @@ async def delete_syllabus(id: int, session: AsyncSession = Depends(get_session),
 # GRADE
 @router.patch("/grades/{id}", response_model=GradeRead)
 async def update_grade(id: int, data: GradeUpdate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    if not current_user.can_manage_grade(): 
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can update grade levels")
     item = await session.get(GradeConfig, id)
     if not item: 
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Grade not found")
+    target_grade_level = data.grade_level if data.grade_level is not None else item.grade_level
+    if not current_user.can_manage_grade(target_grade_level): 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to manage this grade")
     for key, val in data.model_dump(exclude_unset=True).items(): 
         setattr(item, key, val)
     await session.commit()
@@ -392,9 +391,9 @@ async def update_grade(id: int, data: GradeUpdate, session: AsyncSession = Depen
 
 @router.delete("/grades/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_grade(id: int, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
-    if not current_user.can_manage_grade(): 
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can delete grades")
     item = await session.get(GradeConfig, id)
+    if item and not current_user.can_manage_grade(item.grade_level):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to manage this grade")
     if item:
         await session.delete(item)
         await session.commit()
