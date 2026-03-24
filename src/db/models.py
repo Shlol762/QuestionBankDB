@@ -17,6 +17,18 @@ class QuestionType(str, Enum):
     MATCH_THE_FOLLOWING = "Match the Following"
     SHORT_ANSWER = "Short Answer"
     LONG_ANSWER = "Long Answer"
+    FILL_IN_BLANKS = "Fill in the Blanks"
+    ONE_WORD_ANSWER = "One Word Answer"
+    ASSERTION_REASON = "Assertion/Reason"
+    CASE_STUDY = "Case Study"
+    ORDERING_SEQUENCING = "Ordering/Sequencing"
+    DIAGRAM_LABELING = "Diagram Labeling"
+    COMPREHENSION_PASSAGE = "Comprehension Passage"
+
+class QuestionStatus(str, Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
 
 # ==========================================
 # BASE MODEL CONFIG
@@ -198,7 +210,12 @@ class QuestionBank(BaseSQLModel, table=True):
     difficulty: DifficultyLevel = Field(default=DifficultyLevel.MEDIUM)
     q_type: QuestionType = Field(default=QuestionType.MCQ)
     is_active: bool = Field(default=True)
+    status: QuestionStatus = Field(default=QuestionStatus.DRAFT)
     created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )

@@ -35,7 +35,7 @@ const TopicNode = ({ topic, subject, canModifyTopic, onAddQuestion, openEdit, se
         <Tag className="w-3.5 h-3.5 text-emerald-500" />
         <span className="text-gray-600 dark:text-gray-300 group-hover/topic:text-gray-900 dark:group-hover/topic:text-white">{topic.topic_name}</span>
       </div>
-      <div className="flex items-center gap-1 opacity-0 group-hover/topic:opacity-100 transition-opacity">
+      <div className="flex items-center gap-1">
         <button onClick={(e) => { e.stopPropagation(); onAddQuestion?.({ ...topic, subject_id: subject.subject_id }); }} className="mr-2 text-[9px] font-black uppercase text-academy-600 dark:text-academy-400 hover:text-academy-800 dark:hover:text-academy-200 flex items-center gap-1 px-1.5 py-1 hover:bg-academy-50 dark:hover:bg-academy-900/30 rounded-md transition-all">
           <Plus className="w-3 h-3" /> Question
         </button>
@@ -75,7 +75,7 @@ const SubjectNode = ({ subject, grade, isAdmin, hodSubjects, assignedSubjectIds,
           <span className="text-sm font-bold tracking-tight">{subject.subject_name}</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1">
             {canModifySubject && (
               <>
                 <button onClick={(e) => { e.stopPropagation(); openEdit('subject', subject); }} className="p-1 text-gray-400 hover:text-academy-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
@@ -143,7 +143,7 @@ const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectId
           <span className="font-black text-xs uppercase tracking-widest text-gray-700 dark:text-gray-300">Grade {grade.grade_level}</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 opacity-0 group-hover/grade:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1">
             {isAdmin && (
               <>
                 <button onClick={(e) => { e.stopPropagation(); openEdit('grade', grade); }} className="p-1.5 text-gray-400 hover:text-academy-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
@@ -226,7 +226,7 @@ const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSub
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 mr-2">
             {isAdmin && (
               <>
                 <button onClick={(e) => { e.stopPropagation(); triggerUpload(syllabus.syllabus_id); }} className="p-2 hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-academy-600 rounded-lg transition-colors" title="Update Syllabus PDF">

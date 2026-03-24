@@ -321,7 +321,7 @@ const UserManagement: React.FC = () => {
                     {user.email}
                   </td>
                   <td className="px-8 py-6 text-right">
-                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform group-hover:-translate-x-1">
+                    <div className="flex justify-end gap-2 transition-all transform">
                       <button aria-label="Edit user" onClick={() => openEdit(user)} className="p-2.5 hover:bg-academy-50 dark:hover:bg-academy-900/30 text-gray-400 hover:text-academy-600 dark:hover:text-academy-400 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
                         <Pencil className="w-4 h-4" />
                       </button>

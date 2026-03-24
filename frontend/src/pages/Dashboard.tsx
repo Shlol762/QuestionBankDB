@@ -22,7 +22,8 @@ import {
   Monitor,
   Type,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  BarChart3
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
@@ -32,6 +33,7 @@ import client from '../api/client';
 import QuestionForm from '../components/QuestionForm';
 import CurriculumManager from '../components/CurriculumManager';
 import UserManagement from '../components/UserManagement';
+import DashboardOverview from '../components/DashboardOverview';
 import Modal from '../components/Modal';
 import Pagination from '../components/Pagination';
 import { useSettingsStore } from '../store/settingsStore';
@@ -163,6 +165,8 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   }
 
   const isAdmin = user?.is_admin || false;
+  const isCoordinator = user?.grade_coordinating && user.grade_coordinating.length > 0;
+  const isHOD = user?.hod_subjects && user.hod_subjects.length > 0;
 
   // Questions Query
   const { data: questionsData, isLoading: qLoading } = useQuery({
@@ -210,6 +214,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   }
 
   const navItems = [
+    { id: 'overview', icon: BarChart3, label: 'Dashboard', role: 'teacher' },
     { id: 'subjects', icon: BookOpen, label: isAdmin ? 'Full Curriculum' : 'My Scope', role: 'teacher' },
     { id: 'questions', icon: PlusCircle, label: 'Question Bank', role: 'teacher' },
     { id: 'users', icon: UsersIcon, label: 'Staff Directory', role: 'admin' },
@@ -218,6 +223,8 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
 
   const renderContent = () => {
     switch (activeTab) {
+      case 'overview':
+        return <DashboardOverview isAdmin={isAdmin} isCoordinator={isCoordinator} isHOD={isHOD} />;
       case 'subjects':
         return <CurriculumManager onAddQuestion={handleAddQuestionFromCurriculum} />;
       case 'users':

@@ -5,9 +5,9 @@ from typing import List, Optional, Any
 import os
 import uuid
 import puremagic
-from datetime import datetime
+from datetime import datetime, timezone
 from src.db.main import get_session
-from src.db.models import QuestionBank, Users, Topic, DifficultyLevel, QuestionType, Subject, Page
+from src.db.models import QuestionBank, Users, Topic, DifficultyLevel, QuestionType, QuestionStatus, Subject, Page
 from src.db.auth_utils import get_current_user
 from src.limiter import limiter
 from pydantic import BaseModel, Field, ConfigDict, model_validator
@@ -37,6 +37,7 @@ class QuestionCreate(BaseModel):
     marks: int = Field(ge=0)  # ge=0 allows grace marks (0)
     difficulty: DifficultyLevel = DifficultyLevel.MEDIUM
     q_type: QuestionType = QuestionType.MCQ
+    status: QuestionStatus = QuestionStatus.DRAFT
 
     @model_validator(mode='after')
     def verify_mcq_integrity(self) -> 'QuestionCreate':
@@ -60,6 +61,7 @@ class QuestionRead(QuestionCreate):
     question_id: int
     teacher_id: int
     created_at: datetime
+    updated_at: datetime
     teacher: Optional[UserSimple] = None
     topic: Optional[TopicSimple] = None
 
@@ -75,6 +77,7 @@ class QuestionUpdate(BaseModel):
     difficulty: Optional[DifficultyLevel] = None
     q_type: Optional[QuestionType] = None
     is_active: Optional[bool] = None
+    status: Optional[QuestionStatus] = None
 
 # --- CONSTANTS ---
 UPLOAD_DIR = "uploads"
@@ -202,13 +205,15 @@ async def list_questions(
     topic_id: Optional[int] = None,
     difficulty: Optional[DifficultyLevel] = None,
     q_type: Optional[QuestionType] = None,
+    status_filter: Optional[QuestionStatus] = Query(None, alias="status"),
     search: Optional[str] = None,
+    include_drafts: bool = Query(default=False),
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0)
 ):
-    """Lists questions with pagination. Admins see all, others see based on permissions."""
+    """Lists questions with pagination. Admins see all, others see based on permissions. Drafts only visible to author."""
     
     from src.db.models import GradeConfig
     from sqlalchemy import or_, func
@@ -237,6 +242,22 @@ async def list_questions(
             # If a user has no roles, only show their own questions
             base_stmt = base_stmt.where(QuestionBank.teacher_id == current_user.user_id)
     
+    # Draft visibility: non-admins only see their own drafts
+    if not current_user.is_admin:
+        base_stmt = base_stmt.where(
+            or_(
+                QuestionBank.status != QuestionStatus.DRAFT,
+                QuestionBank.teacher_id == current_user.user_id
+            )
+        )
+    
+    # Filter by status if specified
+    if status_filter:
+        base_stmt = base_stmt.where(QuestionBank.status == status_filter)
+    else:
+        # Default: exclude archived questions unless explicitly requested
+        base_stmt = base_stmt.where(QuestionBank.status != QuestionStatus.ARCHIVED)
+    
     # Apply standard filters
     if topic_id:
         base_stmt = base_stmt.where(QuestionBank.topic_id == topic_id)
@@ -247,6 +268,7 @@ async def list_questions(
     if search:
         base_stmt = base_stmt.where(func.lower(QuestionBank.question_text).contains(search.lower()))
 
+    # Keep is_active for backward compatibility, but it's now supplemented by status
     base_stmt = base_stmt.where(QuestionBank.is_active == True)
 
     # Count total matching records
@@ -307,6 +329,7 @@ async def update_question(
     Updates a question. Author, Admin, HOD, or Grade Coordinator.
     Uses 'with_for_update' to prevent race conditions (BT-10).
     Validates logical integrity of the final object state (BT-03).
+    Automatically updates the updated_at timestamp.
     """
     # Use with_for_update() to lock the row for the duration of this transaction
     stmt = select(QuestionBank).where(QuestionBank.question_id == question_id).with_for_update().options(
@@ -331,6 +354,9 @@ async def update_question(
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(question, key, value)
+    
+    # Always update the updated_at timestamp
+    question.updated_at = datetime.now(timezone.utc)
     
     # Logic Validation (ensure integrity of the NEW state)
     validate_question_logic(question)
