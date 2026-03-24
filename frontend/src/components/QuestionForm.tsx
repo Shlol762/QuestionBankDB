@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Image as ImageIcon, 
   X, 
@@ -22,9 +22,47 @@ import { useAuthStore } from '../store/authStore';
 import { useSettingsStore } from '../store/settingsStore';
 
 interface QuestionFormProps {
-  initialData?: any;
+  initialData?: {
+    question_id?: number;
+    topic_id?: number;
+    topic?: { subject_id: number };
+    question_text?: string;
+    answer_text?: string;
+    image_url?: string;
+    marks?: number;
+    difficulty?: 'Easy' | 'Medium' | 'Hard';
+    q_type?: 'MCQ' | 'True/False' | 'Match the Following' | 'Short Answer' | 'Long Answer';
+    options?: QuestionOptions;
+  };
   onSuccess: () => void;
   onCancel: () => void;
+}
+
+type MatchPair = { left: string; right: string };
+type MCQOptions = { A: string; B: string; C: string; D: string };
+type MatchOptions = { pairs: MatchPair[] };
+type QuestionOptions = MCQOptions | MatchOptions | null;
+
+interface HierarchyTopic {
+  topic_id: number;
+  topic_name: string;
+}
+
+interface HierarchySubject {
+  subject_id: number;
+  subject_name: string;
+  topics: HierarchyTopic[];
+  display?: string;
+}
+
+interface HierarchyGrade {
+  grade_level: number;
+  subjects: HierarchySubject[];
+}
+
+interface HierarchySyllabus {
+  syllabus_name: string;
+  grades: HierarchyGrade[];
 }
 
 // --- VALIDATION SCHEMA ---
@@ -36,7 +74,11 @@ const questionSchema = z.object({
   marks: z.number().min(0, "Marks cannot be negative"),
   difficulty: z.enum(['Easy', 'Medium', 'Hard']),
   q_type: z.enum(['MCQ', 'True/False', 'Match the Following', 'Short Answer', 'Long Answer']),
-  options: z.any().optional()
+  options: z.union([
+    z.object({ A: z.string(), B: z.string(), C: z.string(), D: z.string() }),
+    z.object({ pairs: z.array(z.object({ left: z.string(), right: z.string() })) }),
+    z.null(),
+  ]).optional()
 }).superRefine((data, ctx) => {
   if (data.q_type === 'MCQ') {
     const opts = data.options || {};
@@ -63,7 +105,7 @@ const questionSchema = z.object({
         message: "Minimum 2 pairs required",
         path: ["options"]
       });
-    } else if (pairs.some((p: any) => !p.left?.trim() || !p.right?.trim())) {
+    } else if (pairs.some((p: MatchPair) => !p.left?.trim() || !p.right?.trim())) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "All pairs must be complete",
@@ -82,11 +124,12 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   const { defaultMarks, defaultDifficulty } = useSettingsStore();
   
   const isEditing = !!initialData?.question_id;
+  const isFirstRender = useRef(true);
 
   const defaultOptions = { A: '', B: '', C: '', D: '' };
   const defaultPairs = [{ left: '', right: '' }, { left: '', right: '' }];
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<QuestionFormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isDirty } } = useForm<QuestionFormData>({
     resolver: zodResolver(questionSchema),
     defaultValues: {
       topic_id: initialData?.topic_id?.toString() || '',
@@ -109,19 +152,19 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     initialData?.topic?.subject_id?.toString() || ''
   );
 
-  const { data: rawHierarchy = [] } = useQuery({
+  const { data: rawHierarchy = [] } = useQuery<HierarchySyllabus[]>({
     queryKey: ['curriculum-hierarchy'],
     queryFn: () => client.get('/curriculum/hierarchy').then(r => r.data)
   });
 
   // Derived available subjects and topics
   const availableSubjects = useMemo(() => {
-    const subjects: any[] = [];
-    rawHierarchy.forEach((s: any) => {
-      s.grades.forEach((g: any) => {
+    const subjects: HierarchySubject[] = [];
+    rawHierarchy.forEach((s) => {
+      s.grades.forEach((g) => {
         const isCoord = user?.is_admin || user?.grade_levels?.includes(g.grade_level);
-        g.subjects.forEach((sub: any) => {
-          if (isCoord || user?.subjects?.some((as: any) => as.subject_id === sub.subject_id) || user?.hod_subject_names?.includes(sub.subject_name)) {
+        g.subjects.forEach((sub) => {
+          if (isCoord || user?.subjects?.some((as) => as.subject_id === sub.subject_id) || user?.hod_subject_names?.includes(sub.subject_name)) {
             subjects.push({ ...sub, display: `${s.syllabus_name} • G${g.grade_level} • ${sub.subject_name}` });
           }
         });
@@ -156,8 +199,8 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
       toast.success(isEditing ? 'Question updated!' : 'Question created!');
       onSuccess();
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || "Failed to save question.");
+    onError: (err: { response?: { data?: { detail?: string } } }) => {
+      toast.error(err.response?.data?.detail || 'Failed to save question.');
     }
   });
 
@@ -169,7 +212,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
 
   const removePair = (index: number) => {
     const currentPairs = currentOptions?.pairs || [];
-    setValue('options', { pairs: currentPairs.filter((_: any, i: number) => i !== index) });
+    setValue('options', { pairs: currentPairs.filter((_: MatchPair, i: number) => i !== index) });
   };
 
   const handlePairChange = (index: number, field: 'left' | 'right', val: string) => {
@@ -178,8 +221,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     setValue('options', { pairs: newPairs });
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const uploadImageFile = async (file: File) => {
     if (!file) return;
 
     if (file.size > 50 * 1024 * 1024) {
@@ -194,11 +236,28 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
       const res = await client.post('/questions/upload-image', uploadData);
       setValue('image_url', res.data.image_url);
       toast.success("Image uploaded!");
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error("Upload failed");
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await uploadImageFile(file);
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    await uploadImageFile(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
   };
 
   const onSubmit = (data: QuestionFormData) => {
@@ -207,6 +266,11 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
 
   // Reset options when type changes
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+
     if (currentQType === 'MCQ') setValue('options', defaultOptions);
     else if (currentQType === 'Match the Following') setValue('options', { pairs: defaultPairs });
     else setValue('options', null);
@@ -230,7 +294,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
               </p>
             </div>
           </div>
-          <button onClick={onCancel} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors text-gray-400">
+          <button aria-label="Close question form" onClick={onCancel} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors text-gray-400">
             <X className="w-6 h-6" />
           </button>
         </div>
@@ -264,7 +328,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                       className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-4 focus:ring-academy-500/10 outline-none font-bold text-sm dark:text-white transition-all"
                     >
                       <option value="">Select Subject</option>
-                      {availableSubjects.map((s: any) => (
+                      {availableSubjects.map((s) => (
                         <option key={s.subject_id} value={s.subject_id}>{s.display}</option>
                       ))}
                     </select>
@@ -281,7 +345,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                       className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-4 focus:ring-academy-500/10 outline-none font-bold text-sm dark:text-white disabled:opacity-50 transition-all"
                     >
                       <option value="">{selectedSubjectId ? (availableTopics.length ? 'Choose Topic' : 'No topics in this subject') : 'Choose Topic'}</option>
-                      {availableTopics.map((t: any) => (
+                      {availableTopics.map((t) => (
                         <option key={t.topic_id} value={t.topic_id}>{t.topic_name}</option>
                       ))}
                     </select>
@@ -359,7 +423,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                     </button>
                   </div>
                   <div className="space-y-3 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
-                    {(currentOptions?.pairs || []).map((pair: any, idx: number) => (
+                    {(currentOptions && 'pairs' in currentOptions ? currentOptions.pairs : []).map((pair: MatchPair, idx: number) => (
                       <div key={idx} className="flex items-center gap-3 animate-in slide-in-from-left-2">
                         <div className="flex-1">
                           <input type="text" value={pair.left} onChange={(e) => handlePairChange(idx, 'left', e.target.value)} placeholder="Term" className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-academy-500 font-bold text-sm dark:text-white" />
@@ -368,7 +432,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                         <div className="flex-1">
                           <input type="text" value={pair.right} onChange={(e) => handlePairChange(idx, 'right', e.target.value)} placeholder="Relation" className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-academy-500 font-bold text-sm dark:text-white" />
                         </div>
-                        {currentOptions.pairs.length > 2 && (
+                        {currentOptions && 'pairs' in currentOptions && currentOptions.pairs.length > 2 && (
                           <button type="button" onClick={() => removePair(idx)} className="p-2 text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
                         )}
                       </div>
@@ -434,7 +498,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest text-center ml-1">Visual Reference</label>
-                <div className={`relative group border-2 border-dashed rounded-3xl transition-all min-h-[260px] flex items-center justify-center overflow-hidden ${currentImageUrl ? 'border-academy-500 bg-academy-50/10' : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/20 hover:border-academy-300'}`}>
+                <div onDrop={handleDrop} onDragOver={handleDragOver} className={`relative group border-2 border-dashed rounded-3xl transition-all min-h-[260px] flex items-center justify-center overflow-hidden ${currentImageUrl ? 'border-academy-500 bg-academy-50/10' : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/20 hover:border-academy-300'}`}>
                   {uploading ? (
                     <div className="flex flex-col items-center gap-2">
                       <Loader2 className="w-10 h-10 text-academy-500 animate-spin" />
@@ -462,7 +526,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
           </div>
 
           <div className="pt-10 border-t border-gray-100 dark:border-gray-700 flex items-center justify-end gap-6">
-            <button type="button" onClick={onCancel} className="text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">Discard Draft</button>
+            <button type="button" onClick={() => { if (!isDirty || window.confirm('Discard unsaved changes?')) onCancel(); }} className="text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">Discard Draft</button>
             <button 
               type="submit" 
               disabled={mutation.isPending || uploading} 

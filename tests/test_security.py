@@ -27,7 +27,7 @@ async def test_erroneous_registration_data(client: AsyncClient):
         await client.post("/auth/initial-setup", json={
             "full_name": "Admin", "email": "admin@test.com", "password": "password123", "department": "IT"
         })
-    except:
+    except Exception:
         pass
     login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
@@ -51,7 +51,7 @@ async def test_duplicate_registration_attempt(client: AsyncClient):
         await client.post("/auth/initial-setup", json={
             "full_name": "Admin", "email": "admin@test.com", "password": "password123", "department": "IT"
         })
-    except:
+    except Exception:
         pass
     login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]
@@ -80,7 +80,7 @@ async def test_unauthorized_data_modification(client: AsyncClient):
         await client.post("/auth/initial-setup", json={
             "full_name": "Admin", "email": "admin@test.com", "password": "password123", "department": "IT"
         })
-    except:
+    except Exception:
         pass
     login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
     token = login.json()["access_token"]

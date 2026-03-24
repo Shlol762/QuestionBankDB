@@ -23,7 +23,7 @@ import Modal from './Modal';
 import { useAuthStore } from '../store/authStore';
 
 interface CurriculumManagerProps {
-  onAddQuestion?: (topic: any) => void;
+  onAddQuestion?: (topic: { topic_id: number; topic_name: string; subject_id: number }) => void;
 }
 
 // --- Helper Components for Lazy Loading ---
@@ -217,7 +217,7 @@ const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSub
             <div className="flex items-center gap-2">
               <h3 className="font-black text-gray-900 dark:text-white tracking-tight">{syllabus.syllabus_name}</h3>
               {syllabus.pdf_url && (
-                <a href={`${import.meta.env.VITE_API_BASE_URL}${syllabus.pdf_url}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 text-academy-600 dark:text-academy-400 hover:bg-academy-100 dark:hover:bg-academy-900/50 rounded-lg transition-colors" title="View Syllabus PDF">
+                <a href={`${import.meta.env.VITE_API_BASE_URL || ''}${syllabus.pdf_url}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 text-academy-600 dark:text-academy-400 hover:bg-academy-100 dark:hover:bg-academy-900/50 rounded-lg transition-colors" title="View Syllabus PDF">
                   <FileText className="w-4 h-4" />
                 </a>
               )}
@@ -335,6 +335,22 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
 
   const syllabuses = syllabusesData?.items || [];
 
+  const validExpandedIds = useMemo(() => {
+    const ids = new Set<string>();
+    syllabuses.forEach((s: any) => ids.add(`s-${s.syllabus_id}`));
+    return ids;
+  }, [syllabuses]);
+
+  React.useEffect(() => {
+    const cleaned = expanded.filter(id => {
+      if (id.startsWith('s-')) return validExpandedIds.has(id);
+      return true;
+    });
+    if (cleaned.length !== expanded.length) {
+      saveExpanded(cleaned);
+    }
+  }, [expanded, validExpandedIds]);
+
   const toggleExpand = (id: string) => {
     saveExpanded(expanded.includes(id) ? expanded.filter(i => i !== id) : [...expanded, id]);
   };
@@ -346,7 +362,15 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(); // Invalidate everything since it could be nested
+      if (modalType === 'syllabus') {
+        queryClient.invalidateQueries({ queryKey: ['syllabuses'] });
+      } else if (modalType === 'grade') {
+        queryClient.invalidateQueries({ queryKey: ['grades', modalData.parentId] });
+      } else if (modalType === 'subject') {
+        queryClient.invalidateQueries({ queryKey: ['subjects', modalData.parentId] });
+      } else if (modalType === 'topic') {
+        queryClient.invalidateQueries({ queryKey: ['topics', modalData.parentId] });
+      }
       setModalType(null);
       setModalData({});
       setIsEditing(false);
@@ -359,7 +383,15 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
   const deleteMutation = useMutation({
     mutationFn: async (url: string) => client.delete(url),
     onSuccess: () => {
-      queryClient.invalidateQueries();
+      if (deleteTarget?.type === 'syllabus') {
+        queryClient.invalidateQueries({ queryKey: ['syllabuses'] });
+      } else if (deleteTarget?.type === 'grade') {
+        queryClient.invalidateQueries({ queryKey: ['syllabuses'] });
+      } else if (deleteTarget?.type === 'subject') {
+        queryClient.invalidateQueries({ queryKey: ['syllabuses'] });
+      } else if (deleteTarget?.type === 'topic') {
+        queryClient.invalidateQueries({ queryKey: ['syllabuses'] });
+      }
       setDeleteTarget(null);
     },
     onError: (err: any) => {
@@ -489,7 +521,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
           <p className="text-gray-500 dark:text-gray-400 font-medium">{isAdmin ? "Architect and manage the school's educational hierarchy." : "View and manage content for your assigned curriculum segments."}</p>
         </div>
         <button 
-          onClick={() => queryClient.invalidateQueries()} 
+          onClick={() => queryClient.invalidateQueries({ queryKey: ['syllabuses'] })} 
           disabled={isRefetching}
           className="flex items-center gap-2 px-4 py-2 text-academy-600 dark:text-academy-400 hover:bg-academy-50 dark:hover:bg-academy-900/30 rounded-xl transition-all font-bold disabled:opacity-50"
         >

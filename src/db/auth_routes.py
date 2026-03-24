@@ -3,6 +3,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import select, delete, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Optional
+import secrets
+import logging
 from src.db.main import get_session
 from src.db.models import Users, GradeCoordinatorLink, HODLink, UserSubjectLink, GradeConfig, Subject, Page
 from src.db.auth_utils import get_password_hash, verify_password, create_access_token, get_current_user
@@ -11,6 +13,7 @@ from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+logger = logging.getLogger(__name__)
 
 # --- SCHEMAS ---
 
@@ -192,22 +195,18 @@ async def list_users(
     if not current_user.is_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can access the staff directory")
     
-    # Count total users
-    count_stmt = select(func.count(Users.user_id))
-    total = (await session.exec(count_stmt)).one()
-
-    # Fetch paginated user data
-    data_stmt = select(Users).options(
+    data_stmt = select(
+        Users,
+        func.count(Users.user_id).over().label("total_count")
+    ).options(
         selectinload(Users.subjects),
         selectinload(Users.grade_coordinating),
         selectinload(Users.hod_subjects)
     ).order_by(Users.full_name).offset(offset).limit(limit)
-    
-    users = (await session.exec(data_stmt)).all()
-    
-    # Map to the response model
-    items = [map_user_to_read(u) for u in users]
-    
+    rows = (await session.exec(data_stmt)).all()
+    total = rows[0][1] if rows else 0
+    items = [map_user_to_read(row[0]) for row in rows]
+
     return Page(items=items, total=total)
     
 @router.post("/users/{user_id}/reset-password", status_code=status.HTTP_200_OK)
@@ -224,11 +223,21 @@ async def reset_user_password(
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
-    user.password_hash = get_password_hash("password")
+    temporary_password = secrets.token_urlsafe(12)
+    user.password_hash = get_password_hash(temporary_password)
     session.add(user)
     await session.commit()
 
-    return {"message": f"Password for {user.full_name} has been reset."}
+    logger.warning(
+        "password_reset admin_id=%s target_user_id=%s",
+        current_user.user_id,
+        user.user_id,
+    )
+
+    return {
+        "message": "Password reset completed.",
+        "temporary_password": temporary_password,
+    }
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")

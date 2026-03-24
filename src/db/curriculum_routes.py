@@ -194,37 +194,117 @@ async def get_full_hierarchy(
     syllabuses = result.all()
 
     if current_user.is_admin:
-        return syllabuses
+        return [
+            SyllabusHierarchyRead(
+                syllabus_id=s.syllabus_id,
+                syllabus_name=s.syllabus_name,
+                academic_year=s.academic_year,
+                pdf_url=s.pdf_url,
+                grades=[
+                    GradeHierarchy(
+                        config_id=g.config_id,
+                        syllabus_id=g.syllabus_id,
+                        grade_level=g.grade_level,
+                        subjects=[
+                            SubjectHierarchy(
+                                subject_id=sub.subject_id,
+                                subject_name=sub.subject_name,
+                                config_id=sub.config_id,
+                                topics=[
+                                    TopicRead(
+                                        topic_id=t.topic_id,
+                                        topic_name=t.topic_name,
+                                        subject_id=t.subject_id,
+                                    )
+                                    for t in sub.topics
+                                ],
+                            )
+                            for sub in g.subjects
+                        ],
+                    )
+                    for g in s.grades
+                ],
+            )
+            for s in syllabuses
+        ]
 
     # Filter hierarchy for non-admins
-    filtered_syllabuses = []
+    filtered_syllabuses: List[SyllabusHierarchyRead] = []
     teacher_sub_ids = [s.subject_id for s in current_user.subjects]
     hod_sub_names = [h.subject_name.strip().lower() for h in current_user.hod_subjects]
     coord_grade_levels = [g.grade_level for g in current_user.grade_coordinating]
 
     for syllabus in syllabuses:
-        filtered_grades = []
+        filtered_grades: List[GradeHierarchy] = []
         for grade in syllabus.grades:
             is_coordinator = grade.grade_level in coord_grade_levels
-            
-            # If coordinator, they see ALL subjects in this grade
+
             if is_coordinator:
-                filtered_grades.append(grade)
+                filtered_grades.append(
+                    GradeHierarchy(
+                        config_id=grade.config_id,
+                        syllabus_id=grade.syllabus_id,
+                        grade_level=grade.grade_level,
+                        subjects=[
+                            SubjectHierarchy(
+                                subject_id=sub.subject_id,
+                                subject_name=sub.subject_name,
+                                config_id=sub.config_id,
+                                topics=[
+                                    TopicRead(
+                                        topic_id=t.topic_id,
+                                        topic_name=t.topic_name,
+                                        subject_id=t.subject_id,
+                                    )
+                                    for t in sub.topics
+                                ],
+                            )
+                            for sub in grade.subjects
+                        ],
+                    )
+                )
                 continue
 
-            # Otherwise, filter subjects by HOD (normalized) or Teacher assignments
             filtered_subjects = [
                 sub for sub in grade.subjects 
                 if sub.subject_name.strip().lower() in hod_sub_names or sub.subject_id in teacher_sub_ids
             ]
-            
+
             if filtered_subjects:
-                grade.subjects = filtered_subjects
-                filtered_grades.append(grade)
-        
+                filtered_grades.append(
+                    GradeHierarchy(
+                        config_id=grade.config_id,
+                        syllabus_id=grade.syllabus_id,
+                        grade_level=grade.grade_level,
+                        subjects=[
+                            SubjectHierarchy(
+                                subject_id=sub.subject_id,
+                                subject_name=sub.subject_name,
+                                config_id=sub.config_id,
+                                topics=[
+                                    TopicRead(
+                                        topic_id=t.topic_id,
+                                        topic_name=t.topic_name,
+                                        subject_id=t.subject_id,
+                                    )
+                                    for t in sub.topics
+                                ],
+                            )
+                            for sub in filtered_subjects
+                        ],
+                    )
+                )
+
         if filtered_grades:
-            syllabus.grades = filtered_grades
-            filtered_syllabuses.append(syllabus)
+            filtered_syllabuses.append(
+                SyllabusHierarchyRead(
+                    syllabus_id=syllabus.syllabus_id,
+                    syllabus_name=syllabus.syllabus_name,
+                    academic_year=syllabus.academic_year,
+                    pdf_url=syllabus.pdf_url,
+                    grades=filtered_grades,
+                )
+            )
 
     return filtered_syllabuses
 

@@ -123,6 +123,45 @@ async def test_hod_permission_leak(client: AsyncClient):
     
     assert len(hierarchy) >= 1, "HOD should see syllabi containing their subject"
 
+
+@pytest.mark.asyncio
+async def test_hod_cannot_manage_unassigned_subject(client: AsyncClient):
+    login_admin = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    if login_admin.status_code != 200:
+        login_admin = await client.post("/auth/login", data={"username": "admin@test.com", "password": "newsecurepass1"})
+    token_admin = login_admin.json()["access_token"]
+    admin_headers = {"Authorization": f"Bearer {token_admin}"}
+
+    subject_res = await client.post("/curriculum/subjects", json={"config_id": 1, "subject_name": "Physics"}, headers=admin_headers)
+    if subject_res.status_code not in [201, 400]:
+        return
+    if subject_res.status_code == 201:
+        subject_id = subject_res.json()["subject_id"]
+    else:
+        subjects_res = await client.get("/curriculum/subjects/1", headers=admin_headers)
+        subject = next((s for s in subjects_res.json()["items"] if s["subject_name"].lower() == "physics"), None)
+        if not subject:
+            return
+        subject_id = subject["subject_id"]
+
+    topic_res = await client.post("/curriculum/topics", json={"subject_id": subject_id, "topic_name": "Mechanics"}, headers=admin_headers)
+    if topic_res.status_code != 201:
+        return
+
+    login_hod = await client.post("/auth/login", data={"username": "hod@math.com", "password": "password123"})
+    if login_hod.status_code != 200:
+        return
+
+    hod_headers = {"Authorization": f"Bearer {login_hod.json()['access_token']}"}
+    forbidden = await client.post("/questions/", json={
+        "topic_id": topic_res.json()["topic_id"],
+        "question_text": "Should not be allowed",
+        "answer_text": "X",
+        "marks": 1,
+        "q_type": "Short Answer"
+    }, headers=hod_headers)
+    assert forbidden.status_code == 403
+
 @pytest.mark.asyncio
 async def test_mcq_answer_integrity(client: AsyncClient):
     """
@@ -353,3 +392,175 @@ async def test_delete_last_admin(client: AsyncClient):
     res = await client.delete("/auth/users/1", headers=headers)
     assert res.status_code == 400
     assert "cannot delete your own account" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_ping_and_health_endpoints(client: AsyncClient):
+    ping = await client.get("/ping")
+    assert ping.status_code == 200
+    assert ping.json()["message"] == "pong"
+
+    health = await client.get("/health")
+    assert health.status_code in [200, 503]
+    assert "status" in health.json()
+
+
+@pytest.mark.asyncio
+async def test_setup_status_endpoint(client: AsyncClient):
+    res = await client.get("/auth/setup-status")
+    assert res.status_code == 200
+    assert "setup_required" in res.json()
+
+
+@pytest.mark.asyncio
+async def test_stats_endpoint_coverage(client: AsyncClient):
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res = await client.get("/stats/", headers=headers)
+    assert res.status_code == 200
+    payload = res.json()
+    assert "total_questions" in payload
+    assert "recent_activity" in payload
+
+
+@pytest.mark.asyncio
+async def test_update_my_password_flow(client: AsyncClient):
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    bad = await client.patch(
+        "/auth/me/password",
+        json={"current_password": "wrong", "new_password": "newsecurepass1"},
+        headers=headers,
+    )
+    assert bad.status_code == 400
+
+    good = await client.patch(
+        "/auth/me/password",
+        json={"current_password": "password123", "new_password": "newsecurepass1"},
+        headers=headers,
+    )
+    assert good.status_code == 204
+
+    relogin = await client.post("/auth/login", data={"username": "admin@test.com", "password": "newsecurepass1"})
+    assert relogin.status_code == 200
+
+    # Revert password to avoid affecting later tests in the shared session DB.
+    new_headers = {"Authorization": f"Bearer {relogin.json()['access_token']}"}
+    revert = await client.patch(
+        "/auth/me/password",
+        json={"current_password": "newsecurepass1", "new_password": "password123"},
+        headers=new_headers,
+    )
+    assert revert.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_reset_password_endpoint_coverage(client: AsyncClient):
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "newsecurepass1"})
+    if login.status_code != 200:
+        login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    create_user = await client.post("/auth/register", json={
+        "full_name": "Reset Target",
+        "email": "reset-target@test.com",
+        "password": "password123",
+        "department": "Ops"
+    }, headers=headers)
+    assert create_user.status_code in [201, 400]
+
+    users = await client.get("/auth/users", headers=headers)
+    target = next(u for u in users.json()["items"] if u["email"] == "reset-target@test.com")
+
+    reset = await client.post(f"/auth/users/{target['user_id']}/reset-password", headers=headers)
+    assert reset.status_code == 200
+    assert "temporary_password" in reset.json()
+
+
+@pytest.mark.asyncio
+async def test_delete_only_other_admin_blocked(client: AsyncClient):
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "newsecurepass1"})
+    if login.status_code != 200:
+        login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    create_admin = await client.post("/auth/register", json={
+        "full_name": "Second Admin",
+        "email": "second-admin@test.com",
+        "password": "password123",
+        "department": "IT",
+        "is_admin": True
+    }, headers=headers)
+    assert create_admin.status_code in [201, 400]
+
+    users = await client.get("/auth/users", headers=headers)
+    second_admin = next(u for u in users.json()["items"] if u["email"] == "second-admin@test.com")
+
+    delete_second = await client.delete(f"/auth/users/{second_admin['user_id']}", headers=headers)
+    assert delete_second.status_code in [204, 404]
+
+    self_delete = await client.delete("/auth/users/1", headers=headers)
+    assert self_delete.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_mcq_patch_rejects_invalid_answer(client: AsyncClient):
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "newsecurepass1"})
+    if login.status_code != 200:
+        login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    syl = await client.post("/curriculum/syllabuses", json={"syllabus_name": "PatchS", "academic_year": "2040"}, headers=headers)
+    assert syl.status_code in [201, 400]
+    syllabus_id = syl.json()["syllabus_id"] if syl.status_code == 201 else 1
+
+    grade = await client.post("/curriculum/grades", json={"syllabus_id": syllabus_id, "grade_level": 5}, headers=headers)
+    assert grade.status_code in [201, 400]
+    config_id = grade.json()["config_id"] if grade.status_code == 201 else 1
+
+    subject = await client.post("/curriculum/subjects", json={"config_id": config_id, "subject_name": "PatchSubject"}, headers=headers)
+    assert subject.status_code in [201, 400]
+    if subject.status_code == 201:
+        subject_id = subject.json()["subject_id"]
+    else:
+        subjects_res = await client.get(f"/curriculum/subjects/{config_id}", headers=headers)
+        subject_item = next((s for s in subjects_res.json()["items"] if s["subject_name"].lower() == "patchsubject"), None)
+        if not subject_item:
+            return
+        subject_id = subject_item["subject_id"]
+
+    topic = await client.post("/curriculum/topics", json={"subject_id": subject_id, "topic_name": "PatchTopic"}, headers=headers)
+    assert topic.status_code in [201, 400]
+    if topic.status_code == 201:
+        topic_id = topic.json()["topic_id"]
+    else:
+        topics_res = await client.get(f"/curriculum/topics/subject/{subject_id}", headers=headers)
+        topic_item = next((t for t in topics_res.json()["items"] if t["topic_name"].lower() == "patchtopic"), None)
+        if not topic_item:
+            return
+        topic_id = topic_item["topic_id"]
+
+    create_q = await client.post("/questions/", json={
+        "topic_id": topic_id,
+        "question_text": "Patch MCQ",
+        "answer_text": "A",
+        "marks": 1,
+        "q_type": "MCQ",
+        "options": {"A": "One", "B": "Two"}
+    }, headers=headers)
+    assert create_q.status_code == 201
+    q_id = create_q.json()["question_id"]
+
+    bad_patch = await client.patch(
+        f"/questions/{q_id}",
+        json={"answer_text": "Z"},
+        headers=headers,
+    )
+    assert bad_patch.status_code == 400

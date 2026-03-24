@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     TESTING: bool = False
+    FORCE_HTTPS: bool = False
+    TRUST_PROXY_HEADERS: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

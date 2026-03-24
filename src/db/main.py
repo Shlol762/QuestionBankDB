@@ -6,8 +6,12 @@ from src.config import settings
 
 
 async_engine = create_async_engine(
-    url = settings.POSTGRES_URL,
-    echo = True
+    url=settings.POSTGRES_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+    pool_timeout=30,
 )
 
 

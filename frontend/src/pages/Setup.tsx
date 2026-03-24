@@ -29,6 +29,8 @@ const Setup: React.FC<SetupProps> = ({ onComplete }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,10 +132,11 @@ const Setup: React.FC<SetupProps> = ({ onComplete }) => {
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Identity</label>
+                    <label htmlFor="setup-full-name" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Full Identity</label>
                     <div className="relative group">
                       <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-academy-600 transition-colors" />
                       <input
+                        id="setup-full-name"
                         required
                         autoFocus
                         type="text"
@@ -145,10 +148,11 @@ const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Department</label>
+                    <label htmlFor="setup-department" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Department</label>
                     <div className="relative group">
                       <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-academy-600 transition-colors" />
                       <input
+                        id="setup-department"
                         required
                         type="text"
                         value={formData.department}
@@ -161,10 +165,11 @@ const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">System Email (Login ID)</label>
+                  <label htmlFor="setup-email" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">System Email (Login ID)</label>
                   <div className="relative group">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-academy-600 transition-colors" />
                     <input
+                      id="setup-email"
                       required
                       type="email"
                       value={formData.email}
@@ -177,31 +182,35 @@ const Setup: React.FC<SetupProps> = ({ onComplete }) => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Secure Password</label>
+                    <label htmlFor="setup-password" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Secure Password</label>
                     <div className="relative group">
                       <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-academy-600 transition-colors" />
                       <input
+                        id="setup-password"
                         required
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         value={formData.password}
                         onChange={e => setFormData({...formData, password: e.target.value})}
-                        className="w-full pl-11 pr-4 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 outline-none font-bold text-sm dark:text-white transition-all"
+                        className="w-full pl-11 pr-16 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 outline-none font-bold text-sm dark:text-white transition-all"
                         placeholder="••••••••"
                       />
+                      <button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(v => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-gray-500">{showPassword ? 'Hide' : 'Show'}</button>
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Confirm Security</label>
+                    <label htmlFor="setup-confirm-password" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Confirm Security</label>
                     <div className="relative group">
                       <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-academy-600 transition-colors" />
                       <input
+                        id="setup-confirm-password"
                         required
-                        type="password"
+                        type={showConfirmPassword ? 'text' : 'password'}
                         value={formData.confirm_password}
                         onChange={e => setFormData({...formData, confirm_password: e.target.value})}
-                        className="w-full pl-11 pr-4 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 outline-none font-bold text-sm dark:text-white transition-all"
+                        className="w-full pl-11 pr-16 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 outline-none font-bold text-sm dark:text-white transition-all"
                         placeholder="••••••••"
                       />
+                      <button type="button" aria-label={showConfirmPassword ? 'Hide password' : 'Show password'} onClick={() => setShowConfirmPassword(v => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-gray-500">{showConfirmPassword ? 'Hide' : 'Show'}</button>
                     </div>
                   </div>
                 </div>

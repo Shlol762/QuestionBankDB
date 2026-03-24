@@ -40,10 +40,16 @@ async def get_dashboard_stats(
     difficulty_map = {row[0]: row[1] for row in diff_results}
 
     # 3. Recent Activity (Last 5 Questions)
-    recent_stmt = select(QuestionBank).options(selectinload(QuestionBank.teacher), selectinload(QuestionBank.topic))
+    recent_stmt = select(
+        QuestionBank.question_id,
+        func.substr(QuestionBank.question_text, 1, 100).label("short_text"),
+        QuestionBank.created_at,
+        Users.full_name,
+        Topic.topic_name,
+    ).join(Users, Users.user_id == QuestionBank.teacher_id).join(Topic, Topic.topic_id == QuestionBank.topic_id)
     if not current_user.is_admin:
         recent_stmt = recent_stmt.where(QuestionBank.teacher_id == current_user.user_id)
-    recent_stmt = recent_stmt.order_by(QuestionBank.created_at.desc()).limit(5)
+    recent_stmt = recent_stmt.order_by(QuestionBank.created_at.desc(), QuestionBank.question_id.desc()).limit(5)
     
     recent_questions = (await session.exec(recent_stmt)).all()
 
@@ -54,11 +60,12 @@ async def get_dashboard_stats(
         "difficulty_distribution": difficulty_map,
         "recent_activity": [
             {
-                "id": q.question_id,
-                "text": q.question_text[:100],
-                "author": q.teacher.full_name,
-                "topic": q.topic.topic_name,
-                "created_at": q.created_at
-            } for q in recent_questions
+                "id": row[0],
+                "text": row[1],
+                "author": row[3],
+                "topic": row[4],
+                "created_at": row[2],
+            }
+            for row in recent_questions
         ]
     }

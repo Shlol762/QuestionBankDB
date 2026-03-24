@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, TypeVar, Generic
+from typing import Optional, List, Dict, TypeVar, Generic, Any
 from enum import Enum
 from sqlmodel import SQLModel, Field, Relationship, Session
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, DateTime
 from pydantic import BaseModel, ConfigDict
 
 # --- ENUMS ---
@@ -192,13 +192,16 @@ class QuestionBank(BaseSQLModel, table=True):
     question_text: str
     answer_text: str
     # Options stored as JSON for flexibility: {"A": "Choice 1", "B": "Choice 2"...}
-    options: Optional[Dict[str, str]] = Field(default=None, sa_column=Column(JSON))
+    options: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     image_url: Optional[str] = None 
     marks: int
     difficulty: DifficultyLevel = Field(default=DifficultyLevel.MEDIUM)
     q_type: QuestionType = Field(default=QuestionType.MCQ)
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
     def __repr__(self):
         short_text = (self.question_text[:30] + '..') if len(self.question_text) > 30 else self.question_text

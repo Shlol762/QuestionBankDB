@@ -5,9 +5,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    allowedHosts: [
-      'sacral-merry-nonperforming.ngrok-free.dev',
-    ],
+    allowedHosts: process.env.VITE_ALLOWED_HOSTS
+      ? process.env.VITE_ALLOWED_HOSTS.split(',').map((v) => v.trim()).filter(Boolean)
+      : [],
     proxy: {
       '/auth': 'http://localhost:8000',
       '/curriculum': 'http://localhost:8000',

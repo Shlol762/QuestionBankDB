@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -10,14 +10,59 @@ interface ModalProps {
 }
 
 const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidth = 'max-w-md' }) => {
-  // Handle ESC key to close
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+
+  const focusableSelector =
+    'a[href], button:not([disabled]), textarea, input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
   useEffect(() => {
+    if (!isOpen) return;
+
+    openerRef.current = document.activeElement as HTMLElement;
+
+    const focusables = dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector) || [];
+    if (focusables.length > 0) {
+      focusables[0].focus();
+    } else {
+      dialogRef.current?.focus();
+    }
+
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
+
+    const handleTabTrap = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+
+      const nodes = dialogRef.current.querySelectorAll<HTMLElement>(focusableSelector);
+      if (nodes.length === 0) {
+        e.preventDefault();
+        return;
+      }
+
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      const active = document.activeElement as HTMLElement;
+
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
     window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [onClose]);
+    window.addEventListener('keydown', handleTabTrap);
+
+    return () => {
+      window.removeEventListener('keydown', handleEsc);
+      window.removeEventListener('keydown', handleTabTrap);
+      openerRef.current?.focus();
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -30,10 +75,18 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
       />
       
       {/* Modal Content */}
-      <div className={`relative bg-white dark:bg-gray-800 w-full ${maxWidth} rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300 transition-colors duration-300`}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        tabIndex={-1}
+        className={`relative bg-white dark:bg-gray-800 w-full ${maxWidth} rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300 transition-colors duration-300`}
+      >
         <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white">{title}</h3>
+          <h3 id="modal-title" className="text-xl font-bold text-gray-900 dark:text-white">{title}</h3>
           <button 
+            aria-label="Close modal"
             onClick={onClose}
             className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
           >

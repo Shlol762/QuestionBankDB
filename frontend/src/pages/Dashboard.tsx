@@ -25,6 +25,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import client from '../api/client';
@@ -40,16 +41,37 @@ interface DashboardProps {
   setIsDarkMode: (val: boolean) => void;
 }
 
+interface TopicSummary {
+  topic_id: number;
+  topic_name: string;
+  subject_id: number;
+}
+
+interface QuestionRow {
+  question_id: number;
+  question_text: string;
+  q_type: string;
+  difficulty: string;
+  marks: number;
+  image_url?: string | null;
+  topic?: TopicSummary;
+}
+
+interface DeleteTarget {
+  question_id: number;
+  question_text: string;
+}
+
 const ITEMS_PER_PAGE = 10;
 
 const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
-  // Persistence for active tab
-  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('dashboard-active-tab') || 'subjects');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'subjects';
   
   const [isAddingQuestion, setIsAddingQuestion] = useState(false);
-  const [editingQuestion, setEditingQuestion] = useState<any>(null);
-  const [preselectedTopic, setPreselectedTopic] = useState<any>(null);
-  const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [editingQuestion, setEditingQuestion] = useState<QuestionRow | null>(null);
+  const [preselectedTopic, setPreselectedTopic] = useState<TopicSummary | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   
   // Settings Store
@@ -67,15 +89,18 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const passwordVaultRef = useRef<HTMLDivElement>(null);
+  const tableTopRef = useRef<HTMLDivElement>(null);
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // Handle tab persistence
-  useEffect(() => {
-    localStorage.setItem('dashboard-active-tab', activeTab);
-  }, [activeTab]);
+  const updateActiveTab = (tab: string) => {
+    setSearchParams({ tab }, { replace: true });
+  };
 
   // Debounce search and reset page
   useEffect(() => {
@@ -91,14 +116,20 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
     setPage(0);
   }, [filterType, filterDifficulty]);
 
+  useEffect(() => {
+    if (activeTab === 'questions') {
+      tableTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [page, activeTab]);
+
   const handleLogout = () => {
     sessionStorage.removeItem('token');
     navigate('/login');
   };
 
-  const handleAddQuestionFromCurriculum = (topic: any) => {
+  const handleAddQuestionFromCurriculum = (topic: TopicSummary) => {
     setPreselectedTopic(topic);
-    setActiveTab('questions');
+    updateActiveTab('questions');
     setIsAddingQuestion(true);
   };
 
@@ -110,7 +141,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   });
   
   const passwordMutation = useMutation({
-    mutationFn: (payload: any) => client.patch('/auth/me/password', payload),
+    mutationFn: (payload: { current_password: string; new_password: string }) => client.patch('/auth/me/password', payload),
     onSuccess: () => {
         setCurrentPassword('');
         setNewPassword('');
@@ -122,10 +153,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
     e.preventDefault();
     passwordMutation.reset();
     if (newPassword !== confirmPassword) {
-        passwordMutation.mutate(undefined, {
-            onError: () => {},
-            onSuccess: () => {}
-        });
+      toast.error('Passwords do not match.');
         return;
     }
     passwordMutation.mutate({
@@ -153,7 +181,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
     placeholderData: { items: [], total: 0 }
   });
 
-  const questions = questionsData?.items || [];
+  const questions: QuestionRow[] = questionsData?.items || [];
   const totalQuestions = questionsData?.total || 0;
 
   // Delete Mutation
@@ -163,8 +191,8 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
       queryClient.invalidateQueries({ queryKey: ['questions'] });
       setDeleteTarget(null);
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || "Could not delete question.");
+    onError: (err: { response?: { data?: { detail?: string } } }) => {
+      toast.error(err.response?.data?.detail || 'Could not delete question.');
     }
   });
 
@@ -216,7 +244,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-tighter">Reduced eye strain</p>
                     </div>
                   </div>
-                  <button onClick={() => setIsDarkMode(!isDarkMode)} className={`w-12 h-6 rounded-full transition-all relative ${isDarkMode ? 'bg-indigo-600' : 'bg-gray-200'}`}>
+                  <button aria-label="Toggle dark mode" aria-pressed={isDarkMode} onClick={() => setIsDarkMode(!isDarkMode)} className={`w-12 h-6 rounded-full transition-all relative ${isDarkMode ? 'bg-indigo-600' : 'bg-gray-200'}`}>
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm ${isDarkMode ? 'left-7' : 'left-1'}`} />
                   </button>
                 </div>
@@ -229,12 +257,12 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Initial Marks</label>
-                    <input type="number" value={defaultMarks} onChange={(e) => setDefaultMarks(Number(e.target.value))} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white" />
+                    <label htmlFor="default-marks" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Initial Marks</label>
+                    <input id="default-marks" type="number" value={defaultMarks} onChange={(e) => setDefaultMarks(Number(e.target.value))} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white" />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Base Complexity</label>
-                    <select value={defaultDifficulty} onChange={(e) => setDefaultDifficulty(e.target.value as any)} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white">
+                    <label htmlFor="default-difficulty" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Base Complexity</label>
+                    <select id="default-difficulty" value={defaultDifficulty} onChange={(e) => setDefaultDifficulty(e.target.value as any)} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white">
                       <option value="Easy">Easy</option><option value="Medium">Medium</option><option value="Hard">Hard</option>
                     </select>
                   </div>
@@ -265,16 +293,25 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                 <form onSubmit={handlePasswordChange} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Current Password</label>
-                            <input type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required className="w-full mt-1 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm" autoComplete="current-password" />
+                            <label htmlFor="current-password" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Current Password</label>
+                            <div className="relative mt-1">
+                              <input id="current-password" type={showCurrentPassword ? 'text' : 'password'} value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} required className="w-full px-4 py-3 pr-11 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm" autoComplete="current-password" />
+                              <button type="button" aria-label={showCurrentPassword ? 'Hide password' : 'Show password'} onClick={() => setShowCurrentPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-gray-500">{showCurrentPassword ? 'Hide' : 'Show'}</button>
+                            </div>
                         </div>
                         <div>
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">New Password</label>
-                            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required className="w-full mt-1 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm" autoComplete="new-password" />
+                            <label htmlFor="new-password" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">New Password</label>
+                            <div className="relative mt-1">
+                              <input id="new-password" type={showNewPassword ? 'text' : 'password'} value={newPassword} onChange={e => setNewPassword(e.target.value)} required className="w-full px-4 py-3 pr-11 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm" autoComplete="new-password" />
+                              <button type="button" aria-label={showNewPassword ? 'Hide password' : 'Show password'} onClick={() => setShowNewPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-gray-500">{showNewPassword ? 'Hide' : 'Show'}</button>
+                            </div>
                         </div>
                         <div>
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Confirm New Password</label>
-                            <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required className="w-full mt-1 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm" autoComplete="new-password" />
+                            <label htmlFor="confirm-password" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Confirm New Password</label>
+                            <div className="relative mt-1">
+                              <input id="confirm-password" type={showConfirmPassword ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required className="w-full px-4 py-3 pr-11 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm" autoComplete="new-password" />
+                              <button type="button" aria-label={showConfirmPassword ? 'Hide password' : 'Show password'} onClick={() => setShowConfirmPassword(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-gray-500">{showConfirmPassword ? 'Hide' : 'Show'}</button>
+                            </div>
                         </div>
                     </div>
                     <div className="flex justify-end pt-2">
@@ -317,15 +354,17 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
               </button>
             </div>
 
+            <div ref={tableTopRef} />
             <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden text-gray-900 dark:text-white transition-colors duration-300">
               <div className="p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 space-y-4">
                 <div className="flex items-center gap-4">
                   <div className="relative flex-1 max-w-md group">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-academy-600 transition-colors" />
-                    <input type="text" placeholder="Filter by text..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-11 pr-10 py-3 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm focus:ring-4 focus:ring-academy-500/10 outline-none bg-white dark:bg-gray-900 font-bold transition-all" />
-                    {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>}
+                    <label htmlFor="question-search" className="sr-only">Search questions</label>
+                    <input id="question-search" type="text" placeholder="Filter by text..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-11 pr-10 py-3 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm focus:ring-4 focus:ring-academy-500/10 outline-none bg-white dark:bg-gray-900 font-bold transition-all" />
+                    {searchQuery && <button aria-label="Clear search" onClick={() => setSearchQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>}
                   </div>
-                  <button onClick={() => setShowFilters(!showFilters)} className={`flex items-center gap-2 px-5 py-3 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${showFilters ? 'bg-academy-600 border-academy-600 text-white shadow-lg' : 'dark:border-gray-700 text-gray-500 hover:bg-white dark:hover:bg-gray-700'}`}>
+                  <button aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)} className={`flex items-center gap-2 px-5 py-3 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${showFilters ? 'bg-academy-600 border-academy-600 text-white shadow-lg' : 'dark:border-gray-700 text-gray-500 hover:bg-white dark:hover:bg-gray-700'}`}>
                     <Filter className="w-4 h-4" /> {showFilters ? 'Hide Logic' : 'Filter Logic'}
                     {(filterType || filterDifficulty) && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
                   </button>
@@ -357,14 +396,15 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-left">
+                <table aria-label="Question list" className="w-full text-left">
+                  <caption className="sr-only">Question list</caption>
                   <thead>
                     <tr className="text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100 dark:border-gray-700">
-                      <th className="px-8 py-5">Question Detail</th>
-                      <th className="px-8 py-5">Classification</th>
-                      <th className="px-8 py-5">Complexity</th>
-                      <th className="px-8 py-5 text-center">Score</th>
-                      <th className="px-8 py-5 text-right">Actions</th>
+                      <th scope="col" className="px-8 py-5">Question Detail</th>
+                      <th scope="col" className="px-8 py-5">Classification</th>
+                      <th scope="col" className="px-8 py-5">Complexity</th>
+                      <th scope="col" className="px-8 py-5 text-center">Score</th>
+                      <th scope="col" className="px-8 py-5 text-right">Actions</th>
                     </tr>
                   </thead>
                                   <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
@@ -386,13 +426,13 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                                         </td>
                                       </tr>
                                     ) : (
-                                      questions.map((q: any) => (
+                                      questions.map((q) => (
                                         <tr key={q.question_id} className="hover:bg-gray-50/50 dark:hover:bg-gray-900/50 transition-colors group">
                                           <td className="px-8 py-6">
                                             <div className="flex items-center gap-4">
                                               {q.image_url && (
                                                 <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-gray-900 overflow-hidden flex-shrink-0 border-2 border-white dark:border-gray-700 shadow-sm">
-                                                                                  <img src={`${import.meta.env.VITE_API_BASE_URL}${q.image_url}`} className="w-full h-full object-cover" alt="" />
+                                                                                  <img src={`${import.meta.env.VITE_API_BASE_URL || ''}${q.image_url}`} className="w-full h-full object-cover" alt={`Question thumbnail: ${q.question_text.slice(0, 50)}`} />
                                                                                 </div>                                              )}
                                               <div>
                                                 <p className="font-bold text-gray-900 dark:text-white line-clamp-1 max-w-sm">{q.question_text}</p>
@@ -412,8 +452,8 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                                           <td className="px-8 py-6 font-black text-gray-900 dark:text-white text-center text-sm">{q.marks}</td>
                                           <td className="px-8 py-6 text-right">
                                             <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform group-hover:-translate-x-1">
-                                              <button onClick={() => setEditingQuestion(q)} className="p-2.5 hover:bg-academy-50 dark:hover:bg-academy-900/30 text-gray-400 hover:text-academy-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Pencil className="w-4 h-4" /></button>
-                                              <button onClick={() => setDeleteTarget(q)} className="p-2.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Trash2 className="w-4 h-4" /></button>
+                                              <button aria-label="Edit question" onClick={() => setEditingQuestion(q)} className="p-2.5 hover:bg-academy-50 dark:hover:bg-academy-900/30 text-gray-400 hover:text-academy-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Pencil className="w-4 h-4" /></button>
+                                              <button aria-label="Delete question" onClick={() => setDeleteTarget({ question_id: q.question_id, question_text: q.question_text })} className="p-2.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Trash2 className="w-4 h-4" /></button>
                                             </div>
                                           </td>
                                         </tr>
@@ -442,7 +482,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                   <button onClick={() => setDeleteTarget(null)} className="flex-1 py-4 text-gray-400 font-black text-[10px] uppercase tracking-widest">Retain Question</button>
                   <button onClick={() => deleteMutation.mutate(deleteTarget.question_id)} disabled={deleteMutation.isPending} className="flex-[2] py-4 bg-red-600 hover:bg-red-700 text-white font-black rounded-2xl shadow-2xl shadow-red-600/30 active:scale-95 transition-all flex items-center justify-center gap-2">
                     {deleteMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Trash2 className="w-5 h-5" />}
-                    Delete Permanently
+                    {deleteMutation.isPending ? 'Deleting...' : 'Delete Permanently'}
                   </button>
                 </div>
               </div>
@@ -456,7 +496,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
 
   return (
     <div className={`flex h-screen w-full bg-gray-50 dark:bg-gray-950 overflow-hidden font-sans transition-colors duration-300`}>
-      <aside className="w-72 bg-academy-900 dark:bg-black text-white flex flex-col shadow-2xl z-20 border-r border-white/5">
+      <aside className="hidden lg:flex w-72 bg-academy-900 dark:bg-black text-white flex-col shadow-2xl z-20 border-r border-white/5">
         <div className="p-8 flex items-center gap-4">
           <div className="bg-academy-500 p-2.5 rounded-2xl shadow-xl shadow-academy-500/30 rotate-3"><BookOpen className="w-7 h-7 text-white" /></div>
           <div><h1 className="text-2xl font-black tracking-tighter">QB PORTAL</h1><p className="text-[8px] font-black text-academy-400 uppercase tracking-[0.2em] ml-0.5">Academic System</p></div>
@@ -467,7 +507,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
             if (item.role === 'admin' && !isAdmin) return null;
             const isActive = activeTab === item.id;
             return (
-              <button key={item.id} onClick={() => { setActiveTab(item.id); setIsAddingQuestion(false); setEditingQuestion(null); }} className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl transition-all group ${isActive ? 'bg-white/10 text-white shadow-xl' : 'text-gray-500 hover:bg-white/5 hover:text-white'}`}>
+              <button key={item.id} aria-current={isActive ? 'page' : undefined} onClick={() => { updateActiveTab(item.id); setIsAddingQuestion(false); setEditingQuestion(null); }} className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl transition-all group ${isActive ? 'bg-white/10 text-white shadow-xl' : 'text-gray-500 hover:bg-white/5 hover:text-white'}`}>
                 <div className="flex items-center gap-4">
                   <item.icon className={`w-5 h-5 transition-colors ${isActive ? 'text-academy-400' : 'text-gray-600 group-hover:text-gray-300'}`} />
                   <span className="font-black text-xs uppercase tracking-widest">{item.label}</span>
@@ -487,9 +527,25 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
 
       <main className="flex-1 flex flex-col overflow-hidden dark:text-white">
         <header className="h-24 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between px-10 shadow-sm z-10 transition-colors duration-300">
+          <div className="lg:hidden mr-4">
+            <label htmlFor="mobile-tab" className="sr-only">Select dashboard section</label>
+            <select
+              id="mobile-tab"
+              value={activeTab}
+              onChange={(e) => updateActiveTab(e.target.value)}
+              className="px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-black"
+            >
+              {navItems
+                .filter(item => item.role !== 'admin' || isAdmin)
+                .map(item => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+            </select>
+          </div>
           <div className="relative w-[440px] group">
             <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-academy-600 transition-all" />
-            <input type="text" placeholder="Omni-search curriculum..." value={searchQuery} onChange={(e) => { if (activeTab !== 'questions') setActiveTab('questions'); setSearchQuery(e.target.value); }} className="w-full pl-14 pr-6 py-3.5 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-xs font-black focus:ring-4 focus:ring-academy-500/10 outline-none transition-all" />
+            <label htmlFor="omni-search" className="sr-only">Omni search curriculum</label>
+            <input id="omni-search" type="text" placeholder="Omni-search curriculum..." value={searchQuery} onChange={(e) => { if (activeTab !== 'questions') updateActiveTab('questions'); setSearchQuery(e.target.value); }} className="w-full pl-14 pr-6 py-3.5 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-xs font-black focus:ring-4 focus:ring-academy-500/10 outline-none transition-all" />
           </div>
 
           <div className="flex items-center gap-8">
@@ -544,7 +600,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
           </div>
 
           <div className="pt-8 border-t dark:border-gray-700 flex items-center justify-between">
-            <button className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-400 hover:text-academy-600 transition-all tracking-widest" onClick={() => { setIsProfileOpen(false); setActiveTab('settings'); }}><Key className="w-4 h-4" /> Password Vault</button>
+            <button className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-400 hover:text-academy-600 transition-all tracking-widest" onClick={() => { setIsProfileOpen(false); updateActiveTab('settings'); }}><Key className="w-4 h-4" /> Password Vault</button>
             <button onClick={handleLogout} className="bg-red-50 dark:bg-red-900/30 text-red-600 px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all shadow-lg active:scale-95">Terminate Session</button>
           </div>
         </div>

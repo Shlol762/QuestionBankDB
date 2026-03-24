@@ -20,6 +20,21 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'question-bank-settings-storage', // name of the item in the storage (must be unique)
+      version: 1,
+      migrate: (persistedState, version) => {
+        if (version < 1 || !persistedState) {
+          return {
+            defaultMarks: 5,
+            defaultDifficulty: 'Medium' as DifficultyLevel,
+          };
+        }
+
+        return persistedState as SettingsState;
+      },
+      partialize: (state) => ({
+        defaultMarks: state.defaultMarks,
+        defaultDifficulty: state.defaultDifficulty,
+      }),
     }
   )
 );

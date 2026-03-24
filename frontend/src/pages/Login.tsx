@@ -11,6 +11,7 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -81,10 +82,11 @@ const Login: React.FC<LoginProps> = () => {
 
             <form onSubmit={handleLogin} className="space-y-6">
               <div>
-                <label className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2 ml-1 tracking-widest">Work Email</label>
+                <label htmlFor="login-email" className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2 ml-1 tracking-widest">Work Email</label>
                 <div className="relative group">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-academy-600 transition-colors" />
                   <input
+                    id="login-email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -96,17 +98,19 @@ const Login: React.FC<LoginProps> = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2 ml-1 tracking-widest">Secure Password</label>
+                <label htmlFor="login-password" className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2 ml-1 tracking-widest">Secure Password</label>
                 <div className="relative group">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-academy-600 transition-colors" />
                   <input
-                    type="password"
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 focus:border-academy-500 dark:focus:border-academy-400 focus:bg-white dark:focus:bg-gray-800 outline-none transition-all dark:text-white"
+                    className="w-full pl-12 pr-16 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 focus:border-academy-500 dark:focus:border-academy-400 focus:bg-white dark:focus:bg-gray-800 outline-none transition-all dark:text-white"
                     placeholder="••••••••"
                     required
                   />
+                  <button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(v => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-gray-500">{showPassword ? 'Hide' : 'Show'}</button>
                 </div>
               </div>
 

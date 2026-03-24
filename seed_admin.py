@@ -1,4 +1,5 @@
 import asyncio
+import getpass
 from sqlmodel import select
 from src.db.main import async_engine
 from src.db.models import Users
@@ -16,8 +17,21 @@ async def create_initial_admin():
     )
 
     async with async_session() as session:
+        print("Please provide admin account details.")
+        full_name = input("Full name [System Administrator]: ").strip() or "System Administrator"
+        email = input("Email [admin@school.edu]: ").strip() or "admin@school.edu"
+        department = input("Department [IT / Administration]: ").strip() or "IT / Administration"
+
+        password = getpass.getpass("Enter initial admin password: ")
+        confirm = getpass.getpass("Confirm password: ")
+        if password != confirm:
+            print("❌ Passwords do not match. Aborting.")
+            return
+        if len(password) < 8:
+            print("❌ Password must be at least 8 characters.")
+            return
+
         # 1. Check if admin already exists
-        email = "admin@school.edu"
         statement = select(Users).where(Users.email == email)
         result = await session.execute(statement)
         existing_user = result.scalar_one_or_none()
@@ -29,10 +43,10 @@ async def create_initial_admin():
         # 2. Create the Admin
         print(f"Creating admin account for {email}...")
         admin_user = Users(
-            full_name="System Administrator",
+            full_name=full_name,
             email=email,
-            password_hash=get_password_hash("admin123"), # Default password
-            department="IT / Administration",
+            password_hash=get_password_hash(password),
+            department=department,
             is_admin=True,
             grade_coordinating=[],
             hod_subjects=[]
@@ -41,7 +55,7 @@ async def create_initial_admin():
         session.add(admin_user)
         await session.commit()
         print("✨ Admin account created successfully!")
-        print(f"Login with: \nEmail: {email}\nPassword: admin123")
+        print(f"Login with: {email}")
 
 if __name__ == "__main__":
     asyncio.run(create_initial_admin())

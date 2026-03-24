@@ -542,6 +542,7 @@ cp .env.example .env
 ```
 
 The default frontend `.env` points to the backend at `http://localhost:8000`. Update `VITE_API_BASE_URL` if your backend runs on a different address.
+If you use a tunnel in development, optionally set `VITE_ALLOWED_HOSTS` as a comma-separated list.
 
 ---
 
@@ -565,7 +566,7 @@ If you prefer to create the first admin account from the command line instead of
 python seed_admin.py
 ```
 
-Follow the prompts to enter the admin's name, email, password, and department.
+The script will prompt for admin name, email, department, and password (with confirmation).
 
 ---
 

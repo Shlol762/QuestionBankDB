@@ -104,7 +104,12 @@ function App() {
     <Router>
       <Toaster 
         position="bottom-right"
+        containerAriaLabel="Notifications"
         toastOptions={{
+          ariaProps: {
+            role: 'status',
+            'aria-live': 'polite',
+          },
           duration: 4000,
           style: {
             background: isDarkMode ? '#1f2937' : '#ffffff',

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   UserPlus, 
   Shield, 
@@ -39,6 +39,17 @@ const userSchema = z.object({
 
 type UserFormData = z.infer<typeof userSchema>;
 
+interface UserListItem {
+  user_id: number;
+  full_name: string;
+  email: string;
+  department: string;
+  is_admin: boolean;
+  grade_levels: number[];
+  hod_subject_names: string[];
+  subjects: { subject_id: number; subject_name: string }[];
+}
+
 const ITEMS_PER_PAGE = 10;
 
 const UserManagement: React.FC = () => {
@@ -51,6 +62,7 @@ const UserManagement: React.FC = () => {
   const [passwordResetSuccess, setPasswordResetSuccess] = useState(false);
   const [expandedSyllabus, setExpandedSyllabus] = useState<number[]>([]);
   const [expandedGrade, setExpandedGrade] = useState<number[]>([]);
+  const [showPassword, setShowPassword] = useState(false);
   
   const { user: me } = useAuthStore();
 
@@ -85,7 +97,7 @@ const UserManagement: React.FC = () => {
     placeholderData: { items: [], total: 0 }
   });
   
-  const users = usersData?.items || [];
+  const users: UserListItem[] = usersData?.items || [];
   const totalUsers = usersData?.total || 0;
 
   // Fetch Curriculum for Assignments
@@ -147,12 +159,12 @@ const UserManagement: React.FC = () => {
     }
   });
 
-  const toggleItem = (listName: 'subject_ids' | 'grade_levels' | 'hod_subject_names', value: any) => {
-    const currentList = formData[listName] as any[];
+  const toggleItem = (listName: 'subject_ids' | 'grade_levels' | 'hod_subject_names', value: number | string) => {
+    const currentList = formData[listName] as Array<number | string>;
     const newList = currentList.includes(value)
       ? currentList.filter(v => v !== value)
       : [...currentList, value];
-    setValue(listName, newList);
+    setValue(listName, newList as never);
   };
 
   const resetForm = () => {
@@ -172,7 +184,7 @@ const UserManagement: React.FC = () => {
     setExpandedGrade([]);
   };
 
-  const openEdit = (user: any) => {
+  const openEdit = (user: UserListItem) => {
     setIsEditing(true);
     setEditingUserId(user.user_id);
     reset({
@@ -181,7 +193,7 @@ const UserManagement: React.FC = () => {
       password: '', 
       department: user.department,
       is_admin: user.is_admin,
-      subject_ids: user.subjects?.map((s: any) => s.subject_id) || [],
+      subject_ids: user.subjects?.map((s) => s.subject_id) || [],
       grade_levels: user.grade_levels || [],
       hod_subject_names: user.hod_subject_names || []
     });
@@ -198,15 +210,8 @@ const UserManagement: React.FC = () => {
     userMutation.mutate(payload);
   };
 
-  const nameRef = React.useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (isModalOpen && nameRef.current) {
-      setTimeout(() => nameRef.current?.focus(), 100);
-    }
-  }, [isModalOpen]);
-
   // Calculate total administrators for the Safety Lock
-  const adminCount = useMemo(() => users.filter((u: any) => u.is_admin).length, [users]);
+  const adminCount = useMemo(() => users.filter((u) => u.is_admin).length, [users]);
 
   if (isLoading && !usersData) { // Show loading only on initial fetch
     return (
@@ -236,14 +241,15 @@ const UserManagement: React.FC = () => {
 
       <div className="bg-white dark:bg-gray-800 rounded-[32px] shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors duration-300">
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table aria-label="Staff directory" className="w-full text-left">
+            <caption className="sr-only">Staff directory</caption>
             <thead>
               <tr className="text-[10px] uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 font-black border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
-                <th className="px-8 py-6">Staff Profile</th>
-                <th className="px-8 py-6">Authorization Level</th>
-                <th className="px-8 py-6">Active Hooks</th>
-                <th className="px-8 py-6">Operational Contact</th>
-                <th className="px-8 py-6 text-right">Control</th>
+                <th scope="col" className="px-8 py-6">Staff Profile</th>
+                <th scope="col" className="px-8 py-6">Authorization Level</th>
+                <th scope="col" className="px-8 py-6">Active Hooks</th>
+                <th scope="col" className="px-8 py-6">Operational Contact</th>
+                <th scope="col" className="px-8 py-6 text-right">Control</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
@@ -261,7 +267,7 @@ const UserManagement: React.FC = () => {
                   </td>
                 </tr>
               )}
-              {users.map((user: any) => (
+              {users.map((user) => (
                 <tr key={user.user_id} className="hover:bg-gray-50/30 dark:hover:bg-gray-900/30 transition-colors group">
                   <td className="px-8 py-6">
                     <div className="flex items-center gap-4">
@@ -303,7 +309,7 @@ const UserManagement: React.FC = () => {
                       {user.subjects?.length === 0 ? (
                         <span className="text-[10px] text-gray-300 dark:text-gray-600 font-bold italic tracking-tighter">Zero hooks detected</span>
                       ) : (
-                        user.subjects?.map((s: any) => (
+                        user.subjects?.map((s) => (
                           <span key={s.subject_id} className="px-2.5 py-1 bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 rounded-lg text-[9px] font-black uppercase border border-gray-200 dark:border-gray-700 shadow-sm">
                             {s.subject_name}
                           </span>
@@ -316,11 +322,12 @@ const UserManagement: React.FC = () => {
                   </td>
                   <td className="px-8 py-6 text-right">
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform group-hover:-translate-x-1">
-                      <button onClick={() => openEdit(user)} className="p-2.5 hover:bg-academy-50 dark:hover:bg-academy-900/30 text-gray-400 hover:text-academy-600 dark:hover:text-academy-400 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+                      <button aria-label="Edit user" onClick={() => openEdit(user)} className="p-2.5 hover:bg-academy-50 dark:hover:bg-academy-900/30 text-gray-400 hover:text-academy-600 dark:hover:text-academy-400 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
                         <Pencil className="w-4 h-4" />
                       </button>
                       {user.user_id !== me?.user_id && (
-                        <button 
+                        <button
+                          aria-label="Delete user"
                           onClick={() => setDeleteTarget({id: user.user_id, name: user.full_name})} 
                           disabled={user.is_admin && adminCount <= 1}
                           title={user.is_admin && adminCount <= 1 ? "Security Lock: Final Administrator" : "Delete User"}
@@ -363,15 +370,22 @@ const UserManagement: React.FC = () => {
             <div className="lg:col-span-4 space-y-6 border-r border-gray-100 dark:border-gray-700 pr-10">
               <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] border-b dark:border-gray-700 pb-3">Operational Identity</h4>
               <div className="space-y-4">
-                <input {...register("full_name")} className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Legal Full Name" />
+                <label htmlFor="user-full-name" className="sr-only">Full Name</label>
+                <input id="user-full-name" autoFocus {...register("full_name")} className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Legal Full Name" />
                 {errors.full_name && <p className="text-red-500 text-[10px] font-bold">{errors.full_name.message}</p>}
                 
-                <input {...register("email")} type="email" className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Corporate Email Address" />
+                <label htmlFor="user-email" className="sr-only">Email</label>
+                <input id="user-email" {...register("email")} type="email" className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Corporate Email Address" />
                 {errors.email && <p className="text-red-500 text-[10px] font-bold">{errors.email.message}</p>}
+
+                <label htmlFor="user-password" className="sr-only">Password</label>
+                <div className="relative">
+                  <input id="user-password" {...register("password")} type={showPassword ? 'text' : 'password'} className="w-full px-5 py-4 pr-16 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder={isEditing ? "Password (retain current if blank)" : "Initial Password"} />
+                  <button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(v => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-gray-500">{showPassword ? 'Hide' : 'Show'}</button>
+                </div>
                 
-                <input {...register("password")} type="password" className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder={isEditing ? "Password (retain current if blank)" : "Initial Password"} />
-                
-                <input {...register("department")} className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Assigned Department" />
+                <label htmlFor="user-department" className="sr-only">Department</label>
+                <input id="user-department" {...register("department")} className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Assigned Department" />
                 {errors.department && <p className="text-red-500 text-[10px] font-bold">{errors.department.message}</p>}
               </div>
 
@@ -386,7 +400,7 @@ const UserManagement: React.FC = () => {
                             {passwordResetMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                             Force Password Reset
                         </button>
-                        {passwordResetSuccess && <p className="text-emerald-500 text-xs font-bold mt-2 text-center">Password has been reset to "password"</p>}
+                        {passwordResetSuccess && <p className="text-emerald-500 text-xs font-bold mt-2 text-center">Password has been reset and temporary credentials were issued.</p>}
                     </div>
                 )}
               

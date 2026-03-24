@@ -80,6 +80,12 @@ class QuestionUpdate(BaseModel):
 UPLOAD_DIR = "uploads"
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 ALLOWED_IMAGE_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+MIME_EXTENSION_MAP = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+}
 
 # --- HELPERS ---
 
@@ -127,6 +133,7 @@ async def upload_question_image(
         )
     
     # 2. MIME Type Validation (Deep Check)
+    exts = []
     try:
         exts = puremagic.from_string(content)
         # puremagic returns a list of possibilities; check if any match allowed images
@@ -142,8 +149,14 @@ async def upload_question_image(
             detail="Could not verify file type"
         )
 
-    file_extension = os.path.splitext(file.filename)[1].lower()
-    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    detected_mime = next((m.mime_type for m in exts if m.mime_type in MIME_EXTENSION_MAP), None)
+    if not detected_mime:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not determine a safe file extension",
+        )
+
+    unique_filename = f"{uuid.uuid4()}{MIME_EXTENSION_MAP[detected_mime]}"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
     
     with open(file_path, "wb") as buffer:
@@ -244,6 +257,9 @@ async def list_questions(
     data_stmt = base_stmt.options(
         selectinload(QuestionBank.teacher),
         selectinload(QuestionBank.topic)
+    ).order_by(
+        QuestionBank.created_at.desc(),
+        QuestionBank.question_id.desc(),
     ).offset(offset).limit(limit)
     
     items = (await session.exec(data_stmt)).all()
