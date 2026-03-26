@@ -11,6 +11,8 @@ $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $ComposeFile = Join-Path $RootDir 'docker-compose.production.yml'
 $EnvFile = Join-Path $RootDir '.env.production'
 $ExampleEnvFile = Join-Path $RootDir '.env.production.example'
+$ProjectName = ((Split-Path -Leaf $RootDir).ToLower() -replace '[^a-z0-9]', '')
+$DbVolumeName = "$ProjectName`_postgres_data"
 
 $RuntimePaths = @(
     'scripts',
@@ -133,6 +135,21 @@ Original error: $($_.Exception.Message)
 function Ensure-EnvFile {
     if (Test-Path $EnvFile) {
         return
+    }
+
+    & docker volume inspect $DbVolumeName *> $null
+    if ($LASTEXITCODE -eq 0) {
+        throw @"
+Error: Existing database volume detected: $DbVolumeName
+No .env.production found, and generating a new password would break DB authentication.
+
+Choose one option:
+1) Reuse existing data: restore the original .env.production for this folder, then rerun update.
+2) Fresh reset (deletes old DB data):
+   docker compose -f $ComposeFile down -v --remove-orphans
+   docker volume rm $DbVolumeName
+   powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch/scripts/install.ps1).Content)"
+"@
     }
 
     if (-not (Test-Path $ExampleEnvFile)) {
