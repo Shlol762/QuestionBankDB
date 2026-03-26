@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.production.yml"
 ENV_FILE="$ROOT_DIR/.env.production"
 EXAMPLE_ENV_FILE="$ROOT_DIR/.env.production.example"
+PROJECT_NAME="$(basename "$ROOT_DIR" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+//g')"
+DB_VOLUME_NAME="${PROJECT_NAME}_questiondb_postgres_data"
 
 assert_project_root() {
   local missing=()
@@ -69,6 +71,26 @@ print_install_plan() {
 
 print_install_plan
 
+check_for_existing_db_volume_conflict() {
+  if [[ -f "$ENV_FILE" ]]; then
+    return
+  fi
+
+  if docker volume inspect "$DB_VOLUME_NAME" >/dev/null 2>&1; then
+    echo "Error: Existing database volume detected: $DB_VOLUME_NAME"
+    echo "No .env.production file found, so generating new DB credentials would break startup against existing data."
+    echo
+    echo "Choose one option:"
+    echo "  1) Reuse old credentials: restore previous .env.production in this folder and rerun install"
+    echo "  2) Fresh install (delete old DB data):"
+    echo "     docker compose -f $COMPOSE_FILE down -v --remove-orphans"
+    echo "     docker volume rm $DB_VOLUME_NAME"
+    echo "     bash scripts/install.sh"
+    echo
+    exit 1
+  fi
+}
+
 print_backend_diagnostics() {
   echo
   echo "Startup diagnostics:"
@@ -94,6 +116,8 @@ if ! docker info >/dev/null 2>&1; then
   echo "Then log out and log back in."
   exit 1
 fi
+
+check_for_existing_db_volume_conflict
 
 if [[ ! -f "$ENV_FILE" ]]; then
   cp "$EXAMPLE_ENV_FILE" "$ENV_FILE"

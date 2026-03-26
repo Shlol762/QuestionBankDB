@@ -28,6 +28,11 @@ If install exits with a missing docker error:
 - Linux: install Docker Engine and docker-compose-plugin, then verify with `docker --version` and `docker compose version`.
 - Windows: install Docker Desktop, start it, then verify with `docker --version` and `docker compose version`.
 
+If install fails with `password authentication failed for user "questionbank"`:
+- Cause: an old Postgres Docker volume exists, but `.env.production` was regenerated with a new password.
+- Fix option A (keep existing data): restore the previous `.env.production` used with that volume.
+- Fix option B (fresh install): remove containers and the DB volume, then rerun install.
+
 ## First-time install
 
 From any directory.

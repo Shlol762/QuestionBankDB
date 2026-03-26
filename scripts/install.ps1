@@ -4,6 +4,8 @@ $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $ComposeFile = Join-Path $RootDir 'docker-compose.production.yml'
 $EnvFile = Join-Path $RootDir '.env.production'
 $ExampleEnvFile = Join-Path $RootDir '.env.production.example'
+$ProjectName = ((Split-Path -Leaf $RootDir).ToLower() -replace '[^a-z0-9]', '')
+$DbVolumeName = "$ProjectName`_questiondb_postgres_data"
 
 function Assert-ProjectRoot {
         $missing = @()
@@ -81,6 +83,27 @@ function Show-BackendDiagnostics {
     Write-Host ''
 }
 
+function Assert-NoVolumeCredentialConflict {
+    if (Test-Path $EnvFile) {
+        return
+    }
+
+    & docker volume inspect $DbVolumeName *> $null
+    if ($LASTEXITCODE -eq 0) {
+        throw @"
+Error: Existing database volume detected: $DbVolumeName
+No .env.production file found, so generating new DB credentials would break startup against existing data.
+
+Choose one option:
+  1) Reuse old credentials: restore previous .env.production in this folder and rerun install
+  2) Fresh install (delete old DB data):
+     docker compose -f $ComposeFile down -v --remove-orphans
+     docker volume rm $DbVolumeName
+     powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+"@
+    }
+}
+
 Require-Command 'docker'
 Assert-ProjectRoot
 Show-InstallPlan
@@ -103,6 +126,8 @@ Error: Docker daemon is not running or current user cannot access Docker.
 Start Docker Desktop and retry.
 "@
 }
+
+Assert-NoVolumeCredentialConflict
 
 if (-not (Test-Path $EnvFile)) {
     Copy-Item $ExampleEnvFile $EnvFile
