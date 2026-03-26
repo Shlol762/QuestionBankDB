@@ -8,6 +8,19 @@ interface LoginProps {
   isDarkMode?: boolean;
 }
 
+const formatApiError = (err: any, fallback: string): string => {
+  const detail = err?.response?.data?.detail;
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => (typeof item?.msg === 'string' ? item.msg : JSON.stringify(item)))
+      .join(' | ');
+  }
+  if (typeof detail?.msg === 'string') return detail.msg;
+  return fallback;
+};
+
 const Login: React.FC<LoginProps> = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,7 +45,7 @@ const Login: React.FC<LoginProps> = () => {
       await fetchMe();
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed. Please check your credentials.');
+      setError(formatApiError(err, 'Login failed. Please check your credentials.'));
     } finally {
       setLoading(false);
     }

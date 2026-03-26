@@ -1,52 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="$ROOT_DIR/docker-compose.production.yml"
-ENV_FILE="$ROOT_DIR/.env.production"
-EXAMPLE_ENV_FILE="$ROOT_DIR/.env.production.example"
-PROJECT_NAME="$(basename "$ROOT_DIR" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+//g')"
-DB_VOLUME_NAME="${PROJECT_NAME}_questiondb_postgres_data"
+REPO_OWNER="Shlol762"
+REPO_NAME="QuestionBankDB"
+BRANCH="Live-Version"
+ARCHIVE_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/archive/refs/heads/${BRANCH}.tar.gz"
 
-assert_project_root() {
-  local missing=()
-  [[ -f "$COMPOSE_FILE" ]] || missing+=("docker-compose.production.yml")
-  [[ -f "$EXAMPLE_ENV_FILE" ]] || missing+=(".env.production.example")
-  [[ -f "$ROOT_DIR/Dockerfile.backend" ]] || missing+=("Dockerfile.backend")
-  [[ -f "$ROOT_DIR/Dockerfile.frontend" ]] || missing+=("Dockerfile.frontend")
-  [[ -d "$ROOT_DIR/src" ]] || missing+=("src/")
-  [[ -d "$ROOT_DIR/frontend" ]] || missing+=("frontend/")
+TARGET_DIR="${1:-$PWD/QuestionBankDB}"
+TARGET_DIR="$(cd "$(dirname "$TARGET_DIR")" && pwd)/$(basename "$TARGET_DIR")"
+COMPOSE_FILE="$TARGET_DIR/docker-compose.production.yml"
+ENV_FILE="$TARGET_DIR/.env.production"
+EXAMPLE_ENV_FILE="$TARGET_DIR/.env.production.example"
 
-  if (( ${#missing[@]} > 0 )); then
-    echo "Error: Installer must be run from the QuestionBankDB repository root."
-    echo "Missing required project files/directories: ${missing[*]}"
-    echo
-    echo "Fix: clone the repository and run install from inside it:"
-    echo "  git clone https://github.com/Shlol762/QuestionBankDB.git"
-    echo "  cd QuestionBankDB"
-    echo "  bash scripts/install.sh"
-    exit 1
-  fi
-}
+RUNTIME_PATHS=(
+  scripts
+  src
+  frontend
+  docker-compose.production.yml
+  Dockerfile.backend
+  Dockerfile.frontend
+  requirements.txt
+  alembic.ini
+  .dockerignore
+  .env.production.example
+)
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Error: Missing required command '$1'."
-    echo
-    if [[ "$1" == "docker" ]]; then
-      echo "Install Docker Engine and Docker Compose plugin, then retry."
-      echo "Ubuntu quick start:"
-      echo "  sudo apt-get update"
-      echo "  sudo apt-get install -y ca-certificates curl gnupg"
-      echo "  sudo install -m 0755 -d /etc/apt/keyrings"
-      echo "  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
-      echo "  sudo chmod a+r /etc/apt/keyrings/docker.gpg"
-      echo "  echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null"
-      echo "  sudo apt-get update"
-      echo "  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
-      echo
-      echo "Verify: docker --version && docker compose version"
-    fi
     exit 1
   fi
 }
@@ -54,70 +35,49 @@ require_cmd() {
 require_cmd docker
 require_cmd openssl
 require_cmd curl
-assert_project_root
+require_cmd tar
+require_cmd cp
+
+sync_from_github_archive() {
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "$tmp_dir"' RETURN
+
+  echo "Downloading latest ${REPO_NAME} (${BRANCH}) from GitHub..."
+  curl -fsSL "$ARCHIVE_URL" -o "$tmp_dir/repo.tar.gz"
+  tar -xzf "$tmp_dir/repo.tar.gz" -C "$tmp_dir"
+
+  local extracted_dir
+  extracted_dir="$(find "$tmp_dir" -maxdepth 1 -type d -name "${REPO_NAME}-*" | head -n 1)"
+
+  if [[ -z "$extracted_dir" ]]; then
+    echo "Error: Failed to extract repository archive from GitHub."
+    exit 1
+  fi
+
+  mkdir -p "$TARGET_DIR"
+  for path in "${RUNTIME_PATHS[@]}"; do
+    cp -a "$extracted_dir/$path" "$TARGET_DIR/$path"
+  done
+}
 
 print_install_plan() {
-  echo "Install plan (host machine):"
-  echo "  - Creates/updates only: $ENV_FILE"
-  echo "  - Creates Docker volumes: questiondb_postgres_data, questiondb_uploads_data"
-  echo "  - Creates Docker images/containers via docker compose"
-  echo "  - Does NOT install apt packages on host"
-  echo
-  echo "Expected network downloads:"
-  echo "  - Docker base images (postgres, python, nginx, node)"
-  echo "  - Python and npm packages inside image builds"
-  echo
+  echo "Install target: $TARGET_DIR"
+  echo "Source: $ARCHIVE_URL"
 }
 
 print_install_plan
-
-check_for_existing_db_volume_conflict() {
-  if [[ -f "$ENV_FILE" ]]; then
-    return
-  fi
-
-  if docker volume inspect "$DB_VOLUME_NAME" >/dev/null 2>&1; then
-    echo "Error: Existing database volume detected: $DB_VOLUME_NAME"
-    echo "No .env.production file found, so generating new DB credentials would break startup against existing data."
-    echo
-    echo "Choose one option:"
-    echo "  1) Reuse old credentials: restore previous .env.production in this folder and rerun install"
-    echo "  2) Fresh install (delete old DB data):"
-    echo "     docker compose -f $COMPOSE_FILE down -v --remove-orphans"
-    echo "     docker volume rm $DB_VOLUME_NAME"
-    echo "     bash scripts/install.sh"
-    echo
-    exit 1
-  fi
-}
-
-print_backend_diagnostics() {
-  echo
-  echo "Startup diagnostics:"
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps || true
-  echo "--- backend logs (last 200 lines) ---"
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=200 backend || true
-  echo "--- postgres logs (last 80 lines) ---"
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=80 postgres || true
-  echo
-}
+sync_from_github_archive
 
 if ! docker compose version >/dev/null 2>&1; then
   echo "Error: Docker Compose plugin is missing."
-  echo "Install package: docker-compose-plugin"
-  echo "Verify: docker compose version"
   exit 1
 fi
 
 if ! docker info >/dev/null 2>&1; then
   echo "Error: Docker daemon is not running or current user has no access."
-  echo "Start Docker and retry. If permission denied, run:"
-  echo "  sudo usermod -aG docker $USER"
-  echo "Then log out and log back in."
   exit 1
 fi
-
-check_for_existing_db_volume_conflict
 
 if [[ ! -f "$ENV_FILE" ]]; then
   cp "$EXAMPLE_ENV_FILE" "$ENV_FILE"
@@ -131,40 +91,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   echo "Generated $ENV_FILE with secure defaults."
 fi
 
-echo "Building and starting services..."
-set +e
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build
-compose_rc=$?
-set -e
+echo "Running update script to build/start services..."
+bash "$TARGET_DIR/scripts/update.sh"
 
-if [[ $compose_rc -ne 0 ]]; then
-  echo "Compose reported a startup failure (exit $compose_rc)."
-  print_backend_diagnostics
-  exit 1
-fi
-
-echo "Waiting for backend health endpoint..."
-for _ in {1..30}; do
-  if curl -fsS "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 2
-done
-
-if ! curl -fsS "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
-  echo "Backend health check failed. Inspect logs with:"
-  echo "docker compose --env-file $ENV_FILE -f $COMPOSE_FILE logs --tail=100"
-  print_backend_diagnostics
-  exit 1
-fi
-
-echo "Install complete."
-frontend_port="$(grep '^FRONTEND_PORT=' "$ENV_FILE" | cut -d '=' -f2-)"
-frontend_port="${frontend_port:-80}"
-
-if [[ "$frontend_port" == "80" ]]; then
-  echo "Frontend: http://127.0.0.1"
-else
-  echo "Frontend: http://127.0.0.1:${frontend_port}"
-fi
-echo "Backend API: http://127.0.0.1:8000/docs"
+echo "Install complete in: $TARGET_DIR"

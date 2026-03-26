@@ -1,12 +1,98 @@
 $ErrorActionPreference = 'Stop'
 
+Set-StrictMode -Version Latest
+
+$RepoOwner = 'Shlol762'
+$RepoName = 'QuestionBankDB'
+$Branch = 'Live-Version'
+$ArchiveUrl = "https://github.com/$RepoOwner/$RepoName/archive/refs/heads/$Branch.tar.gz"
+
 $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $ComposeFile = Join-Path $RootDir 'docker-compose.production.yml'
 $EnvFile = Join-Path $RootDir '.env.production'
+$ExampleEnvFile = Join-Path $RootDir '.env.production.example'
 
-if (-not (Test-Path $EnvFile)) {
-    throw "Missing $EnvFile. Run scripts/install.ps1 first."
+$RuntimePaths = @(
+    'scripts',
+    'src',
+    'frontend',
+    'docker-compose.production.yml',
+    'Dockerfile.backend',
+    'Dockerfile.frontend',
+    'requirements.txt',
+    'alembic.ini',
+    '.dockerignore',
+    '.env.production.example'
+)
+
+function Require-Command([string]$Name) {
+    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+        throw "Error: Missing required command '$Name'."
+    }
 }
+
+function Sync-FromGitHubArchive {
+    $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
+    New-Item -ItemType Directory -Path $tmpDir | Out-Null
+
+    try {
+        Write-Host "Syncing runtime files from GitHub ($Branch)..."
+        $archivePath = Join-Path $tmpDir 'repo.tar.gz'
+        Invoke-WebRequest -Uri $ArchiveUrl -OutFile $archivePath -UseBasicParsing
+
+        tar -xzf $archivePath -C $tmpDir
+
+        $extractedDir = Get-ChildItem -Path $tmpDir -Directory | Where-Object { $_.Name -like "$RepoName-*" } | Select-Object -First 1
+        if (-not $extractedDir) {
+            throw 'Failed to extract repository archive from GitHub.'
+        }
+
+        foreach ($path in $RuntimePaths) {
+            $source = Join-Path $extractedDir.FullName $path
+            $target = Join-Path $RootDir $path
+
+            if (Test-Path $target) {
+                Remove-Item -Path $target -Recurse -Force
+            }
+
+            Copy-Item -Path $source -Destination $target -Recurse -Force
+        }
+    }
+    finally {
+        if (Test-Path $tmpDir) {
+            Remove-Item -Path $tmpDir -Recurse -Force
+        }
+    }
+}
+
+function Ensure-EnvFile {
+    if (Test-Path $EnvFile) {
+        return
+    }
+
+    if (-not (Test-Path $ExampleEnvFile)) {
+        throw "Missing $ExampleEnvFile after sync."
+    }
+
+    Copy-Item $ExampleEnvFile $EnvFile
+
+    $dbPassword = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 24 | ForEach-Object {[char]$_})
+    $secret = [Convert]::ToHexString((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
+
+    $content = Get-Content $EnvFile -Raw
+    $content = $content -replace 'POSTGRES_PASSWORD=replace_me_with_strong_password', "POSTGRES_PASSWORD=$dbPassword"
+    $content = $content -replace 'POSTGRES_URL=postgresql\+asyncpg://questionbank:replace_me_with_strong_password@postgres:5432/questionbank', "POSTGRES_URL=postgresql+asyncpg://questionbank:$dbPassword@postgres:5432/questionbank"
+    $content = $content -replace 'SECRET_KEY=replace_me_with_long_random_secret', "SECRET_KEY=$secret"
+    Set-Content -Path $EnvFile -Value $content -NoNewline
+
+    Write-Host "Generated $EnvFile with secure defaults."
+}
+
+Require-Command 'docker'
+Require-Command 'tar'
+
+Sync-FromGitHubArchive
+Ensure-EnvFile
 
 function Show-BackendDiagnostics {
     Write-Host ''

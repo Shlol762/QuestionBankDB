@@ -17,6 +17,19 @@ interface SetupProps {
   onComplete: () => void;
 }
 
+const formatApiError = (err: any, fallback: string): string => {
+  const detail = err?.response?.data?.detail;
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => (typeof item?.msg === 'string' ? item.msg : JSON.stringify(item)))
+      .join(' | ');
+  }
+  if (typeof detail?.msg === 'string') return detail.msg;
+  return fallback;
+};
+
 const Setup: React.FC<SetupProps> = ({ onComplete }) => {
   const [formData, setFormData] = useState({
     full_name: '',
@@ -40,8 +53,11 @@ const Setup: React.FC<SetupProps> = ({ onComplete }) => {
     if (formData.password !== formData.confirm_password) {
       return setError("Security Passwords do not match.");
     }
-    if (formData.password.length < 8) {
-      return setError("Password must be at least 8 characters for robust security.");
+    if (formData.password.length < 12) {
+      return setError("Password must be at least 12 characters.");
+    }
+    if (!/[A-Z]/.test(formData.password) || !/\d/.test(formData.password) || !/[^A-Za-z0-9]/.test(formData.password)) {
+      return setError("Password must include uppercase, number, and special character.");
     }
 
     setLoading(true);
@@ -59,7 +75,7 @@ const Setup: React.FC<SetupProps> = ({ onComplete }) => {
         onComplete();
       }, 2000);
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Setup logic failure. Verify server connectivity.");
+      setError(formatApiError(err, "Setup logic failure. Verify server connectivity."));
     } finally {
       setLoading(false);
     }
@@ -188,6 +204,7 @@ const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                       <input
                         id="setup-password"
                         required
+                        autoComplete="new-password"
                         type={showPassword ? 'text' : 'password'}
                         value={formData.password}
                         onChange={e => setFormData({...formData, password: e.target.value})}
@@ -204,6 +221,7 @@ const Setup: React.FC<SetupProps> = ({ onComplete }) => {
                       <input
                         id="setup-confirm-password"
                         required
+                        autoComplete="new-password"
                         type={showConfirmPassword ? 'text' : 'password'}
                         value={formData.confirm_password}
                         onChange={e => setFormData({...formData, confirm_password: e.target.value})}
