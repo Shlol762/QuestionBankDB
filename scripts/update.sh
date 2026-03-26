@@ -48,6 +48,7 @@ sync_from_github_archive() {
   fi
 
   for path in "${RUNTIME_PATHS[@]}"; do
+    rm -rf "$ROOT_DIR/$path"
     cp -a "$extracted_dir/$path" "$ROOT_DIR/$path"
   done
 }

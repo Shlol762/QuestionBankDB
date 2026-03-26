@@ -57,6 +57,7 @@ sync_from_github_archive() {
 
   mkdir -p "$TARGET_DIR"
   for path in "${RUNTIME_PATHS[@]}"; do
+    rm -rf "$TARGET_DIR/$path"
     cp -a "$extracted_dir/$path" "$TARGET_DIR/$path"
   done
 }
