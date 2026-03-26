@@ -57,8 +57,22 @@ function Read-EnvMap([string]$Path) {
     return $map
 }
 
+function Show-InstallPlan {
+    Write-Host 'Install plan (host machine):'
+    Write-Host "  - Creates/updates only: $EnvFile"
+    Write-Host '  - Creates Docker volumes: questiondb_postgres_data, questiondb_uploads_data'
+    Write-Host '  - Creates Docker images/containers via docker compose'
+    Write-Host '  - Does NOT install system packages on host'
+    Write-Host ''
+    Write-Host 'Expected network downloads:'
+    Write-Host '  - Docker base images (postgres, python, nginx, node)'
+    Write-Host '  - Python and npm packages inside image builds'
+    Write-Host ''
+}
+
 Require-Command 'docker'
 Assert-ProjectRoot
+Show-InstallPlan
 
 & docker compose version *> $null
 if ($LASTEXITCODE -ne 0) {

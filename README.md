@@ -447,6 +447,15 @@ Use `offset` and `limit` query parameters to paginate through results.
 
 If you are handing this build to a client and want the simplest possible setup with persistent data, use the deployment scripts:
 
+What the one-line installer does now:
+- Fetches a minimal runtime checkout (not full source history) into `QuestionBankDB/`.
+- Runs Docker Compose build/start from that runtime folder.
+- Shows an install plan before changes.
+
+Why downloads can still be large:
+- Most download size is Docker base images and package layers, not repository code.
+- First install commonly pulls hundreds of MB depending on what images are already cached.
+
 If install exits with a missing docker error:
 - Linux: install Docker Engine and docker-compose-plugin, then verify with `docker --version` and `docker compose version`.
 - Windows: install Docker Desktop, start it, then verify with `docker --version` and `docker compose version`.

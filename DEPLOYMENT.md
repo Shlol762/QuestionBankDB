@@ -2,6 +2,8 @@
 
 This guide gives you a one-command install and one-command update flow while preserving database and upload data.
 
+The one-line installer fetches a minimal runtime checkout (not full source history), then runs the normal installer.
+
 ## What this deployment does
 
 - Runs `postgres`, `backend`, and `frontend` with Docker Compose.
@@ -47,6 +49,10 @@ What happens:
 2. Generates strong defaults for DB password and app `SECRET_KEY`.
 3. Builds and starts services.
 4. Waits for backend health endpoint.
+
+Note on download size:
+- The repository checkout is now minimized.
+- Most data usage comes from Docker image and package layer downloads during build.
 
 ## Update to latest code
 

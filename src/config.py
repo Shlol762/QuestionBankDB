@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     TESTING: bool = False
-    FORCE_HTTPS: bool = True
+    FORCE_HTTPS: bool = False
     TRUST_PROXY_HEADERS: bool = False
     CORS_ALLOW_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 

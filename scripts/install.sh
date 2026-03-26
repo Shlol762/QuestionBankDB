@@ -54,6 +54,21 @@ require_cmd openssl
 require_cmd curl
 assert_project_root
 
+print_install_plan() {
+  echo "Install plan (host machine):"
+  echo "  - Creates/updates only: $ENV_FILE"
+  echo "  - Creates Docker volumes: questiondb_postgres_data, questiondb_uploads_data"
+  echo "  - Creates Docker images/containers via docker compose"
+  echo "  - Does NOT install apt packages on host"
+  echo
+  echo "Expected network downloads:"
+  echo "  - Docker base images (postgres, python, nginx, node)"
+  echo "  - Python and npm packages inside image builds"
+  echo
+}
+
+print_install_plan
+
 if ! docker compose version >/dev/null 2>&1; then
   echo "Error: Docker Compose plugin is missing."
   echo "Install package: docker-compose-plugin"
