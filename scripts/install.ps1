@@ -73,6 +73,8 @@ if ([System.IO.Path]::IsPathRooted($TargetArg)) {
 
 $ProjectName = ((Split-Path -Leaf $TargetDir).ToLower() -replace '[^a-z0-9]', '')
 $DbVolumeName = "$ProjectName`_postgres_data"
+$CredentialCacheDir = Join-Path $env:USERPROFILE '.questionbankdb'
+$CredentialCacheFile = Join-Path $CredentialCacheDir "$ProjectName.env.production"
 
 $RuntimePaths = @(
     'scripts',
@@ -149,9 +151,15 @@ Sync-FromGitHubArchive
 if (-not (Test-Path (Join-Path $TargetDir '.env.production'))) {
     & docker volume inspect $DbVolumeName *> $null
     if ($LASTEXITCODE -eq 0) {
+        if (Test-Path $CredentialCacheFile) {
+            Copy-Item $CredentialCacheFile (Join-Path $TargetDir '.env.production') -Force
+            Write-Host "Recovered DB credentials from cache: $CredentialCacheFile"
+        }
+        else {
         throw @"
 Error: Existing database volume detected: $DbVolumeName
 No .env.production found, and generating a new password would break DB authentication.
+No credential cache found at: $CredentialCacheFile
 
 Choose one option:
 1) Reuse existing data: restore prior .env.production for this install directory, then rerun install.
@@ -160,7 +168,15 @@ Choose one option:
    docker volume rm $DbVolumeName
    powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch/scripts/install.ps1).Content)"
 "@
+        }
     }
+}
+
+if (Test-Path (Join-Path $TargetDir '.env.production')) {
+    if (-not (Test-Path $CredentialCacheDir)) {
+        New-Item -ItemType Directory -Path $CredentialCacheDir | Out-Null
+    }
+    Copy-Item (Join-Path $TargetDir '.env.production') $CredentialCacheFile -Force
 }
 
 Write-Host 'Running update script to build/start services...'

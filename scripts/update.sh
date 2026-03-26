@@ -12,6 +12,8 @@ ENV_FILE="$ROOT_DIR/.env.production"
 EXAMPLE_ENV_FILE="$ROOT_DIR/.env.production.example"
 PROJECT_NAME="$(basename "$ROOT_DIR" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+//g')"
 DB_VOLUME_NAME="${PROJECT_NAME}_postgres_data"
+CREDENTIAL_CACHE_DIR="${HOME}/.questionbankdb"
+CREDENTIAL_CACHE_FILE="${CREDENTIAL_CACHE_DIR}/${PROJECT_NAME}.env.production"
 
 RUNTIME_PATHS=(
   scripts
@@ -128,12 +130,23 @@ sync_from_github_archive() {
 
 ensure_env_file() {
   if [[ -f "$ENV_FILE" ]]; then
+    mkdir -p "$CREDENTIAL_CACHE_DIR"
+    cp "$ENV_FILE" "$CREDENTIAL_CACHE_FILE"
+    chmod 600 "$CREDENTIAL_CACHE_FILE" 2>/dev/null || true
     return
   fi
 
   if docker volume inspect "$DB_VOLUME_NAME" >/dev/null 2>&1; then
+    if [[ -f "$CREDENTIAL_CACHE_FILE" ]]; then
+      cp "$CREDENTIAL_CACHE_FILE" "$ENV_FILE"
+      chmod 600 "$ENV_FILE" 2>/dev/null || true
+      echo "Recovered DB credentials from cache: $CREDENTIAL_CACHE_FILE"
+      return
+    fi
+
     echo "Error: Existing database volume detected: $DB_VOLUME_NAME"
     echo "No $ENV_FILE found, and generating a new password would break DB authentication."
+    echo "No credential cache found at: $CREDENTIAL_CACHE_FILE"
     echo
     echo "Choose one option:"
     echo "1) Reuse existing data: restore the original .env.production for this folder, then rerun update."
@@ -160,6 +173,11 @@ ensure_env_file() {
   sed -i "s|SECRET_KEY=replace_me_with_long_random_secret|SECRET_KEY=${secret}|" "$ENV_FILE"
 
   echo "Generated $ENV_FILE with secure defaults."
+
+  mkdir -p "$CREDENTIAL_CACHE_DIR"
+  cp "$ENV_FILE" "$CREDENTIAL_CACHE_FILE"
+  chmod 600 "$CREDENTIAL_CACHE_FILE" 2>/dev/null || true
+  echo "Saved DB credentials cache to: $CREDENTIAL_CACHE_FILE"
 }
 
 require_cmd docker

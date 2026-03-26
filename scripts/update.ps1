@@ -13,6 +13,8 @@ $EnvFile = Join-Path $RootDir '.env.production'
 $ExampleEnvFile = Join-Path $RootDir '.env.production.example'
 $ProjectName = ((Split-Path -Leaf $RootDir).ToLower() -replace '[^a-z0-9]', '')
 $DbVolumeName = "$ProjectName`_postgres_data"
+$CredentialCacheDir = Join-Path $env:USERPROFILE '.questionbankdb'
+$CredentialCacheFile = Join-Path $CredentialCacheDir "$ProjectName.env.production"
 
 $RuntimePaths = @(
     'scripts',
@@ -134,14 +136,25 @@ Original error: $($_.Exception.Message)
 
 function Ensure-EnvFile {
     if (Test-Path $EnvFile) {
+        if (-not (Test-Path $CredentialCacheDir)) {
+            New-Item -ItemType Directory -Path $CredentialCacheDir | Out-Null
+        }
+        Copy-Item $EnvFile $CredentialCacheFile -Force
         return
     }
 
     & docker volume inspect $DbVolumeName *> $null
     if ($LASTEXITCODE -eq 0) {
+        if (Test-Path $CredentialCacheFile) {
+            Copy-Item $CredentialCacheFile $EnvFile -Force
+            Write-Host "Recovered DB credentials from cache: $CredentialCacheFile"
+            return
+        }
+
         throw @"
 Error: Existing database volume detected: $DbVolumeName
 No .env.production found, and generating a new password would break DB authentication.
+No credential cache found at: $CredentialCacheFile
 
 Choose one option:
 1) Reuse existing data: restore the original .env.production for this folder, then rerun update.
@@ -168,6 +181,11 @@ Choose one option:
     Set-Content -Path $EnvFile -Value $content -NoNewline
 
     Write-Host "Generated $EnvFile with secure defaults."
+
+    if (-not (Test-Path $CredentialCacheDir)) {
+        New-Item -ItemType Directory -Path $CredentialCacheDir | Out-Null
+    }
+    Copy-Item $EnvFile $CredentialCacheFile -Force
 }
 
 Require-Command 'docker'
