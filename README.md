@@ -448,9 +448,9 @@ Use `offset` and `limit` query parameters to paginate through results.
 If you are handing this build to a client and want the simplest possible setup with persistent data, use the deployment scripts:
 
 What the one-line installer does now:
-- Fetches a minimal runtime checkout (not full source history) into `QuestionBankDB/`.
+- Downloads the latest runtime files directly from GitHub into `QuestionBankDB/` by default.
 - Runs Docker Compose build/start from that runtime folder.
-- Shows an install plan before changes.
+- Creates `.env.production` automatically on first install if missing.
 
 Why downloads can still be large:
 - Most download size is Docker base images and package layers, not repository code.
@@ -463,13 +463,13 @@ If install exits with a missing docker error:
 Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/bootstrap-install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/install.sh | bash
 ```
 
 Windows (PowerShell):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/bootstrap-install.ps1).Content)"
+powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/install.ps1).Content)"
 ```
 
 To push updates later while preserving existing database and uploaded files:
@@ -477,13 +477,13 @@ To push updates later while preserving existing database and uploaded files:
 Linux:
 
 ```bash
-mkdir -p scripts && curl -fsSL https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/update.sh -o scripts/update.sh && bash scripts/update.sh
+curl -fsSL https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/update.sh | bash
 ```
 
 Windows (PowerShell):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -Command "New-Item -ItemType Directory -Force -Path .\scripts | Out-Null; Invoke-WebRequest https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/update.ps1 -OutFile .\scripts\update.ps1; powershell -ExecutionPolicy Bypass -File .\scripts\update.ps1"
+powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/update.ps1).Content)"
 ```
 
 To uninstall safely (keep DB/uploads data):
