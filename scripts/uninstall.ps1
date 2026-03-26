@@ -37,6 +37,9 @@ if ($LASTEXITCODE -ne 0) {
     throw 'Docker daemon is not running. Start Docker and retry.'
 }
 
+$prevEA = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+
 if ($PurgeData) {
     Write-Host 'Running uninstall with data purge...'
     & docker compose --project-name $ComposeProjectName --env-file $EnvFile -f $ComposeFile down -v --remove-orphans
@@ -44,6 +47,8 @@ if ($PurgeData) {
     Write-Host 'Running safe uninstall (data preserved)...'
     & docker compose --project-name $ComposeProjectName --env-file $EnvFile -f $ComposeFile down --remove-orphans
 }
+
+$ErrorActionPreference = $prevEA
 
 if ($PurgeBackups -and (Test-Path $BackupDir)) {
     Remove-Item -Path $BackupDir -Recurse -Force
@@ -56,7 +61,10 @@ if ($RemoveEnv -and (Test-Path $EnvFile)) {
 }
 
 if ($PruneImages) {
+    $prevEA = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     & docker image prune -f | Out-Null
+    $ErrorActionPreference = $prevEA
     Write-Host 'Pruned dangling Docker images.'
 }
 
