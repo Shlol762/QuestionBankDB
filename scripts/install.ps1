@@ -163,8 +163,8 @@ Write-Host "Source: $ArchiveUrl"
 Sync-FromGitHubArchive
 
 if (-not (Test-Path (Join-Path $TargetDir '.env.production'))) {
-    & docker volume inspect $DbVolumeName *> $null
-    if ($LASTEXITCODE -eq 0) {
+    $existingVolume = docker volume ls -q --filter "name=^${DbVolumeName}$"
+    if ($existingVolume) {
         if (Test-Path $CredentialCacheFile) {
             Copy-Item $CredentialCacheFile (Join-Path $TargetDir '.env.production') -Force
             Write-Host "Recovered DB credentials from cache: $CredentialCacheFile"
