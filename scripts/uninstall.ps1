@@ -1,11 +1,11 @@
-$ErrorActionPreference = 'Stop'
-
 param(
     [switch]$PurgeData,
     [switch]$PurgeBackups,
     [switch]$RemoveEnv,
     [switch]$PruneImages
 )
+
+$ErrorActionPreference = 'Stop'
 
 $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $ComposeFile = Join-Path $RootDir 'docker-compose.production.yml'
