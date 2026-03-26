@@ -515,7 +515,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
 
       <div className="flex items-center justify-between mb-8 text-gray-900 dark:text-white">
         <div>
-          <h2 className="text-3xl font-extrabold tracking-tight">{isAdmin ? 'Round 4 of testing' : 'My Academic Scope'}</h2>
+          <h2 className="text-3xl font-extrabold tracking-tight">{isAdmin ? 'Curriculum Manager' : 'My Academic Scope'}</h2>
           <p className="text-gray-500 dark:text-gray-400 font-medium">{isAdmin ? "Architect and manage the school's educational hierarchy." : "View and manage content for your assigned curriculum segments."}</p>
         </div>
         <button 
