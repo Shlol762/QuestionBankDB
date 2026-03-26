@@ -2,6 +2,19 @@ $ErrorActionPreference = 'Stop'
 
 Set-StrictMode -Version Latest
 
+function Get-ProjectHash([string]$Path) {
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Path)
+    $sha1 = [System.Security.Cryptography.SHA1]::Create()
+    try {
+        $hashBytes = $sha1.ComputeHash($bytes)
+    }
+    finally {
+        $sha1.Dispose()
+    }
+    $hex = ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').ToLower()
+    return $hex.Substring(0, 8)
+}
+
 $RepoOwner = 'Shlol762'
 $RepoName = 'QuestionBankDB'
 $Branch = 'Live-Version'
@@ -11,10 +24,11 @@ $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $ComposeFile = Join-Path $RootDir 'docker-compose.production.yml'
 $EnvFile = Join-Path $RootDir '.env.production'
 $ExampleEnvFile = Join-Path $RootDir '.env.production.example'
-$ProjectName = ((Split-Path -Leaf $RootDir).ToLower() -replace '[^a-z0-9]', '')
-$DbVolumeName = "$ProjectName`_postgres_data"
+$ProjectHash = Get-ProjectHash $RootDir
+$ComposeProjectName = "questionbankdb_$ProjectHash"
+$DbVolumeName = "$ComposeProjectName`_postgres_data"
 $CredentialCacheDir = Join-Path $env:USERPROFILE '.questionbankdb'
-$CredentialCacheFile = Join-Path $CredentialCacheDir "$ProjectName.env.production"
+$CredentialCacheFile = Join-Path $CredentialCacheDir "$ComposeProjectName.env.production"
 
 $RuntimePaths = @(
     'scripts',
@@ -44,7 +58,7 @@ function Require-Command([string]$Name) {
 }
 
 function Test-DockerReady {
-        $composeOutput = & docker compose version 2>&1
+        $composeOutput = & docker compose --project-name $ComposeProjectName version 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw @"
 Error: Docker Compose plugin is missing.
@@ -159,7 +173,7 @@ No credential cache found at: $CredentialCacheFile
 Choose one option:
 1) Reuse existing data: restore the original .env.production for this folder, then rerun update.
 2) Fresh reset (deletes old DB data):
-   docker compose -f $ComposeFile down -v --remove-orphans
+    docker compose --project-name $ComposeProjectName -f $ComposeFile down -v --remove-orphans
    docker volume rm $DbVolumeName
    powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch/scripts/install.ps1).Content)"
 "@
@@ -198,24 +212,23 @@ Ensure-EnvFile
 function Show-BackendDiagnostics {
     Write-Host ''
     Write-Host 'Startup diagnostics:'
-    & docker compose --env-file $EnvFile -f $ComposeFile ps
+    & docker compose --project-name $ComposeProjectName --env-file $EnvFile -f $ComposeFile ps
     Write-Host '--- backend logs (last 200 lines) ---'
-    & docker compose --env-file $EnvFile -f $ComposeFile logs --tail=200 backend
+    & docker compose --project-name $ComposeProjectName --env-file $EnvFile -f $ComposeFile logs --tail=200 backend
     Write-Host '--- postgres logs (last 80 lines) ---'
-    & docker compose --env-file $EnvFile -f $ComposeFile logs --tail=80 postgres
+    & docker compose --project-name $ComposeProjectName --env-file $EnvFile -f $ComposeFile logs --tail=80 postgres
     Write-Host ''
 }
 
 function Show-DbCredentialMismatchHelpIfDetected {
-    $backendLogs = (& docker compose --env-file $EnvFile -f $ComposeFile logs --tail=300 backend 2>$null) | Out-String
+    $backendLogs = (& docker compose --project-name $ComposeProjectName --env-file $EnvFile -f $ComposeFile logs --tail=300 backend 2>$null) | Out-String
     if ($backendLogs -match 'InvalidPasswordError|password authentication failed for user') {
-        $projectName = ((Split-Path -Leaf $RootDir).ToLower() -replace '[^a-z0-9]', '')
-        $dbVolumeName = "$projectName`_postgres_data"
+        $dbVolumeName = "$ComposeProjectName`_postgres_data"
         Write-Host 'Detected database credential mismatch between .env.production and existing Postgres volume.'
         Write-Host 'Fix options:'
         Write-Host '1) Reuse existing data: restore original .env.production used when DB was created.'
         Write-Host '2) Fresh install (data loss):'
-        Write-Host "   docker compose --env-file $EnvFile -f $ComposeFile down -v --remove-orphans"
+        Write-Host "   docker compose --project-name $ComposeProjectName --env-file $EnvFile -f $ComposeFile down -v --remove-orphans"
         Write-Host "   docker volume rm $dbVolumeName"
         Write-Host "   powershell -ExecutionPolicy Bypass -Command \"Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch/scripts/install.ps1).Content)\""
         Write-Host ''
@@ -223,7 +236,7 @@ function Show-DbCredentialMismatchHelpIfDetected {
 }
 
 Write-Host 'Step 1/4: Creating pre-update database backup...'
-$postgresContainerId = (& docker compose --env-file $EnvFile -f $ComposeFile ps -q postgres 2>$null) | Select-Object -First 1
+$postgresContainerId = (& docker compose --project-name $ComposeProjectName --env-file $EnvFile -f $ComposeFile ps -q postgres 2>$null) | Select-Object -First 1
 if (-not $postgresContainerId) {
     Write-Host 'No existing postgres container found. Skipping backup for first-time install.'
 }
@@ -235,10 +248,10 @@ else {
 }
 
 Write-Host 'Step 2/4: Pulling latest images (if available)...'
-& docker compose --env-file $EnvFile -f $ComposeFile pull
+& docker compose --project-name $ComposeProjectName --env-file $EnvFile -f $ComposeFile pull
 
 Write-Host 'Step 3/4: Rebuilding/restarting services...'
-& docker compose --env-file $EnvFile -f $ComposeFile up -d --build
+& docker compose --project-name $ComposeProjectName --env-file $EnvFile -f $ComposeFile up -d --build
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Compose reported a startup failure (exit $LASTEXITCODE)."
     Show-BackendDiagnostics
@@ -262,7 +275,7 @@ for ($i = 0; $i -lt 30; $i++) {
 
 if (-not $healthy) {
     Write-Host 'Update verification failed. Inspect logs with:'
-    Write-Host "docker compose --env-file $EnvFile -f $ComposeFile logs --tail=200"
+    Write-Host "docker compose --project-name $ComposeProjectName --env-file $EnvFile -f $ComposeFile logs --tail=200"
     Show-BackendDiagnostics
     Show-DbCredentialMismatchHelpIfDetected
     exit 1

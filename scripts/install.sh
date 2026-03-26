@@ -11,10 +11,20 @@ TARGET_DIR="$(cd "$(dirname "$TARGET_DIR")" && pwd)/$(basename "$TARGET_DIR")"
 COMPOSE_FILE="$TARGET_DIR/docker-compose.production.yml"
 ENV_FILE="$TARGET_DIR/.env.production"
 EXAMPLE_ENV_FILE="$TARGET_DIR/.env.production.example"
-PROJECT_NAME="$(basename "$TARGET_DIR" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+//g')"
-DB_VOLUME_NAME="${PROJECT_NAME}_postgres_data"
+
+compute_project_hash() {
+  if command -v sha1sum >/dev/null 2>&1; then
+    printf "%s" "$1" | sha1sum | cut -c1-8
+    return
+  fi
+  printf "%s" "$1" | cksum | awk '{print $1}'
+}
+
+PROJECT_HASH="$(compute_project_hash "$TARGET_DIR")"
+COMPOSE_PROJECT_NAME="questionbankdb_${PROJECT_HASH}"
+DB_VOLUME_NAME="${COMPOSE_PROJECT_NAME}_postgres_data"
 CREDENTIAL_CACHE_DIR="${HOME}/.questionbankdb"
-CREDENTIAL_CACHE_FILE="${CREDENTIAL_CACHE_DIR}/${PROJECT_NAME}.env.production"
+CREDENTIAL_CACHE_FILE="${CREDENTIAL_CACHE_DIR}/${COMPOSE_PROJECT_NAME}.env.production"
 
 RUNTIME_PATHS=(
   scripts
@@ -126,7 +136,7 @@ check_existing_volume_env_conflict() {
     echo "Choose one option:"
     echo "1) Reuse existing data (recommended): restore previous .env.production for this install directory, then rerun install."
     echo "2) Fresh install (delete old DB data):"
-    echo "   docker compose -f $COMPOSE_FILE down -v --remove-orphans"
+    echo "   docker compose --project-name $COMPOSE_PROJECT_NAME -f $COMPOSE_FILE down -v --remove-orphans"
     echo "   docker volume rm $DB_VOLUME_NAME"
     echo "   curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/scripts/install.sh | bash"
     exit 1

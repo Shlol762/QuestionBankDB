@@ -10,10 +10,20 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.production.yml"
 ENV_FILE="$ROOT_DIR/.env.production"
 EXAMPLE_ENV_FILE="$ROOT_DIR/.env.production.example"
-PROJECT_NAME="$(basename "$ROOT_DIR" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+//g')"
-DB_VOLUME_NAME="${PROJECT_NAME}_postgres_data"
+
+compute_project_hash() {
+  if command -v sha1sum >/dev/null 2>&1; then
+    printf "%s" "$1" | sha1sum | cut -c1-8
+    return
+  fi
+  printf "%s" "$1" | cksum | awk '{print $1}'
+}
+
+PROJECT_HASH="$(compute_project_hash "$ROOT_DIR")"
+COMPOSE_PROJECT_NAME="questionbankdb_${PROJECT_HASH}"
+DB_VOLUME_NAME="${COMPOSE_PROJECT_NAME}_postgres_data"
 CREDENTIAL_CACHE_DIR="${HOME}/.questionbankdb"
-CREDENTIAL_CACHE_FILE="${CREDENTIAL_CACHE_DIR}/${PROJECT_NAME}.env.production"
+CREDENTIAL_CACHE_FILE="${CREDENTIAL_CACHE_DIR}/${COMPOSE_PROJECT_NAME}.env.production"
 
 RUNTIME_PATHS=(
   scripts
@@ -151,7 +161,7 @@ ensure_env_file() {
     echo "Choose one option:"
     echo "1) Reuse existing data: restore the original .env.production for this folder, then rerun update."
     echo "2) Fresh reset (deletes old DB data):"
-    echo "   docker compose --env-file $ENV_FILE -f $COMPOSE_FILE down -v --remove-orphans"
+    echo "   docker compose --project-name $COMPOSE_PROJECT_NAME --env-file $ENV_FILE -f $COMPOSE_FILE down -v --remove-orphans"
     echo "   docker volume rm $DB_VOLUME_NAME"
     echo "   curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/scripts/install.sh | bash"
     exit 1
@@ -193,31 +203,31 @@ ensure_env_file
 print_backend_diagnostics() {
   echo
   echo "Startup diagnostics:"
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps || true
+  docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps || true
   echo "--- backend logs (last 200 lines) ---"
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=200 backend || true
+  docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=200 backend || true
   echo "--- postgres logs (last 80 lines) ---"
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=80 postgres || true
+  docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=80 postgres || true
   echo
 }
 
 print_db_credentials_mismatch_help_if_detected() {
   local backend_logs
-  backend_logs="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=300 backend 2>/dev/null || true)"
+  backend_logs="$(docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=300 backend 2>/dev/null || true)"
   if echo "$backend_logs" | grep -Eqi "InvalidPasswordError|password authentication failed for user"; then
     echo "Detected database credential mismatch between $ENV_FILE and existing Postgres volume."
     echo "Fix options:"
     echo "1) Reuse existing data: restore the original .env.production used when DB was created."
     echo "2) Fresh install (data loss):"
-    echo "   docker compose --env-file $ENV_FILE -f $COMPOSE_FILE down -v --remove-orphans"
-    echo "   docker volume rm $(basename "$ROOT_DIR" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+//g')_postgres_data"
+    echo "   docker compose --project-name $COMPOSE_PROJECT_NAME --env-file $ENV_FILE -f $COMPOSE_FILE down -v --remove-orphans"
+    echo "   docker volume rm $DB_VOLUME_NAME"
     echo "   curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/scripts/install.sh | bash"
     echo
   fi
 }
 
 echo "Step 1/4: Creating pre-update database backup..."
-postgres_container_id="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps -q postgres 2>/dev/null || true)"
+postgres_container_id="$(docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps -q postgres 2>/dev/null || true)"
 if [[ -z "$postgres_container_id" ]]; then
   echo "No existing postgres container found. Skipping backup for first-time install."
 else
@@ -231,12 +241,12 @@ fi
 
 echo "Step 2/4: Pulling latest images (if available)..."
 set +e
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull
+docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull
 set -e
 
 echo "Step 3/4: Rebuilding/restarting services..."
 set +e
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build
+docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build
 compose_rc=$?
 set -e
 
@@ -257,7 +267,7 @@ done
 
 if ! curl -fsS "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
   echo "Update verification failed. Inspect logs with:"
-  echo "docker compose --env-file $ENV_FILE -f $COMPOSE_FILE logs --tail=200"
+  echo "docker compose --project-name $COMPOSE_PROJECT_NAME --env-file $ENV_FILE -f $COMPOSE_FILE logs --tail=200"
   print_backend_diagnostics
   print_db_credentials_mismatch_help_if_detected
   exit 1

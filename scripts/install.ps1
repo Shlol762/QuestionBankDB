@@ -59,6 +59,19 @@ $($dockerInfoOutput | Out-String)
 
 Set-StrictMode -Version Latest
 
+function Get-ProjectHash([string]$Path) {
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Path)
+    $sha1 = [System.Security.Cryptography.SHA1]::Create()
+    try {
+        $hashBytes = $sha1.ComputeHash($bytes)
+    }
+    finally {
+        $sha1.Dispose()
+    }
+    $hex = ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').ToLower()
+    return $hex.Substring(0, 8)
+}
+
 $RepoOwner = 'Shlol762'
 $RepoName = 'QuestionBankDB'
 $Branch = 'Live-Version'
@@ -71,10 +84,11 @@ if ([System.IO.Path]::IsPathRooted($TargetArg)) {
     $TargetDir = [System.IO.Path]::GetFullPath((Join-Path $PWD $TargetArg))
 }
 
-$ProjectName = ((Split-Path -Leaf $TargetDir).ToLower() -replace '[^a-z0-9]', '')
-$DbVolumeName = "$ProjectName`_postgres_data"
+$ProjectHash = Get-ProjectHash $TargetDir
+$ComposeProjectName = "questionbankdb_$ProjectHash"
+$DbVolumeName = "$ComposeProjectName`_postgres_data"
 $CredentialCacheDir = Join-Path $env:USERPROFILE '.questionbankdb'
-$CredentialCacheFile = Join-Path $CredentialCacheDir "$ProjectName.env.production"
+$CredentialCacheFile = Join-Path $CredentialCacheDir "$ComposeProjectName.env.production"
 
 $RuntimePaths = @(
     'scripts',
@@ -164,7 +178,7 @@ No credential cache found at: $CredentialCacheFile
 Choose one option:
 1) Reuse existing data: restore prior .env.production for this install directory, then rerun install.
 2) Fresh install (data loss):
-   docker compose -f $(Join-Path $TargetDir 'docker-compose.production.yml') down -v --remove-orphans
+    docker compose --project-name $ComposeProjectName -f $(Join-Path $TargetDir 'docker-compose.production.yml') down -v --remove-orphans
    docker volume rm $DbVolumeName
    powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch/scripts/install.ps1).Content)"
 "@

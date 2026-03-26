@@ -6,6 +6,17 @@ COMPOSE_FILE="$ROOT_DIR/docker-compose.production.yml"
 ENV_FILE="$ROOT_DIR/.env.production"
 BACKUP_DIR="$ROOT_DIR/backups"
 
+compute_project_hash() {
+  if command -v sha1sum >/dev/null 2>&1; then
+    printf "%s" "$1" | sha1sum | cut -c1-8
+    return
+  fi
+  printf "%s" "$1" | cksum | awk '{print $1}'
+}
+
+PROJECT_HASH="$(compute_project_hash "$ROOT_DIR")"
+COMPOSE_PROJECT_NAME="questionbankdb_${PROJECT_HASH}"
+
 PURGE_DATA=false
 PURGE_BACKUPS=false
 REMOVE_ENV=false
@@ -56,10 +67,10 @@ fi
 
 if [[ "$PURGE_DATA" == "true" ]]; then
   echo "Running uninstall with data purge..."
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down -v --remove-orphans || true
+  docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down -v --remove-orphans || true
 else
   echo "Running safe uninstall (data preserved)..."
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans || true
+  docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" down --remove-orphans || true
 fi
 
 if [[ "$PURGE_BACKUPS" == "true" && -d "$BACKUP_DIR" ]]; then
