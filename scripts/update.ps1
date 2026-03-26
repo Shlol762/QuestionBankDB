@@ -8,6 +8,17 @@ if (-not (Test-Path $EnvFile)) {
     throw "Missing $EnvFile. Run scripts/install.ps1 first."
 }
 
+function Show-BackendDiagnostics {
+    Write-Host ''
+    Write-Host 'Startup diagnostics:'
+    & docker compose --env-file $EnvFile -f $ComposeFile ps
+    Write-Host '--- backend logs (last 200 lines) ---'
+    & docker compose --env-file $EnvFile -f $ComposeFile logs --tail=200 backend
+    Write-Host '--- postgres logs (last 80 lines) ---'
+    & docker compose --env-file $EnvFile -f $ComposeFile logs --tail=80 postgres
+    Write-Host ''
+}
+
 Write-Host 'Step 1/4: Creating pre-update database backup...'
 & (Join-Path $RootDir 'scripts/backup-db.ps1')
 
@@ -16,6 +27,11 @@ Write-Host 'Step 2/4: Pulling latest images (if available)...'
 
 Write-Host 'Step 3/4: Rebuilding/restarting services...'
 & docker compose --env-file $EnvFile -f $ComposeFile up -d --build
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Compose reported a startup failure (exit $LASTEXITCODE)."
+    Show-BackendDiagnostics
+    exit 1
+}
 
 Write-Host 'Step 4/4: Verifying backend health...'
 $healthy = $false
@@ -34,6 +50,7 @@ for ($i = 0; $i -lt 30; $i++) {
 if (-not $healthy) {
     Write-Host 'Update verification failed. Inspect logs with:'
     Write-Host "docker compose --env-file $EnvFile -f $ComposeFile logs --tail=200"
+    Show-BackendDiagnostics
     exit 1
 }
 

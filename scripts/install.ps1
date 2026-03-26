@@ -70,6 +70,17 @@ function Show-InstallPlan {
     Write-Host ''
 }
 
+function Show-BackendDiagnostics {
+    Write-Host ''
+    Write-Host 'Startup diagnostics:'
+    & docker compose --env-file $EnvFile -f $ComposeFile ps
+    Write-Host '--- backend logs (last 200 lines) ---'
+    & docker compose --env-file $EnvFile -f $ComposeFile logs --tail=200 backend
+    Write-Host '--- postgres logs (last 80 lines) ---'
+    & docker compose --env-file $EnvFile -f $ComposeFile logs --tail=80 postgres
+    Write-Host ''
+}
+
 Require-Command 'docker'
 Assert-ProjectRoot
 Show-InstallPlan
@@ -110,6 +121,11 @@ if (-not (Test-Path $EnvFile)) {
 
 Write-Host 'Building and starting services...'
 & docker compose --env-file $EnvFile -f $ComposeFile up -d --build
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Compose reported a startup failure (exit $LASTEXITCODE)."
+    Show-BackendDiagnostics
+    exit 1
+}
 
 Write-Host 'Waiting for backend health endpoint...'
 $healthy = $false
@@ -128,6 +144,7 @@ for ($i = 0; $i -lt 30; $i++) {
 if (-not $healthy) {
     Write-Host 'Backend health check failed. Inspect logs with:'
     Write-Host "docker compose --env-file $EnvFile -f $ComposeFile logs --tail=100"
+    Show-BackendDiagnostics
     exit 1
 }
 

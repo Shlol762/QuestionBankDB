@@ -69,6 +69,17 @@ print_install_plan() {
 
 print_install_plan
 
+print_backend_diagnostics() {
+  echo
+  echo "Startup diagnostics:"
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps || true
+  echo "--- backend logs (last 200 lines) ---"
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=200 backend || true
+  echo "--- postgres logs (last 80 lines) ---"
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=80 postgres || true
+  echo
+}
+
 if ! docker compose version >/dev/null 2>&1; then
   echo "Error: Docker Compose plugin is missing."
   echo "Install package: docker-compose-plugin"
@@ -97,7 +108,16 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 echo "Building and starting services..."
+set +e
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build
+compose_rc=$?
+set -e
+
+if [[ $compose_rc -ne 0 ]]; then
+  echo "Compose reported a startup failure (exit $compose_rc)."
+  print_backend_diagnostics
+  exit 1
+fi
 
 echo "Waiting for backend health endpoint..."
 for _ in {1..30}; do
@@ -110,6 +130,7 @@ done
 if ! curl -fsS "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
   echo "Backend health check failed. Inspect logs with:"
   echo "docker compose --env-file $ENV_FILE -f $COMPOSE_FILE logs --tail=100"
+  print_backend_diagnostics
   exit 1
 fi
 
