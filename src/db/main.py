@@ -16,10 +16,10 @@ async_engine = create_async_engine(
 
 
 async def init_db():
-    if settings.TESTING:
-        async with async_engine.begin() as conn:
-            from .models import SyllabusMaster, GradeConfig, Subject, Topic, Users, QuestionBank
-            await conn.run_sync(SQLModel.metadata.create_all)
+    async with async_engine.begin() as conn:
+        # Import models so SQLModel metadata contains the full current schema.
+        from . import models  # noqa: F401
+        await conn.run_sync(SQLModel.metadata.create_all)
 
 
 async def get_session() -> AsyncSession:

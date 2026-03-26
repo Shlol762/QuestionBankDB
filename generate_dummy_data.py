@@ -8,7 +8,8 @@ from sqlalchemy.orm import sessionmaker
 from src.db.main import async_engine
 from src.db.models import (
     Users, SyllabusMaster, GradeConfig, Subject, Topic, QuestionBank,
-    DifficultyLevel, QuestionType, UserSubjectLink, GradeCoordinatorLink, HODLink
+    DifficultyLevel, QuestionType, QuestionStatus,
+    UserSubjectLink, GradeCoordinatorLink, HODLink, AllowedSubject
 )
 from src.db.auth_utils import get_password_hash
 
@@ -154,6 +155,15 @@ async def generate_data():
 
         # 4. ASSIGN ROLES (HODs & Coordinators)
         print("🔑 Assigning Security Roles and Hooks...")
+        # Seed canonical allowed subjects list used by admin workflows.
+        existing_allowed = {
+            row[0]
+            for row in (await session.exec(select(AllowedSubject.subject_name))).all()
+        }
+        for subject_name in CURRICULUM_DATA.keys():
+            if subject_name not in existing_allowed:
+                session.add(AllowedSubject(subject_name=subject_name, recommendation_note="Core subject"))
+
         # Assign 3 HODs
         hod_candidates = random.sample(staff_members, 3)
         for i, sub_name in enumerate(list(CURRICULUM_DATA.keys())[:3]):
@@ -201,6 +211,9 @@ async def generate_data():
                     options = {"pairs": [{"left": "Term A", "right": "Definition A"}, {"left": "Term B", "right": "Definition B"}]}
                     ans_text = "Pairs matched"
 
+                created_at = datetime.now() - timedelta(days=random.randint(0, 730))
+                updated_at = created_at + timedelta(days=random.randint(0, 365))
+
                 q = QuestionBank(
                     topic_id=topic.topic_id,
                     teacher_id=teacher.user_id,
@@ -210,7 +223,9 @@ async def generate_data():
                     marks=random.choice([2, 5, 10]),
                     difficulty=difficulty,
                     q_type=q_type,
-                    created_at=datetime.now() - timedelta(days=random.randint(0, 730))
+                    status=random.choice([QuestionStatus.DRAFT, QuestionStatus.PUBLISHED, QuestionStatus.ARCHIVED]),
+                    created_at=created_at,
+                    updated_at=updated_at,
                 )
                 session.add(q)
                 question_count += 1

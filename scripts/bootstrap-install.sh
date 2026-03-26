@@ -7,16 +7,16 @@ BRANCH="Live-Version"
 TARGET_DIR="${1:-QuestionBankDB}"
 
 RUNTIME_PATHS=(
-  "scripts"
-  "src"
-  "frontend"
-  "docker-compose.production.yml"
-  "Dockerfile.backend"
-  "Dockerfile.frontend"
-  "requirements.txt"
-  "alembic.ini"
-  ".dockerignore"
-  ".env.production.example"
+  "/scripts"
+  "/src"
+  "/frontend"
+  "/docker-compose.production.yml"
+  "/Dockerfile.backend"
+  "/Dockerfile.frontend"
+  "/requirements.txt"
+  "/alembic.ini"
+  "/.dockerignore"
+  "/.env.production.example"
 )
 
 need_cmd() {

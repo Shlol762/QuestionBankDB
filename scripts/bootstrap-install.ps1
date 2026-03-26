@@ -9,16 +9,16 @@ $Branch = 'Live-Version'
 $ZipUrl = 'https://github.com/Shlol762/QuestionBankDB/archive/refs/heads/Live-Version.zip'
 
 $RuntimePaths = @(
-    'scripts',
-    'src',
-    'frontend',
-    'docker-compose.production.yml',
-    'Dockerfile.backend',
-    'Dockerfile.frontend',
-    'requirements.txt',
-    'alembic.ini',
-    '.dockerignore',
-    '.env.production.example'
+    '/scripts',
+    '/src',
+    '/frontend',
+    '/docker-compose.production.yml',
+    '/Dockerfile.backend',
+    '/Dockerfile.frontend',
+    '/requirements.txt',
+    '/alembic.ini',
+    '/.dockerignore',
+    '/.env.production.example'
 )
 
 function Require-Command([string]$Name) {

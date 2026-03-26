@@ -95,7 +95,7 @@ QuestionBankDB/
 │       ├── auth_utils.py           # JWT helpers, password hashing, current-user dependency
 │       ├── curriculum_routes.py    # /curriculum/* endpoints
 │       ├── stats_routes.py         # /stats/* endpoints
-│       ├── migrations/             # Alembic-style migration scripts
+│       ├── migrations/             # Migration placeholder (schema currently bootstrapped from models)
 │       └── questions/
 │           └── routes.py           # /questions/* endpoints
 │

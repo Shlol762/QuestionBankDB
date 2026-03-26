@@ -10,7 +10,7 @@ The one-line installer fetches a minimal runtime checkout (not full source histo
 - Uses persistent volumes for database and uploads:
   - `questiondb_postgres_data`
   - `questiondb_uploads_data`
-- Runs Alembic migrations before backend startup.
+- Initializes database schema directly from SQLModel metadata at backend startup.
 - Creates automatic DB backup before each update.
 
 ## Prerequisites
