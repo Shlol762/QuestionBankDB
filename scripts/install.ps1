@@ -5,6 +5,28 @@ $ComposeFile = Join-Path $RootDir 'docker-compose.production.yml'
 $EnvFile = Join-Path $RootDir '.env.production'
 $ExampleEnvFile = Join-Path $RootDir '.env.production.example'
 
+function Assert-ProjectRoot {
+        $missing = @()
+        if (-not (Test-Path $ComposeFile)) { $missing += 'docker-compose.production.yml' }
+        if (-not (Test-Path $ExampleEnvFile)) { $missing += '.env.production.example' }
+        if (-not (Test-Path (Join-Path $RootDir 'Dockerfile.backend'))) { $missing += 'Dockerfile.backend' }
+        if (-not (Test-Path (Join-Path $RootDir 'Dockerfile.frontend'))) { $missing += 'Dockerfile.frontend' }
+        if (-not (Test-Path (Join-Path $RootDir 'src'))) { $missing += 'src/' }
+        if (-not (Test-Path (Join-Path $RootDir 'frontend'))) { $missing += 'frontend/' }
+
+        if ($missing.Count -gt 0) {
+                throw @"
+Error: Installer must be run from the QuestionBankDB repository root.
+Missing required project files/directories: $($missing -join ', ')
+
+Fix:
+    git clone https://github.com/Shlol762/QuestionBankDB.git
+    cd QuestionBankDB
+    powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+"@
+        }
+}
+
 function Require-Command([string]$Name) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
         if ($Name -eq 'docker') {
@@ -36,6 +58,7 @@ function Read-EnvMap([string]$Path) {
 }
 
 Require-Command 'docker'
+Assert-ProjectRoot
 
 & docker compose version *> $null
 if ($LASTEXITCODE -ne 0) {

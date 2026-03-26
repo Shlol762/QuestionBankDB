@@ -6,6 +6,27 @@ COMPOSE_FILE="$ROOT_DIR/docker-compose.production.yml"
 ENV_FILE="$ROOT_DIR/.env.production"
 EXAMPLE_ENV_FILE="$ROOT_DIR/.env.production.example"
 
+assert_project_root() {
+  local missing=()
+  [[ -f "$COMPOSE_FILE" ]] || missing+=("docker-compose.production.yml")
+  [[ -f "$EXAMPLE_ENV_FILE" ]] || missing+=(".env.production.example")
+  [[ -f "$ROOT_DIR/Dockerfile.backend" ]] || missing+=("Dockerfile.backend")
+  [[ -f "$ROOT_DIR/Dockerfile.frontend" ]] || missing+=("Dockerfile.frontend")
+  [[ -d "$ROOT_DIR/src" ]] || missing+=("src/")
+  [[ -d "$ROOT_DIR/frontend" ]] || missing+=("frontend/")
+
+  if (( ${#missing[@]} > 0 )); then
+    echo "Error: Installer must be run from the QuestionBankDB repository root."
+    echo "Missing required project files/directories: ${missing[*]}"
+    echo
+    echo "Fix: clone the repository and run install from inside it:"
+    echo "  git clone https://github.com/Shlol762/QuestionBankDB.git"
+    echo "  cd QuestionBankDB"
+    echo "  bash scripts/install.sh"
+    exit 1
+  fi
+}
+
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Error: Missing required command '$1'."
@@ -31,6 +52,7 @@ require_cmd() {
 require_cmd docker
 require_cmd openssl
 require_cmd curl
+assert_project_root
 
 if ! docker compose version >/dev/null 2>&1; then
   echo "Error: Docker Compose plugin is missing."

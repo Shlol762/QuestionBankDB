@@ -28,18 +28,18 @@ If install exits with a missing docker error:
 
 ## First-time install
 
-From repository root.
+From any directory.
 
 Linux:
 
 ```bash
-mkdir -p scripts && curl -fsSL https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/install.sh -o scripts/install.sh && bash scripts/install.sh
+curl -fsSL https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/bootstrap-install.sh | bash
 ```
 
 Windows (PowerShell):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -Command "New-Item -ItemType Directory -Force -Path .\scripts | Out-Null; Invoke-WebRequest https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/install.ps1 -OutFile .\scripts\install.ps1; powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1"
+powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/bootstrap-install.ps1).Content)"
 ```
 
 What happens:
