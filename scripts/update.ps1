@@ -157,8 +157,8 @@ function Ensure-EnvFile {
         return
     }
 
-    & docker volume inspect $DbVolumeName *> $null
-    if ($LASTEXITCODE -eq 0) {
+    $existingVolume = docker volume ls -q --filter "name=^${DbVolumeName}$"
+    if ($existingVolume) {
         if (Test-Path $CredentialCacheFile) {
             Copy-Item $CredentialCacheFile $EnvFile -Force
             Write-Host "Recovered DB credentials from cache: $CredentialCacheFile"
