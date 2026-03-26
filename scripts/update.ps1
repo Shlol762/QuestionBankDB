@@ -119,7 +119,10 @@ Original error: $($_.Exception.Message)
 "@
                 }
 
+        $prevEA = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
         tar -xzf $archivePath -C $tmpDir
+        $ErrorActionPreference = $prevEA
 
         $extractedDir = Get-ChildItem -Path $tmpDir -Directory | Where-Object { $_.Name -like "$RepoName-*" } | Select-Object -First 1
         if (-not $extractedDir) {
@@ -186,7 +189,8 @@ Choose one option:
     Copy-Item $ExampleEnvFile $EnvFile
 
     $dbPassword = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 24 | ForEach-Object {[char]$_})
-    $secret = [Convert]::ToHexString((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
+    $randomBytes = [byte[]](1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 })
+    $secret = ([System.BitConverter]::ToString($randomBytes)).Replace('-', '').ToLower()
 
     $content = Get-Content $EnvFile -Raw
     $content = $content -replace 'POSTGRES_PASSWORD=replace_me_with_strong_password', "POSTGRES_PASSWORD=$dbPassword"
@@ -248,10 +252,13 @@ else {
 }
 
 Write-Host 'Step 2/4: Pulling latest images (if available)...'
+$prevEA = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 & docker compose --project-name $ComposeProjectName --env-file $EnvFile -f $ComposeFile pull
 
 Write-Host 'Step 3/4: Rebuilding/restarting services...'
 & docker compose --project-name $ComposeProjectName --env-file $EnvFile -f $ComposeFile up -d --build
+$ErrorActionPreference = $prevEA
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Compose reported a startup failure (exit $LASTEXITCODE)."
     Show-BackendDiagnostics
