@@ -49,8 +49,13 @@ function App() {
 
   // --- EFFECT: AUTH ---
   useEffect(() => {
+    if (isAuthenticated) {
+      fetchMe();
+      return;
+    }
+    // Ensure state is normalized when no token is present.
     fetchMe();
-  }, [fetchMe]);
+  }, [fetchMe, isAuthenticated]);
 
   // --- EFFECT: DARK MODE SYNC ---
   useEffect(() => {
@@ -104,7 +109,6 @@ function App() {
     <Router>
       <Toaster 
         position="bottom-right"
-        containerAriaLabel="Notifications"
         toastOptions={{
           ariaProps: {
             role: 'status',

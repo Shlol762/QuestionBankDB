@@ -32,6 +32,7 @@ class GradeRead(BaseCurriculumModel):
     config_id: int
     syllabus_id: int
     grade_level: int
+    pdf_url: Optional[str] = None
 
 class SyllabusRead(BaseCurriculumModel):
     syllabus_id: int
@@ -58,6 +59,7 @@ class SyllabusUpdate(BaseCurriculumModel):
 
 class GradeUpdate(BaseCurriculumModel):
     grade_level: Optional[int] = None
+    pdf_url: Optional[str] = None
 
 class SubjectUpdate(BaseCurriculumModel):
     subject_name: Optional[str] = Field(default=None, min_length=1)

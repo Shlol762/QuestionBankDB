@@ -1,7 +1,7 @@
-"""add_question_timestamps_and_status
+"""Add question status and timestamps
 
-Revision ID: add_question_timestamps_and_status
-Revises: add_user_preferences_column
+Revision ID: add_question_status_ts
+Revises: b536c1d3ccc6
 Create Date: 2026-03-24 00:00:00
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "add_question_timestamps_and_status"
-down_revision: Union[str, Sequence[str], None] = "add_user_preferences_column"
+revision: str = "add_question_status_ts"
+down_revision: Union[str, Sequence[str], None] = "b536c1d3ccc6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

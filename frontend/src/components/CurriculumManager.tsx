@@ -110,7 +110,7 @@ const SubjectNode = ({ subject, grade, isAdmin, hodSubjects, assignedSubjectIds,
   );
 };
 
-const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, openSubjectModal, openTopicModal }: any) => {
+const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openSubjectModal, openTopicModal }: any) => {
   const isExpanded = expanded.includes(`g-${grade.config_id}`);
   const isCoordinator = gradeLevels.includes(grade.grade_level);
   const enrichedGrade = { ...grade, isCoordinator };
@@ -141,11 +141,24 @@ const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectId
         <div className="flex items-center gap-3">
           <Layers className={`w-4 h-4 ${isExpanded ? 'text-amber-500' : 'text-gray-300'}`} />
           <span className="font-black text-xs uppercase tracking-widest text-gray-700 dark:text-gray-300">Grade {grade.grade_level}</span>
+          {grade.pdf_url && (
+            <a href={`${import.meta.env.VITE_API_BASE_URL || ''}${grade.pdf_url}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1 text-academy-600 dark:text-academy-400 hover:bg-academy-100 dark:hover:bg-academy-900/50 rounded-lg transition-colors" title="View Grade PDF">
+              <FileText className="w-3.5 h-3.5" />
+            </a>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
             {isAdmin && (
               <>
+                <button onClick={(e) => { e.stopPropagation(); triggerUpload(grade.config_id); }} className="p-1.5 text-gray-400 hover:text-academy-600 transition-colors" title="Upload Grade PDF">
+                  {uploadingGradeId === grade.config_id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-academy-500" /> : <Upload className="w-3.5 h-3.5" />}
+                </button>
+                {grade.pdf_url && (
+                  <button onClick={(e) => { e.stopPropagation(); removePdfMutation.mutate(grade.config_id); }} className="p-1.5 text-gray-400 hover:text-red-600 transition-colors" title="Remove Grade PDF">
+                    {removePdfMutation.isPending && removePdfMutation.variables === grade.config_id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-red-500" /> : <FileX className="w-3.5 h-3.5" />}
+                  </button>
+                )}
                 <button onClick={(e) => { e.stopPropagation(); openEdit('grade', grade); }} className="p-1.5 text-gray-400 hover:text-academy-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
                 <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'grade', id: grade.config_id, name: `Grade ${grade.grade_level}`}); }} className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
               </>
@@ -191,7 +204,7 @@ const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectId
   );
 };
 
-const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingSyllabusId, uploadProgress, removePdfMutation, openGradeModal, openSubjectModal, openTopicModal }: any) => {
+const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openGradeModal, openSubjectModal, openTopicModal }: any) => {
   const isExpanded = expanded.includes(`s-${syllabus.syllabus_id}`);
 
   // Lazy load grades
@@ -229,14 +242,6 @@ const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSub
           <div className="flex items-center gap-1 mr-2">
             {isAdmin && (
               <>
-                <button onClick={(e) => { e.stopPropagation(); triggerUpload(syllabus.syllabus_id); }} className="p-2 hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-academy-600 rounded-lg transition-colors" title="Update Syllabus PDF">
-                  {uploadingSyllabusId === syllabus.syllabus_id ? <Loader2 className="w-4 h-4 animate-spin text-academy-500" /> : <Upload className="w-4 h-4" />}
-                </button>
-                {syllabus.pdf_url && (
-                  <button onClick={(e) => { e.stopPropagation(); removePdfMutation.mutate(syllabus.syllabus_id); }} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-lg transition-colors" title="Remove Syllabus PDF">
-                    {removePdfMutation.isPending && removePdfMutation.variables === syllabus.syllabus_id ? <Loader2 className="w-4 h-4 animate-spin text-red-500" /> : <FileX className="w-4 h-4" />}
-                  </button>
-                )}
                 <button onClick={(e) => { e.stopPropagation(); openEdit('syllabus', syllabus); }} className="p-2 hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-academy-600 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button>
                 <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'syllabus', id: syllabus.syllabus_id, name: syllabus.syllabus_name}); }} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                 <button onClick={(e) => { e.stopPropagation(); openGradeModal(syllabus.syllabus_id); }} className="ml-2 bg-academy-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">Add Grade</button>
@@ -246,12 +251,6 @@ const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSub
           {isExpanded ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronRight className="w-5 h-5 text-gray-400" />}
         </div>
       </div>
-
-      {uploadingSyllabusId === syllabus.syllabus_id && uploadProgress > 0 && uploadProgress < 100 && (
-        <div className="h-1 bg-gray-100 dark:bg-gray-700 w-full overflow-hidden">
-          <div className="h-full bg-academy-500 transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
-        </div>
-      )}
 
       {isExpanded && (
         <div className="bg-gray-50/30 dark:bg-gray-900/10 px-6 py-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
@@ -272,6 +271,9 @@ const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSub
                   openEdit={openEdit}
                   setDeleteTarget={setDeleteTarget}
                   onAddQuestion={onAddQuestion}
+                  triggerUpload={triggerUpload}
+                  uploadingGradeId={uploadingGradeId}
+                  removePdfMutation={removePdfMutation}
                   openSubjectModal={openSubjectModal}
                   openTopicModal={openTopicModal}
                 />
@@ -304,8 +306,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
     localStorage.setItem('curriculum-expanded', JSON.stringify(newExpanded));
   };
 
-  const [uploadingSyllabusId, setUploadingSyllabusId] = useState<number | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadingGradeId, setUploadingGradeId] = useState<number | null>(null);
   
   // 1. Get Identity
   const { user } = useAuthStore();
@@ -400,8 +401,8 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
   });
 
   const removePdfMutation = useMutation({
-    mutationFn: async (syllabusId: number) => {
-      return client.patch(`/curriculum/syllabuses/${syllabusId}`, { pdf_url: null });
+    mutationFn: async (gradeId: number) => {
+      return client.patch(`/curriculum/grades/${gradeId}`, { pdf_url: null });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['syllabuses'] });
@@ -412,30 +413,27 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
   });
 
   const uploadMutation = useMutation({
-    mutationFn: async ({ syllabusId, file }: { syllabusId: number, file: File }) => {
+    mutationFn: async ({ gradeId, file }: { gradeId: number, file: File }) => {
       const formData = new FormData();
       formData.append('file', file);
       const uploadRes = await client.post('/curriculum/upload-pdf', formData, {
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 100));
-          setUploadProgress(percentCompleted);
+        onUploadProgress: () => {
+          // Progress hook intentionally kept empty for future visual indicator.
         }
       });
-      return client.patch(`/curriculum/syllabuses/${syllabusId}`, { pdf_url: uploadRes.data.pdf_url });
+      return client.patch(`/curriculum/grades/${gradeId}`, { pdf_url: uploadRes.data.pdf_url });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['syllabuses'] });
-      setUploadingSyllabusId(null);
-      setUploadProgress(0);
+      setUploadingGradeId(null);
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.detail || "Upload failed");
-      setUploadProgress(0);
     }
   });
 
   const triggerUpload = (id: number) => {
-    setUploadingSyllabusId(id);
+    setUploadingGradeId(id);
     if (fileInputRef.current) {
         fileInputRef.current.click();
     }
@@ -443,8 +441,8 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && uploadingSyllabusId) {
-      uploadMutation.mutate({ syllabusId: uploadingSyllabusId, file });
+    if (file && uploadingGradeId) {
+      uploadMutation.mutate({ gradeId: uploadingGradeId, file });
     }
   };
 
@@ -563,8 +561,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
                 setDeleteTarget={setDeleteTarget}
                 onAddQuestion={onAddQuestion}
                 triggerUpload={triggerUpload}
-                uploadingSyllabusId={uploadingSyllabusId}
-                uploadProgress={uploadProgress}
+                uploadingGradeId={uploadingGradeId}
                 removePdfMutation={removePdfMutation}
                 openGradeModal={openGradeModal}
                 openSubjectModal={openSubjectModal}

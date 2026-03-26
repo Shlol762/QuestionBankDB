@@ -9,6 +9,9 @@ from sqlalchemy import and_, or_
 
 router = APIRouter(prefix="/stats", tags=["Analytics"])
 
+STATUS_ARCHIVED = QuestionStatus.ARCHIVED.value
+STATUS_PUBLISHED = QuestionStatus.PUBLISHED.value
+
 @router.get("/")
 async def get_dashboard_stats(
     session: AsyncSession = Depends(get_session),
@@ -23,7 +26,7 @@ async def get_dashboard_stats(
     # 1. Base Counts
     if current_user.is_admin:
         q_count_stmt = select(func.count(QuestionBank.question_id)).where(
-            QuestionBank.status != QuestionStatus.ARCHIVED
+            QuestionBank.status != STATUS_ARCHIVED
         )
         user_count_stmt = select(func.count(Users.user_id))
         subject_count_stmt = select(func.count(Subject.subject_id))
@@ -36,7 +39,7 @@ async def get_dashboard_stats(
         ).join(Subject).join(GradeConfig).where(
             and_(
                 GradeConfig.grade_level.in_(grade_levels),
-                QuestionBank.status != QuestionStatus.ARCHIVED
+                QuestionBank.status != STATUS_ARCHIVED
             )
         )
         user_count_stmt = select(func.count(Users.user_id))
@@ -54,7 +57,7 @@ async def get_dashboard_stats(
         ).join(Subject).where(
             and_(
                 Subject.subject_name.in_(subject_names),
-                QuestionBank.status != QuestionStatus.ARCHIVED
+                QuestionBank.status != STATUS_ARCHIVED
             )
         )
         user_count_stmt = None
@@ -69,7 +72,7 @@ async def get_dashboard_stats(
         q_count_stmt = select(func.count(QuestionBank.question_id)).where(
             and_(
                 QuestionBank.teacher_id == current_user.user_id,
-                QuestionBank.status != QuestionStatus.ARCHIVED
+                QuestionBank.status != STATUS_ARCHIVED
             )
         )
         user_count_stmt = None
@@ -88,7 +91,7 @@ async def get_dashboard_stats(
     # 2. Difficulty Distribution
     if current_user.is_admin:
         diff_stmt = select(QuestionBank.difficulty, func.count(QuestionBank.question_id)).where(
-            QuestionBank.status != QuestionStatus.ARCHIVED
+            QuestionBank.status != STATUS_ARCHIVED
         ).group_by(QuestionBank.difficulty)
     elif is_coordinator:
         grade_levels = [g.grade_level for g in current_user.grade_coordinating]
@@ -97,7 +100,7 @@ async def get_dashboard_stats(
         ).join(Subject).join(GradeConfig).where(
             and_(
                 GradeConfig.grade_level.in_(grade_levels),
-                QuestionBank.status != QuestionStatus.ARCHIVED
+                QuestionBank.status != STATUS_ARCHIVED
             )
         ).group_by(QuestionBank.difficulty)
     elif is_hod:
@@ -107,14 +110,14 @@ async def get_dashboard_stats(
         ).join(Subject).where(
             and_(
                 Subject.subject_name.in_(subject_names),
-                QuestionBank.status != QuestionStatus.ARCHIVED
+                QuestionBank.status != STATUS_ARCHIVED
             )
         ).group_by(QuestionBank.difficulty)
     else:
         diff_stmt = select(QuestionBank.difficulty, func.count(QuestionBank.question_id)).where(
             and_(
                 QuestionBank.teacher_id == current_user.user_id,
-                QuestionBank.status != QuestionStatus.ARCHIVED
+                QuestionBank.status != STATUS_ARCHIVED
             )
         ).group_by(QuestionBank.difficulty)
     
@@ -132,7 +135,7 @@ async def get_dashboard_stats(
         ).join(Users, Users.user_id == QuestionBank.teacher_id).join(
             Topic, Topic.topic_id == QuestionBank.topic_id
         ).where(
-            QuestionBank.status == QuestionStatus.PUBLISHED
+            QuestionBank.status == STATUS_PUBLISHED
         ).order_by(
             QuestionBank.created_at.desc(), QuestionBank.question_id.desc()
         ).limit(5)
@@ -151,7 +154,7 @@ async def get_dashboard_stats(
         ).where(
             and_(
                 GradeConfig.grade_level.in_(grade_levels),
-                QuestionBank.status == QuestionStatus.PUBLISHED
+                QuestionBank.status == STATUS_PUBLISHED
             )
         ).order_by(
             QuestionBank.created_at.desc(), QuestionBank.question_id.desc()
@@ -169,7 +172,7 @@ async def get_dashboard_stats(
         ).join(Subject, Subject.subject_id == Topic.subject_id).where(
             and_(
                 Subject.subject_name.in_(subject_names),
-                QuestionBank.status == QuestionStatus.PUBLISHED
+                QuestionBank.status == STATUS_PUBLISHED
             )
         ).order_by(
             QuestionBank.created_at.desc(), QuestionBank.question_id.desc()
@@ -186,7 +189,7 @@ async def get_dashboard_stats(
         ).where(
             and_(
                 QuestionBank.teacher_id == current_user.user_id,
-                QuestionBank.status == QuestionStatus.PUBLISHED
+                QuestionBank.status == STATUS_PUBLISHED
             )
         ).order_by(
             QuestionBank.created_at.desc(), QuestionBank.question_id.desc()
@@ -201,7 +204,7 @@ async def get_dashboard_stats(
         ).outerjoin(
             QuestionBank, and_(
                 QuestionBank.topic_id == Topic.topic_id,
-                QuestionBank.status == QuestionStatus.PUBLISHED
+                QuestionBank.status == STATUS_PUBLISHED
             )
         ).where(
             QuestionBank.question_id.is_(None)
@@ -213,7 +216,7 @@ async def get_dashboard_stats(
         ).join(GradeConfig).outerjoin(
             QuestionBank, and_(
                 QuestionBank.topic_id == Topic.topic_id,
-                QuestionBank.status == QuestionStatus.PUBLISHED
+                QuestionBank.status == STATUS_PUBLISHED
             )
         ).where(
             and_(
@@ -228,7 +231,7 @@ async def get_dashboard_stats(
         ).outerjoin(
             QuestionBank, and_(
                 QuestionBank.topic_id == Topic.topic_id,
-                QuestionBank.status == QuestionStatus.PUBLISHED
+                QuestionBank.status == STATUS_PUBLISHED
             )
         ).where(
             and_(
@@ -242,7 +245,7 @@ async def get_dashboard_stats(
         ).outerjoin(
             QuestionBank, and_(
                 QuestionBank.topic_id == Topic.topic_id,
-                QuestionBank.status == QuestionStatus.PUBLISHED
+                QuestionBank.status == STATUS_PUBLISHED
             )
         ).where(
             and_(
@@ -259,7 +262,7 @@ async def get_dashboard_stats(
             Users.full_name,
             func.count(QuestionBank.question_id).label("count")
         ).join(QuestionBank).where(
-            QuestionBank.status == QuestionStatus.PUBLISHED
+            QuestionBank.status == STATUS_PUBLISHED
         ).group_by(Users.user_id).order_by(
             func.count(QuestionBank.question_id).desc()
         ).limit(10)
@@ -273,7 +276,7 @@ async def get_dashboard_stats(
         ).join(Subject).join(GradeConfig).where(
             and_(
                 GradeConfig.grade_level.in_(grade_levels),
-                QuestionBank.status == QuestionStatus.PUBLISHED
+                QuestionBank.status == STATUS_PUBLISHED
             )
         ).group_by(Users.user_id).order_by(
             func.count(QuestionBank.question_id).desc()
@@ -288,7 +291,7 @@ async def get_dashboard_stats(
         ).join(Subject).where(
             and_(
                 Subject.subject_name.in_(subject_names),
-                QuestionBank.status == QuestionStatus.PUBLISHED
+                QuestionBank.status == STATUS_PUBLISHED
             )
         ).group_by(Users.user_id).order_by(
             func.count(QuestionBank.question_id).desc()
@@ -301,7 +304,7 @@ async def get_dashboard_stats(
         ).join(QuestionBank).where(
             and_(
                 Users.user_id == current_user.user_id,
-                QuestionBank.status == QuestionStatus.PUBLISHED
+                QuestionBank.status == STATUS_PUBLISHED
             )
         ).group_by(Users.user_id)
     

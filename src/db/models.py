@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, TypeVar, Generic, Any
 from enum import Enum
 from sqlmodel import SQLModel, Field, Relationship, Session
-from sqlalchemy import JSON, Column, DateTime
+from sqlalchemy import JSON, Column, DateTime, String
 from pydantic import BaseModel, ConfigDict
 
 # --- ENUMS ---
@@ -91,6 +91,7 @@ class GradeConfig(BaseSQLModel, table=True):
     syllabus: SyllabusMaster = Relationship(back_populates="grades")
     
     grade_level: int
+    pdf_url: Optional[str] = None
     
     # Cascade: If Grade is deleted, delete all Subjects
     subjects: List["Subject"] = Relationship(back_populates="grade", cascade_delete=True)
@@ -188,6 +189,26 @@ class Users(BaseSQLModel, table=True):
     def __repr__(self):
         return f"<User(id={self.user_id}, name='{self.full_name}')>"
 
+
+class AllowedSubject(BaseSQLModel, table=True):
+    __tablename__ = "allowed_subjects"
+
+    allowed_subject_id: Optional[int] = Field(default=None, primary_key=True)
+    subject_name: str = Field(unique=True, index=True)
+    recommendation_note: Optional[str] = None
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+    def __repr__(self):
+        return f"<AllowedSubject(id={self.allowed_subject_id}, subject_name='{self.subject_name}')>"
+
 # ==========================================
 # LEVEL 6: THE CONTENT (Questions)
 # ==========================================
@@ -210,7 +231,14 @@ class QuestionBank(BaseSQLModel, table=True):
     difficulty: DifficultyLevel = Field(default=DifficultyLevel.MEDIUM)
     q_type: QuestionType = Field(default=QuestionType.MCQ)
     is_active: bool = Field(default=True)
-    status: QuestionStatus = Field(default=QuestionStatus.DRAFT)
+    status: QuestionStatus = Field(
+        default=QuestionStatus.DRAFT,
+        sa_column=Column(
+            String(20),
+            nullable=False,
+            server_default=QuestionStatus.PUBLISHED.value,
+        ),
+    )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(DateTime(timezone=True), nullable=False),

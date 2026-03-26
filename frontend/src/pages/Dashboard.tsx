@@ -23,7 +23,11 @@ import {
   Type,
   AlertCircle,
   CheckCircle2,
-  BarChart3
+  BarChart3,
+  Eye,
+  Columns3,
+  CalendarClock,
+  UserSquare2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
@@ -34,6 +38,7 @@ import QuestionForm from '../components/QuestionForm';
 import CurriculumManager from '../components/CurriculumManager';
 import UserManagement from '../components/UserManagement';
 import DashboardOverview from '../components/DashboardOverview';
+import AllowedSubjectsManager from '../components/AllowedSubjectsManager';
 import Modal from '../components/Modal';
 import Pagination from '../components/Pagination';
 import { useSettingsStore } from '../store/settingsStore';
@@ -52,9 +57,15 @@ interface TopicSummary {
 interface QuestionRow {
   question_id: number;
   question_text: string;
+  answer_text: string;
   q_type: string;
   difficulty: string;
   marks: number;
+  status?: 'draft' | 'published' | 'archived';
+  created_at?: string;
+  updated_at?: string;
+  options?: Record<string, unknown> | null;
+  teacher?: { user_id: number; full_name: string };
   image_url?: string | null;
   topic?: TopicSummary;
 }
@@ -86,6 +97,26 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   const [filterType, setFilterType] = useState('');
   const [filterDifficulty, setFilterDifficulty] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [filterStatus, setFilterStatus] = useState('');
+  const [mineOnly, setMineOnly] = useState(false);
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [previewQuestion, setPreviewQuestion] = useState<QuestionRow | null>(null);
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem('qdb-visible-columns');
+      if (raw) return JSON.parse(raw);
+    } catch {
+      // Ignore malformed local storage.
+    }
+    return {
+      type: true,
+      difficulty: true,
+      marks: true,
+      status: true,
+      updated_at: true,
+      author: true,
+    };
+  });
 
   // Password Form State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -116,7 +147,11 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   // Reset page when filters change
   useEffect(() => {
     setPage(0);
-  }, [filterType, filterDifficulty]);
+  }, [filterType, filterDifficulty, filterStatus, mineOnly]);
+
+  useEffect(() => {
+    localStorage.setItem('qdb-visible-columns', JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
 
   useEffect(() => {
     if (activeTab === 'questions') {
@@ -170,7 +205,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
 
   // Questions Query
   const { data: questionsData, isLoading: qLoading } = useQuery({
-    queryKey: ['questions', page, debouncedSearch, filterType, filterDifficulty],
+    queryKey: ['questions', page, debouncedSearch, filterType, filterDifficulty, filterStatus, mineOnly],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.append('limit', String(ITEMS_PER_PAGE));
@@ -178,8 +213,15 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (filterType) params.append('q_type', filterType);
       if (filterDifficulty) params.append('difficulty', filterDifficulty);
+      if (filterStatus) params.append('status', filterStatus);
+      if (mineOnly) params.append('include_drafts', 'true');
       const res = await client.get(`/questions/?${params.toString()}`);
-      return res.data;
+      const payload = res.data || { items: [], total: 0 };
+      if (mineOnly) {
+        payload.items = payload.items.filter((item: QuestionRow) => item.teacher?.user_id === user?.user_id);
+        payload.total = payload.items.length;
+      }
+      return payload;
     },
     enabled: !!user && activeTab === 'questions',
     placeholderData: { items: [], total: 0 }
@@ -216,6 +258,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   const navItems = [
     { id: 'overview', icon: BarChart3, label: 'Dashboard', role: 'teacher' },
     { id: 'subjects', icon: BookOpen, label: isAdmin ? 'Full Curriculum' : 'My Scope', role: 'teacher' },
+    { id: 'allowed-subjects', icon: UserSquare2, label: 'Allowed Subjects', role: 'admin' },
     { id: 'questions', icon: PlusCircle, label: 'Question Bank', role: 'teacher' },
     { id: 'users', icon: UsersIcon, label: 'Staff Directory', role: 'admin' },
     { id: 'settings', icon: SettingsIcon, label: 'Preferences', role: 'teacher' },
@@ -227,6 +270,8 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
         return <DashboardOverview isAdmin={isAdmin} isCoordinator={isCoordinator} isHOD={isHOD} />;
       case 'subjects':
         return <CurriculumManager onAddQuestion={handleAddQuestionFromCurriculum} />;
+      case 'allowed-subjects':
+        return <AllowedSubjectsManager />;
       case 'users':
         return <UserManagement />;
       case 'settings':
@@ -332,9 +377,27 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
         );
       case 'questions':
         if (isAddingQuestion || editingQuestion) {
+          const formInitialData = editingQuestion
+            ? {
+                question_id: editingQuestion.question_id,
+                topic_id: editingQuestion.topic?.topic_id,
+                topic: editingQuestion.topic ? { subject_id: editingQuestion.topic.subject_id } : undefined,
+                question_text: editingQuestion.question_text,
+                answer_text: editingQuestion.answer_text,
+                image_url: editingQuestion.image_url ?? undefined,
+                marks: editingQuestion.marks,
+                difficulty: editingQuestion.difficulty,
+                q_type: editingQuestion.q_type,
+                status: editingQuestion.status,
+                options: editingQuestion.options,
+              }
+            : preselectedTopic
+              ? { topic_id: preselectedTopic.topic_id, topic: { subject_id: preselectedTopic.subject_id } }
+              : undefined;
+
           return (
             <QuestionForm 
-              initialData={editingQuestion || (preselectedTopic ? { topic_id: preselectedTopic.topic_id, topic: preselectedTopic } : null)}
+              initialData={formInitialData}
               onSuccess={() => {
                 setIsAddingQuestion(false);
                 setEditingQuestion(null);
@@ -373,19 +436,48 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                   </div>
                   <button aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)} className={`flex items-center gap-2 px-5 py-3 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${showFilters ? 'bg-academy-600 border-academy-600 text-white shadow-lg' : 'dark:border-gray-700 text-gray-500 hover:bg-white dark:hover:bg-gray-700'}`}>
                     <Filter className="w-4 h-4" /> {showFilters ? 'Hide Logic' : 'Filter Logic'}
-                    {(filterType || filterDifficulty) && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
+                    {(filterType || filterDifficulty || filterStatus || mineOnly) && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
+                  </button>
+                  <button aria-expanded={showColumnPicker} onClick={() => setShowColumnPicker(!showColumnPicker)} className="flex items-center gap-2 px-5 py-3 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all dark:border-gray-700 text-gray-500 hover:bg-white dark:hover:bg-gray-700">
+                    <Columns3 className="w-4 h-4" /> Columns
                   </button>
                 </div>
+
+                {showColumnPicker && (
+                  <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-100 dark:border-gray-700">
+                    {Object.entries(visibleColumns).map(([column, enabled]) => (
+                      <button
+                        key={column}
+                        onClick={() => setVisibleColumns((prev) => ({ ...prev, [column]: !prev[column] }))}
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${enabled ? 'bg-academy-600 border-academy-600 text-white' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500'}`}
+                      >
+                        {column.replace('_', ' ')}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {showFilters && (
                   <div className="flex flex-wrap gap-8 pt-4 pb-2 animate-in slide-in-from-top-2 duration-200 border-t border-gray-100 dark:border-gray-700 mt-2">
                     <div className="space-y-2.5">
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Question Category</p>
                       <div className="flex flex-wrap gap-2">
-                        {['MCQ', 'True/False', 'Match the Following', 'Short Answer', 'Long Answer'].map(t => (
+                        {['MCQ', 'True/False', 'Match the Following', 'Short Answer', 'Long Answer', 'Fill in the Blanks', 'One Word Answer', 'Assertion/Reason', 'Case Study', 'Ordering/Sequencing', 'Diagram Labeling', 'Comprehension Passage'].map(t => (
                           <button key={t} onClick={() => setFilterType(filterType === t ? '' : t)} className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight border transition-all ${filterType === t ? 'bg-academy-600 border-academy-600 text-white shadow-md' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-academy-300'}`}>{t}</button>
                         ))}
                       </div>
+                    </div>
+                    <div className="space-y-2.5">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Question Status</p>
+                      <div className="flex gap-2">
+                        {['draft', 'published', 'archived'].map(s => (
+                          <button key={s} onClick={() => setFilterStatus(filterStatus === s ? '' : s)} className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight border transition-all ${filterStatus === s ? 'bg-academy-600 border-academy-600 text-white shadow-md' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-academy-300'}`}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-2.5">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Ownership</p>
+                      <button onClick={() => setMineOnly(v => !v)} className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-tight border transition-all ${mineOnly ? 'bg-academy-600 border-academy-600 text-white shadow-md' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-academy-300'}`}>My Questions</button>
                     </div>
                     <div className="space-y-2.5">
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Complexity Level</p>
@@ -396,7 +488,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                       </div>
                     </div>
                     <div className="flex items-end pb-1">
-                      <button onClick={() => { setFilterType(''); setFilterDifficulty(''); setSearchQuery(''); }} className="text-[10px] font-black text-red-500 uppercase hover:underline underline-offset-4 tracking-widest">Clear All</button>
+                      <button onClick={() => { setFilterType(''); setFilterDifficulty(''); setFilterStatus(''); setMineOnly(false); setSearchQuery(''); }} className="text-[10px] font-black text-red-500 uppercase hover:underline underline-offset-4 tracking-widest">Clear All</button>
                     </div>
                   </div>
                 )}
@@ -408,18 +500,21 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                   <thead>
                     <tr className="text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100 dark:border-gray-700">
                       <th scope="col" className="px-8 py-5">Question Detail</th>
-                      <th scope="col" className="px-8 py-5">Classification</th>
-                      <th scope="col" className="px-8 py-5">Complexity</th>
-                      <th scope="col" className="px-8 py-5 text-center">Score</th>
+                      {visibleColumns.type && <th scope="col" className="px-8 py-5">Classification</th>}
+                      {visibleColumns.difficulty && <th scope="col" className="px-8 py-5">Complexity</th>}
+                      {visibleColumns.marks && <th scope="col" className="px-8 py-5 text-center">Score</th>}
+                      {visibleColumns.status && <th scope="col" className="px-8 py-5 text-center">Status</th>}
+                      {visibleColumns.updated_at && <th scope="col" className="px-8 py-5 text-center">Updated</th>}
+                      {visibleColumns.author && <th scope="col" className="px-8 py-5">Author</th>}
                       <th scope="col" className="px-8 py-5 text-right">Actions</th>
                     </tr>
                   </thead>
                                   <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
                                     {qLoading && questions.length === 0 ? (
-                                      <tr><td colSpan={5} className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-academy-500" /></td></tr>
+                                      <tr><td colSpan={8} className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-academy-500" /></td></tr>
                                     ) : !qLoading && questions.length === 0 ? (
                                       <tr>
-                                        <td colSpan={5} className="py-32 text-center">
+                                        <td colSpan={8} className="py-32 text-center">
                                           <div className="flex flex-col items-center justify-center space-y-4">
                                             <div className="w-20 h-20 bg-gray-50 dark:bg-gray-900 rounded-3xl flex items-center justify-center text-gray-200 dark:text-gray-800">
                                               <Search className="w-10 h-10" />
@@ -434,7 +529,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                                       </tr>
                                     ) : (
                                       questions.map((q) => (
-                                        <tr key={q.question_id} className="hover:bg-gray-50/50 dark:hover:bg-gray-900/50 transition-colors group">
+                                        <tr key={q.question_id} className="hover:bg-gray-50/50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer" onClick={() => setPreviewQuestion(q)}>
                                           <td className="px-8 py-6">
                                             <div className="flex items-center gap-4">
                                               {q.image_url && (
@@ -447,20 +542,26 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                                               </div>
                                             </div>
                                           </td>
-                                          <td className="px-8 py-6">
+                                          {visibleColumns.type && <td className="px-8 py-6">
                                             <span className="px-3 py-1 bg-academy-50 dark:bg-academy-900/50 text-academy-700 dark:text-academy-400 rounded-lg text-[9px] font-black uppercase tracking-widest">{q.q_type}</span>
-                                          </td>
-                                          <td className="px-8 py-6">
+                                          </td>}
+                                          {visibleColumns.difficulty && <td className="px-8 py-6">
                                             <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
                                               q.difficulty === 'Easy' ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700' :
                                               q.difficulty === 'Medium' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700' : 'bg-red-50 dark:bg-red-900/30 text-red-700'
                                             }`}>{q.difficulty}</span>
-                                          </td>
-                                          <td className="px-8 py-6 font-black text-gray-900 dark:text-white text-center text-sm">{q.marks}</td>
+                                          </td>}
+                                          {visibleColumns.marks && <td className="px-8 py-6 font-black text-gray-900 dark:text-white text-center text-sm">{q.marks}</td>}
+                                          {visibleColumns.status && <td className="px-8 py-6 text-center">
+                                            <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${q.status === 'draft' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700' : q.status === 'archived' ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200' : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700'}`}>{q.status || 'published'}</span>
+                                          </td>}
+                                          {visibleColumns.updated_at && <td className="px-8 py-6 text-center text-xs text-gray-500">{q.updated_at ? new Date(q.updated_at).toLocaleDateString() : '-'}</td>}
+                                          {visibleColumns.author && <td className="px-8 py-6 text-xs font-bold text-gray-700 dark:text-gray-300">{q.teacher?.full_name || '-'}</td>}
                                           <td className="px-8 py-6 text-right">
-                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform group-hover:-translate-x-1">
-                                              <button aria-label="Edit question" onClick={() => setEditingQuestion(q)} className="p-2.5 hover:bg-academy-50 dark:hover:bg-academy-900/30 text-gray-400 hover:text-academy-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Pencil className="w-4 h-4" /></button>
-                                              <button aria-label="Delete question" onClick={() => setDeleteTarget({ question_id: q.question_id, question_text: q.question_text })} className="p-2.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Trash2 className="w-4 h-4" /></button>
+                                            <div className="flex justify-end gap-2 transition-all">
+                                              <button aria-label="Preview question" onClick={(e) => { e.stopPropagation(); setPreviewQuestion(q); }} className="p-2.5 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Eye className="w-4 h-4" /></button>
+                                              <button aria-label="Edit question" onClick={(e) => { e.stopPropagation(); setEditingQuestion(q); }} className="p-2.5 hover:bg-academy-50 dark:hover:bg-academy-900/30 text-gray-400 hover:text-academy-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Pencil className="w-4 h-4" /></button>
+                                              <button aria-label="Delete question" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ question_id: q.question_id, question_text: q.question_text }); }} className="p-2.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Trash2 className="w-4 h-4" /></button>
                                             </div>
                                           </td>
                                         </tr>
@@ -487,12 +588,49 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                 </div>
                 <div className="flex gap-4 px-2">
                   <button onClick={() => setDeleteTarget(null)} className="flex-1 py-4 text-gray-400 font-black text-[10px] uppercase tracking-widest">Retain Question</button>
-                  <button onClick={() => deleteMutation.mutate(deleteTarget.question_id)} disabled={deleteMutation.isPending} className="flex-[2] py-4 bg-red-600 hover:bg-red-700 text-white font-black rounded-2xl shadow-2xl shadow-red-600/30 active:scale-95 transition-all flex items-center justify-center gap-2">
+                  <button onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.question_id)} disabled={deleteMutation.isPending || !deleteTarget} className="flex-[2] py-4 bg-red-600 hover:bg-red-700 text-white font-black rounded-2xl shadow-2xl shadow-red-600/30 active:scale-95 transition-all flex items-center justify-center gap-2">
                     {deleteMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Trash2 className="w-5 h-5" />}
                     {deleteMutation.isPending ? 'Deleting...' : 'Delete Permanently'}
                   </button>
                 </div>
               </div>
+            </Modal>
+
+            <Modal isOpen={previewQuestion !== null} onClose={() => setPreviewQuestion(null)} title="Question Preview" maxWidth="max-w-3xl">
+              {previewQuestion && (
+                <div className="space-y-5 text-gray-900 dark:text-white">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-academy-50 dark:bg-academy-900/40 text-academy-700 dark:text-academy-300">{previewQuestion.q_type}</span>
+                    <span className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">{previewQuestion.difficulty}</span>
+                    <span className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">{previewQuestion.marks} marks</span>
+                    <span className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">{previewQuestion.status || 'published'}</span>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Question</p>
+                    <p className="mt-2 text-sm leading-relaxed">{previewQuestion.question_text}</p>
+                  </div>
+
+                  {previewQuestion.options && (
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Options</p>
+                      <pre className="mt-2 text-xs bg-gray-50 dark:bg-gray-900 rounded-xl p-3 overflow-auto">{JSON.stringify(previewQuestion.options, null, 2)}</pre>
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Answer</p>
+                    <p className="mt-2 text-sm font-bold text-emerald-700 dark:text-emerald-300">{previewQuestion.answer_text}</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-gray-500">
+                    <p className="flex items-center gap-2"><CalendarClock className="w-3.5 h-3.5" /> Created: {previewQuestion.created_at ? new Date(previewQuestion.created_at).toLocaleString() : '-'}</p>
+                    <p className="flex items-center gap-2"><CalendarClock className="w-3.5 h-3.5" /> Updated: {previewQuestion.updated_at ? new Date(previewQuestion.updated_at).toLocaleString() : '-'}</p>
+                    <p className="flex items-center gap-2"><UserSquare2 className="w-3.5 h-3.5" /> Author: {previewQuestion.teacher?.full_name || '-'}</p>
+                    <p>Topic: {previewQuestion.topic?.topic_name || '-'}</p>
+                  </div>
+                </div>
+              )}
             </Modal>
           </div>
         );

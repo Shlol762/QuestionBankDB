@@ -15,7 +15,7 @@ const Login: React.FC<LoginProps> = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuthStore();
+  const { login, fetchMe } = useAuthStore();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +29,7 @@ const Login: React.FC<LoginProps> = () => {
 
       const response = await client.post('/auth/login', formData);
       login(response.data.access_token);
+      await fetchMe();
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Login failed. Please check your credentials.');

@@ -13,7 +13,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, type SubmitHandler } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import toast from 'react-hot-toast';
@@ -21,18 +21,36 @@ import client from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { useSettingsStore } from '../store/settingsStore';
 
+const QUESTION_TYPES = [
+  'MCQ',
+  'True/False',
+  'Match the Following',
+  'Short Answer',
+  'Long Answer',
+  'Fill in the Blanks',
+  'One Word Answer',
+  'Assertion/Reason',
+  'Case Study',
+  'Ordering/Sequencing',
+  'Diagram Labeling',
+  'Comprehension Passage',
+] as const;
+
+type QuestionTypeValue = typeof QUESTION_TYPES[number];
+
 interface QuestionFormProps {
   initialData?: {
     question_id?: number;
     topic_id?: number;
-    topic?: { subject_id: number };
+    topic?: { subject_id: number; [key: string]: unknown };
     question_text?: string;
     answer_text?: string;
-    image_url?: string;
+    image_url?: string | null;
     marks?: number;
-    difficulty?: 'Easy' | 'Medium' | 'Hard';
-    q_type?: 'MCQ' | 'True/False' | 'Match the Following' | 'Short Answer' | 'Long Answer';
-    options?: QuestionOptions;
+    difficulty?: string;
+    q_type?: string;
+    status?: string;
+    options?: any;
   };
   onSuccess: () => void;
   onCancel: () => void;
@@ -65,6 +83,13 @@ interface HierarchySyllabus {
   grades: HierarchyGrade[];
 }
 
+interface AllowedSubject {
+  allowed_subject_id: number;
+  subject_name: string;
+  recommendation_note?: string | null;
+  is_active: boolean;
+}
+
 // --- VALIDATION SCHEMA ---
 const questionSchema = z.object({
   topic_id: z.string().min(1, "Topic selection is required"),
@@ -73,7 +98,8 @@ const questionSchema = z.object({
   image_url: z.string().optional(),
   marks: z.number().min(0, "Marks cannot be negative"),
   difficulty: z.enum(['Easy', 'Medium', 'Hard']),
-  q_type: z.enum(['MCQ', 'True/False', 'Match the Following', 'Short Answer', 'Long Answer']),
+  q_type: z.enum(QUESTION_TYPES),
+  status: z.enum(['draft', 'published', 'archived']),
   options: z.union([
     z.object({ A: z.string(), B: z.string(), C: z.string(), D: z.string() }),
     z.object({ pairs: z.array(z.object({ left: z.string(), right: z.string() })) }),
@@ -81,8 +107,8 @@ const questionSchema = z.object({
   ]).optional()
 }).superRefine((data, ctx) => {
   if (data.q_type === 'MCQ') {
-    const opts = data.options || {};
-    if (!opts.A?.trim() || !opts.B?.trim() || !opts.C?.trim() || !opts.D?.trim()) {
+    const opts = data.options && 'A' in data.options ? data.options : null;
+    if (!opts?.A?.trim() || !opts?.B?.trim() || !opts?.C?.trim() || !opts?.D?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "All MCQ choices (A, B, C, D) must be filled",
@@ -98,7 +124,7 @@ const questionSchema = z.object({
     }
   }
   if (data.q_type === 'Match the Following') {
-    const pairs = data.options?.pairs || [];
+    const pairs = data.options && 'pairs' in data.options ? data.options.pairs : [];
     if (pairs.length < 2) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -120,6 +146,7 @@ type QuestionFormData = z.infer<typeof questionSchema>;
 const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onCancel }) => {
   const queryClient = useQueryClient();
   const [uploading, setUploading] = useState(false);
+  const [submitMode, setSubmitMode] = useState<'draft' | 'published'>('draft');
   const { user } = useAuthStore();
   const { defaultMarks, defaultDifficulty } = useSettingsStore();
   
@@ -128,6 +155,13 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
 
   const defaultOptions = { A: '', B: '', C: '', D: '' };
   const defaultPairs = [{ left: '', right: '' }, { left: '', right: '' }];
+  const defaultQuestionType: QuestionTypeValue = QUESTION_TYPES.includes((initialData?.q_type || 'MCQ') as QuestionTypeValue)
+    ? (initialData?.q_type as QuestionTypeValue)
+    : 'MCQ';
+  const defaultStatus: 'draft' | 'published' | 'archived' =
+    initialData?.status === 'published' || initialData?.status === 'archived' ? initialData.status : 'draft';
+  const initialOptions: QuestionOptions =
+    initialData?.options ?? (defaultQuestionType === 'Match the Following' ? { pairs: defaultPairs } : defaultOptions);
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isDirty } } = useForm<QuestionFormData>({
     resolver: zodResolver(questionSchema),
@@ -137,9 +171,10 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
       answer_text: initialData?.answer_text || '',
       image_url: initialData?.image_url || '',
       marks: initialData?.marks !== undefined ? initialData.marks : defaultMarks,
-      difficulty: initialData?.difficulty || defaultDifficulty,
-      q_type: initialData?.q_type || 'MCQ',
-      options: initialData ? initialData.options : (initialData?.q_type === 'Match the Following' ? { pairs: defaultPairs } : defaultOptions)
+      difficulty: (initialData?.difficulty as 'Easy' | 'Medium' | 'Hard' | undefined) || defaultDifficulty,
+      q_type: defaultQuestionType,
+      status: defaultStatus,
+      options: initialOptions,
     }
   });
 
@@ -148,6 +183,16 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   const currentAnswer = watch('answer_text');
   const currentImageUrl = watch('image_url');
 
+  const asMCQOptions = (options: QuestionOptions | undefined): MCQOptions => {
+    if (options && 'A' in options) return options;
+    return defaultOptions;
+  };
+
+  const asMatchOptions = (options: QuestionOptions | undefined): MatchOptions => {
+    if (options && 'pairs' in options) return options;
+    return { pairs: defaultPairs };
+  };
+
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(
     initialData?.topic?.subject_id?.toString() || ''
   );
@@ -155,6 +200,11 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   const { data: rawHierarchy = [] } = useQuery<HierarchySyllabus[]>({
     queryKey: ['curriculum-hierarchy'],
     queryFn: () => client.get('/curriculum/hierarchy').then(r => r.data)
+  });
+
+  const { data: allowedSubjectsData } = useQuery({
+    queryKey: ['allowed-subjects-active'],
+    queryFn: () => client.get('/allowed-subjects/?active_only=true&limit=500').then(r => r.data),
   });
 
   // Derived available subjects and topics
@@ -178,6 +228,27 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     const sub = availableSubjects.find(s => s.subject_id === parseInt(selectedSubjectId));
     return sub?.topics || [];
   }, [selectedSubjectId, availableSubjects]);
+
+  const selectedSubject = useMemo(() => {
+    if (!selectedSubjectId) return undefined;
+    return availableSubjects.find(s => s.subject_id === parseInt(selectedSubjectId));
+  }, [availableSubjects, selectedSubjectId]);
+
+  const allowedNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of (allowedSubjectsData?.items || []) as AllowedSubject[]) {
+      map.set(item.subject_name.trim().toLowerCase(), item.recommendation_note || '');
+    }
+    return map;
+  }, [allowedSubjectsData]);
+
+  const recommendation = selectedSubject
+    ? allowedNameMap.get(selectedSubject.subject_name.trim().toLowerCase())
+    : undefined;
+
+  const isRecommendedSubject = selectedSubject
+    ? allowedNameMap.has(selectedSubject.subject_name.trim().toLowerCase())
+    : true;
 
   // Mutations
   const mutation = useMutation({
@@ -206,17 +277,17 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
 
   // Helper for Pairs
   const addPair = () => {
-    const currentPairs = currentOptions?.pairs || [];
+    const currentPairs = asMatchOptions(currentOptions).pairs;
     setValue('options', { pairs: [...currentPairs, { left: '', right: '' }] });
   };
 
   const removePair = (index: number) => {
-    const currentPairs = currentOptions?.pairs || [];
+    const currentPairs = asMatchOptions(currentOptions).pairs;
     setValue('options', { pairs: currentPairs.filter((_: MatchPair, i: number) => i !== index) });
   };
 
   const handlePairChange = (index: number, field: 'left' | 'right', val: string) => {
-    const newPairs = [...(currentOptions?.pairs || [])];
+    const newPairs = [...asMatchOptions(currentOptions).pairs];
     newPairs[index] = { ...newPairs[index], [field]: val };
     setValue('options', { pairs: newPairs });
   };
@@ -260,8 +331,8 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     e.preventDefault();
   };
 
-  const onSubmit = (data: QuestionFormData) => {
-    mutation.mutate(data);
+  const onSubmit: SubmitHandler<QuestionFormData> = (data) => {
+    mutation.mutate({ ...data, status: submitMode });
   };
 
   // Reset options when type changes
@@ -350,6 +421,14 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                       ))}
                     </select>
                   </div>
+                  {selectedSubject && !isRecommendedSubject && (
+                    <p className="text-amber-600 text-[10px] font-bold mt-1">
+                      Soft recommendation: this subject is not in the Allowed Subjects catalog.
+                    </p>
+                  )}
+                  {selectedSubject && isRecommendedSubject && recommendation && (
+                    <p className="text-emerald-600 text-[10px] font-bold mt-1">Recommendation: {recommendation}</p>
+                  )}
                   {errors.topic_id && <p className="text-red-500 text-[10px] font-bold">{errors.topic_id.message as string}</p>}
                 </div>
               </div>
@@ -376,8 +455,8 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                         </span>
                         <input 
                           type="text"
-                          value={currentOptions?.[key] || ''}
-                          onChange={(e) => setValue('options', { ...currentOptions, [key]: e.target.value })}
+                          value={asMCQOptions(currentOptions)[key as keyof MCQOptions] || ''}
+                          onChange={(e) => setValue('options', { ...asMCQOptions(currentOptions), [key]: e.target.value })}
                           className={`w-full pl-12 pr-12 py-3 bg-gray-50 dark:bg-gray-900 border rounded-xl outline-none focus:ring-4 focus:ring-academy-500/10 transition-all font-bold text-sm dark:text-white ${currentAnswer === key ? 'border-academy-500 bg-white dark:bg-gray-800 shadow-sm' : 'border-gray-200 dark:border-gray-700'}`}
                           placeholder={`Choice ${key}...`}
                         />
@@ -423,7 +502,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                     </button>
                   </div>
                   <div className="space-y-3 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
-                    {(currentOptions && 'pairs' in currentOptions ? currentOptions.pairs : []).map((pair: MatchPair, idx: number) => (
+                    {asMatchOptions(currentOptions).pairs.map((pair: MatchPair, idx: number) => (
                       <div key={idx} className="flex items-center gap-3 animate-in slide-in-from-left-2">
                         <div className="flex-1">
                           <input type="text" value={pair.left} onChange={(e) => handlePairChange(idx, 'left', e.target.value)} placeholder="Term" className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-academy-500 font-bold text-sm dark:text-white" />
@@ -432,7 +511,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                         <div className="flex-1">
                           <input type="text" value={pair.right} onChange={(e) => handlePairChange(idx, 'right', e.target.value)} placeholder="Relation" className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-academy-500 font-bold text-sm dark:text-white" />
                         </div>
-                        {currentOptions && 'pairs' in currentOptions && currentOptions.pairs.length > 2 && (
+                        {asMatchOptions(currentOptions).pairs.length > 2 && (
                           <button type="button" onClick={() => removePair(idx)} className="p-2 text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
                         )}
                       </div>
@@ -464,11 +543,17 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                       {...register("q_type")}
                       className="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white shadow-sm"
                     >
-                      <option value="MCQ">Multiple Choice</option>
-                      <option value="True/False">True / False</option>
-                      <option value="Match the Following">Match the Following</option>
-                      <option value="Short Answer">Short Answer</option>
-                      <option value="Long Answer">Long Answer</option>
+                      {QUESTION_TYPES.map((type) => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Workflow Status</label>
+                    <select {...register("status")} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm bg-white dark:bg-gray-800 shadow-sm">
+                      <option value="draft">Draft</option>
+                      <option value="published">Published</option>
+                      <option value="archived">Archived</option>
                     </select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -527,13 +612,23 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
 
           <div className="pt-10 border-t border-gray-100 dark:border-gray-700 flex items-center justify-end gap-6">
             <button type="button" onClick={() => { if (!isDirty || window.confirm('Discard unsaved changes?')) onCancel(); }} className="text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">Discard Draft</button>
+            <button
+              type="submit"
+              onClick={() => setSubmitMode('draft')}
+              disabled={mutation.isPending || uploading}
+              className="px-8 py-4 rounded-2xl border border-gray-200 dark:border-gray-700 font-black text-sm transition-all flex items-center gap-3 active:scale-95 disabled:opacity-50"
+            >
+              {mutation.isPending && submitMode === 'draft' ? <Loader2 className="w-5 h-5 animate-spin" /> : <SaveIcon className="w-5 h-5" />}
+              Save as Draft
+            </button>
             <button 
               type="submit" 
+              onClick={() => setSubmitMode('published')}
               disabled={mutation.isPending || uploading} 
               className={`px-12 py-4 rounded-2xl shadow-2xl font-black text-sm transition-all flex items-center gap-3 active:scale-95 disabled:opacity-50 ${isEditing ? 'bg-amber-600 shadow-amber-600/20' : 'bg-academy-700 shadow-academy-700/20'} text-white`}
             >
-              {mutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <SaveIcon className="w-5 h-5" />}
-              {isEditing ? 'Commit Revisions' : 'Finalize Question'}
+              {mutation.isPending && submitMode === 'published' ? <Loader2 className="w-5 h-5 animate-spin" /> : <SaveIcon className="w-5 h-5" />}
+              {isEditing ? 'Commit + Publish' : 'Publish Question'}
             </button>
           </div>
         </form>
