@@ -71,6 +71,9 @@ if ([System.IO.Path]::IsPathRooted($TargetArg)) {
     $TargetDir = [System.IO.Path]::GetFullPath((Join-Path $PWD $TargetArg))
 }
 
+$ProjectName = ((Split-Path -Leaf $TargetDir).ToLower() -replace '[^a-z0-9]', '')
+$DbVolumeName = "$ProjectName`_postgres_data"
+
 $RuntimePaths = @(
     'scripts',
     'src',
@@ -142,6 +145,23 @@ Write-Host "Install target: $TargetDir"
 Write-Host "Source: $ArchiveUrl"
 
 Sync-FromGitHubArchive
+
+if (-not (Test-Path (Join-Path $TargetDir '.env.production'))) {
+    & docker volume inspect $DbVolumeName *> $null
+    if ($LASTEXITCODE -eq 0) {
+        throw @"
+Error: Existing database volume detected: $DbVolumeName
+No .env.production found, and generating a new password would break DB authentication.
+
+Choose one option:
+1) Reuse existing data: restore prior .env.production for this install directory, then rerun install.
+2) Fresh install (data loss):
+   docker compose -f $(Join-Path $TargetDir 'docker-compose.production.yml') down -v --remove-orphans
+   docker volume rm $DbVolumeName
+   powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch/scripts/install.ps1).Content)"
+"@
+    }
+}
 
 Write-Host 'Running update script to build/start services...'
 & (Join-Path $TargetDir 'scripts/update.ps1')

@@ -171,6 +171,22 @@ function Show-BackendDiagnostics {
     Write-Host ''
 }
 
+function Show-DbCredentialMismatchHelpIfDetected {
+    $backendLogs = (& docker compose --env-file $EnvFile -f $ComposeFile logs --tail=300 backend 2>$null) | Out-String
+    if ($backendLogs -match 'InvalidPasswordError|password authentication failed for user') {
+        $projectName = ((Split-Path -Leaf $RootDir).ToLower() -replace '[^a-z0-9]', '')
+        $dbVolumeName = "$projectName`_postgres_data"
+        Write-Host 'Detected database credential mismatch between .env.production and existing Postgres volume.'
+        Write-Host 'Fix options:'
+        Write-Host '1) Reuse existing data: restore original .env.production used when DB was created.'
+        Write-Host '2) Fresh install (data loss):'
+        Write-Host "   docker compose --env-file $EnvFile -f $ComposeFile down -v --remove-orphans"
+        Write-Host "   docker volume rm $dbVolumeName"
+        Write-Host "   powershell -ExecutionPolicy Bypass -Command \"Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch/scripts/install.ps1).Content)\""
+        Write-Host ''
+    }
+}
+
 Write-Host 'Step 1/4: Creating pre-update database backup...'
 $postgresContainerId = (& docker compose --env-file $EnvFile -f $ComposeFile ps -q postgres 2>$null) | Select-Object -First 1
 if (-not $postgresContainerId) {
@@ -191,6 +207,7 @@ Write-Host 'Step 3/4: Rebuilding/restarting services...'
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Compose reported a startup failure (exit $LASTEXITCODE)."
     Show-BackendDiagnostics
+    Show-DbCredentialMismatchHelpIfDetected
     exit 1
 }
 
@@ -212,6 +229,7 @@ if (-not $healthy) {
     Write-Host 'Update verification failed. Inspect logs with:'
     Write-Host "docker compose --env-file $EnvFile -f $ComposeFile logs --tail=200"
     Show-BackendDiagnostics
+    Show-DbCredentialMismatchHelpIfDetected
     exit 1
 }
 

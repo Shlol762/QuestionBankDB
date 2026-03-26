@@ -168,6 +168,21 @@ print_backend_diagnostics() {
   echo
 }
 
+print_db_credentials_mismatch_help_if_detected() {
+  local backend_logs
+  backend_logs="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=300 backend 2>/dev/null || true)"
+  if echo "$backend_logs" | grep -Eqi "InvalidPasswordError|password authentication failed for user"; then
+    echo "Detected database credential mismatch between $ENV_FILE and existing Postgres volume."
+    echo "Fix options:"
+    echo "1) Reuse existing data: restore the original .env.production used when DB was created."
+    echo "2) Fresh install (data loss):"
+    echo "   docker compose --env-file $ENV_FILE -f $COMPOSE_FILE down -v --remove-orphans"
+    echo "   docker volume rm $(basename "$ROOT_DIR" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+//g')_postgres_data"
+    echo "   curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/scripts/install.sh | bash"
+    echo
+  fi
+}
+
 echo "Step 1/4: Creating pre-update database backup..."
 postgres_container_id="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps -q postgres 2>/dev/null || true)"
 if [[ -z "$postgres_container_id" ]]; then
@@ -195,6 +210,7 @@ set -e
 if [[ $compose_rc -ne 0 ]]; then
   echo "Compose reported a startup failure (exit $compose_rc)."
   print_backend_diagnostics
+  print_db_credentials_mismatch_help_if_detected
   exit 1
 fi
 
@@ -210,6 +226,7 @@ if ! curl -fsS "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
   echo "Update verification failed. Inspect logs with:"
   echo "docker compose --env-file $ENV_FILE -f $COMPOSE_FILE logs --tail=200"
   print_backend_diagnostics
+  print_db_credentials_mismatch_help_if_detected
   exit 1
 fi
 

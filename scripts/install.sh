@@ -11,6 +11,8 @@ TARGET_DIR="$(cd "$(dirname "$TARGET_DIR")" && pwd)/$(basename "$TARGET_DIR")"
 COMPOSE_FILE="$TARGET_DIR/docker-compose.production.yml"
 ENV_FILE="$TARGET_DIR/.env.production"
 EXAMPLE_ENV_FILE="$TARGET_DIR/.env.production.example"
+PROJECT_NAME="$(basename "$TARGET_DIR" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+//g')"
+DB_VOLUME_NAME="${PROJECT_NAME}_postgres_data"
 
 RUNTIME_PATHS=(
   scripts
@@ -102,6 +104,25 @@ require_cmd cp
 
 validate_docker_ready
 
+check_existing_volume_env_conflict() {
+  if [[ -f "$ENV_FILE" ]]; then
+    return
+  fi
+
+  if docker volume inspect "$DB_VOLUME_NAME" >/dev/null 2>&1; then
+    echo "Error: Existing database volume detected: $DB_VOLUME_NAME"
+    echo "No $ENV_FILE found, and generating a new password would break DB authentication."
+    echo
+    echo "Choose one option:"
+    echo "1) Reuse existing data (recommended): restore previous .env.production for this install directory, then rerun install."
+    echo "2) Fresh install (delete old DB data):"
+    echo "   docker compose -f $COMPOSE_FILE down -v --remove-orphans"
+    echo "   docker volume rm $DB_VOLUME_NAME"
+    echo "   curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/scripts/install.sh | bash"
+    exit 1
+  fi
+}
+
 sync_from_github_archive() {
   local tmp_dir
   tmp_dir="$(mktemp -d)"
@@ -142,6 +163,7 @@ print_install_plan() {
 
 print_install_plan
 sync_from_github_archive
+check_existing_volume_env_conflict
 
 if [[ ! -f "$ENV_FILE" ]]; then
   cp "$EXAMPLE_ENV_FILE" "$ENV_FILE"
