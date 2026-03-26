@@ -172,10 +172,16 @@ function Show-BackendDiagnostics {
 }
 
 Write-Host 'Step 1/4: Creating pre-update database backup...'
-if (-not (Test-Path (Join-Path $RootDir 'scripts/backup-db.ps1'))) {
-    throw "Missing backup helper: $(Join-Path $RootDir 'scripts/backup-db.ps1'). Run install again to restore runtime files."
+$postgresContainerId = (& docker compose --env-file $EnvFile -f $ComposeFile ps -q postgres 2>$null) | Select-Object -First 1
+if (-not $postgresContainerId) {
+    Write-Host 'No existing postgres container found. Skipping backup for first-time install.'
 }
-& (Join-Path $RootDir 'scripts/backup-db.ps1')
+else {
+    if (-not (Test-Path (Join-Path $RootDir 'scripts/backup-db.ps1'))) {
+        throw "Missing backup helper: $(Join-Path $RootDir 'scripts/backup-db.ps1'). Run install again to restore runtime files."
+    }
+    & (Join-Path $RootDir 'scripts/backup-db.ps1')
+}
 
 Write-Host 'Step 2/4: Pulling latest images (if available)...'
 & docker compose --env-file $EnvFile -f $ComposeFile pull

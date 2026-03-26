@@ -169,12 +169,17 @@ print_backend_diagnostics() {
 }
 
 echo "Step 1/4: Creating pre-update database backup..."
-if [[ ! -x "$ROOT_DIR/scripts/backup-db.sh" ]]; then
-  echo "Error: Missing backup helper: $ROOT_DIR/scripts/backup-db.sh"
-  echo "Run install script again to restore required runtime files."
-  exit 1
+postgres_container_id="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps -q postgres 2>/dev/null || true)"
+if [[ -z "$postgres_container_id" ]]; then
+  echo "No existing postgres container found. Skipping backup for first-time install."
+else
+  if [[ ! -f "$ROOT_DIR/scripts/backup-db.sh" ]]; then
+    echo "Error: Missing backup helper: $ROOT_DIR/scripts/backup-db.sh"
+    echo "Run install script again to restore required runtime files."
+    exit 1
+  fi
+  bash "$ROOT_DIR/scripts/backup-db.sh"
 fi
-"$ROOT_DIR/scripts/backup-db.sh"
 
 echo "Step 2/4: Pulling latest images (if available)..."
 set +e
