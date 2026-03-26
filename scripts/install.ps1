@@ -7,7 +7,19 @@ $ExampleEnvFile = Join-Path $RootDir '.env.production.example'
 
 function Require-Command([string]$Name) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
-        throw "Missing required command: $Name"
+        if ($Name -eq 'docker') {
+            throw @"
+Error: Missing required command 'docker'.
+
+Install Docker Desktop (includes Docker Engine + Compose), then retry.
+Download: https://www.docker.com/products/docker-desktop/
+
+After install, verify:
+  docker --version
+  docker compose version
+"@
+        }
+        throw "Error: Missing required command '$Name'."
     }
 }
 
@@ -25,9 +37,23 @@ function Read-EnvMap([string]$Path) {
 
 Require-Command 'docker'
 
+& docker compose version *> $null
+if ($LASTEXITCODE -ne 0) {
+    throw @"
+Error: Docker Compose plugin is missing.
+
+Install or repair Docker Desktop, then verify:
+  docker compose version
+"@
+}
+
 & docker info *> $null
 if ($LASTEXITCODE -ne 0) {
-    throw 'Docker daemon is not running. Start Docker and retry.'
+    throw @"
+Error: Docker daemon is not running or current user cannot access Docker.
+
+Start Docker Desktop and retry.
+"@
 }
 
 if (-not (Test-Path $EnvFile)) {

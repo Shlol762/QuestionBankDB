@@ -447,6 +447,10 @@ Use `offset` and `limit` query parameters to paginate through results.
 
 If you are handing this build to a client and want the simplest possible setup with persistent data, use the deployment scripts:
 
+If install exits with a missing docker error:
+- Linux: install Docker Engine and docker-compose-plugin, then verify with `docker --version` and `docker compose version`.
+- Windows: install Docker Desktop, start it, then verify with `docker --version` and `docker compose version`.
+
 Linux:
 
 ```bash

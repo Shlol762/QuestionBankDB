@@ -8,7 +8,22 @@ EXAMPLE_ENV_FILE="$ROOT_DIR/.env.production.example"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Missing required command: $1"
+    echo "Error: Missing required command '$1'."
+    echo
+    if [[ "$1" == "docker" ]]; then
+      echo "Install Docker Engine and Docker Compose plugin, then retry."
+      echo "Ubuntu quick start:"
+      echo "  sudo apt-get update"
+      echo "  sudo apt-get install -y ca-certificates curl gnupg"
+      echo "  sudo install -m 0755 -d /etc/apt/keyrings"
+      echo "  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
+      echo "  sudo chmod a+r /etc/apt/keyrings/docker.gpg"
+      echo "  echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null"
+      echo "  sudo apt-get update"
+      echo "  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
+      echo
+      echo "Verify: docker --version && docker compose version"
+    fi
     exit 1
   fi
 }
@@ -17,8 +32,18 @@ require_cmd docker
 require_cmd openssl
 require_cmd curl
 
+if ! docker compose version >/dev/null 2>&1; then
+  echo "Error: Docker Compose plugin is missing."
+  echo "Install package: docker-compose-plugin"
+  echo "Verify: docker compose version"
+  exit 1
+fi
+
 if ! docker info >/dev/null 2>&1; then
-  echo "Docker daemon is not running. Start Docker and retry."
+  echo "Error: Docker daemon is not running or current user has no access."
+  echo "Start Docker and retry. If permission denied, run:"
+  echo "  sudo usermod -aG docker $USER"
+  echo "Then log out and log back in."
   exit 1
 fi
 

@@ -22,6 +22,10 @@ Linux:
 Windows:
 - PowerShell 5.1+ (or PowerShell 7+)
 
+If install exits with a missing docker error:
+- Linux: install Docker Engine and docker-compose-plugin, then verify with `docker --version` and `docker compose version`.
+- Windows: install Docker Desktop, start it, then verify with `docker --version` and `docker compose version`.
+
 ## First-time install
 
 From repository root.
