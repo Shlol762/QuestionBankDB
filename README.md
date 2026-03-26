@@ -450,13 +450,13 @@ If you are handing this build to a client and want the simplest possible setup w
 Linux:
 
 ```bash
-bash scripts/install.sh
+mkdir -p scripts && curl -fsSL https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/install.sh -o scripts/install.sh && bash scripts/install.sh
 ```
 
 Windows (PowerShell):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+powershell -ExecutionPolicy Bypass -Command "New-Item -ItemType Directory -Force -Path .\scripts | Out-Null; Invoke-WebRequest https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/install.ps1 -OutFile .\scripts\install.ps1; powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1"
 ```
 
 To push updates later while preserving existing database and uploaded files:
@@ -464,13 +464,13 @@ To push updates later while preserving existing database and uploaded files:
 Linux:
 
 ```bash
-bash scripts/update.sh
+mkdir -p scripts && curl -fsSL https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/update.sh -o scripts/update.sh && bash scripts/update.sh
 ```
 
 Windows (PowerShell):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\update.ps1
+powershell -ExecutionPolicy Bypass -Command "New-Item -ItemType Directory -Force -Path .\scripts | Out-Null; Invoke-WebRequest https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/update.ps1 -OutFile .\scripts\update.ps1; powershell -ExecutionPolicy Bypass -File .\scripts\update.ps1"
 ```
 
 To uninstall safely (keep DB/uploads data):
