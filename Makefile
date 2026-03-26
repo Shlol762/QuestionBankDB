@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: dev test lint frontend-dev frontend-build migrate seed
+.PHONY: dev test lint frontend-dev frontend-build migrate seed install-prod update-prod backup-prod uninstall-prod
 
 dev:
 	$(PYTHON) runserver.py
@@ -22,3 +22,15 @@ migrate:
 
 seed:
 	$(PYTHON) seed_admin.py
+
+install-prod:
+	bash scripts/install.sh
+
+update-prod:
+	bash scripts/update.sh
+
+backup-prod:
+	bash scripts/backup-db.sh
+
+uninstall-prod:
+	bash scripts/uninstall.sh

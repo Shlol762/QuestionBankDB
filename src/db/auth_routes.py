@@ -3,17 +3,21 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import select, delete, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Optional
-import secrets
 import logging
 from src.db.main import get_session
 from src.db.models import Users, GradeCoordinatorLink, HODLink, UserSubjectLink, GradeConfig, Subject, Page
 from src.db.auth_utils import get_password_hash, verify_password, create_access_token, get_current_user
 from src.limiter import limiter
 from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
+import re
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
+
+PASSWORD_UPPER_RE = re.compile(r"[A-Z]")
+PASSWORD_NUMBER_RE = re.compile(r"\d")
+PASSWORD_SPECIAL_RE = re.compile(r"[^A-Za-z0-9]")
 
 # --- SCHEMAS ---
 
@@ -47,8 +51,14 @@ class UserCreate(BaseAuthModel):
     @field_validator('password')
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters')
+        if len(v) < 12:
+            raise ValueError('Password must be at least 12 characters')
+        if not PASSWORD_UPPER_RE.search(v):
+            raise ValueError('Password must include at least one uppercase letter')
+        if not PASSWORD_NUMBER_RE.search(v):
+            raise ValueError('Password must include at least one number')
+        if not PASSWORD_SPECIAL_RE.search(v):
+            raise ValueError('Password must include at least one special character')
         return v
 
 class UserUpdate(BaseAuthModel):
@@ -64,8 +74,33 @@ class UserUpdate(BaseAuthModel):
     @field_validator('password')
     @classmethod
     def password_strength(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and len(v) < 8:
-            raise ValueError('Password must be at least 8 characters')
+        if v is None:
+            return v
+        if len(v) < 12:
+            raise ValueError('Password must be at least 12 characters')
+        if not PASSWORD_UPPER_RE.search(v):
+            raise ValueError('Password must include at least one uppercase letter')
+        if not PASSWORD_NUMBER_RE.search(v):
+            raise ValueError('Password must include at least one number')
+        if not PASSWORD_SPECIAL_RE.search(v):
+            raise ValueError('Password must include at least one special character')
+        return v
+
+
+class PasswordResetRequest(BaseAuthModel):
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if len(v) < 12:
+            raise ValueError('Password must be at least 12 characters')
+        if not PASSWORD_UPPER_RE.search(v):
+            raise ValueError('Password must include at least one uppercase letter')
+        if not PASSWORD_NUMBER_RE.search(v):
+            raise ValueError('Password must include at least one number')
+        if not PASSWORD_SPECIAL_RE.search(v):
+            raise ValueError('Password must include at least one special character')
         return v
 
 class Token(BaseModel):
@@ -78,6 +113,19 @@ class SetupStatus(BaseModel):
 class PasswordUpdate(BaseModel):
     current_password: str
     new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if len(v) < 12:
+            raise ValueError('Password must be at least 12 characters')
+        if not PASSWORD_UPPER_RE.search(v):
+            raise ValueError('Password must include at least one uppercase letter')
+        if not PASSWORD_NUMBER_RE.search(v):
+            raise ValueError('Password must include at least one number')
+        if not PASSWORD_SPECIAL_RE.search(v):
+            raise ValueError('Password must include at least one special character')
+        return v
 
 # --- HELPERS ---
 
@@ -210,12 +258,15 @@ async def list_users(
     return Page(items=items, total=total)
     
 @router.post("/users/{user_id}/reset-password", status_code=status.HTTP_200_OK)
+@limiter.limit("1/minute")
 async def reset_user_password(
+    request: Request,
     user_id: int,
+    payload: PasswordResetRequest,
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
-    """Resets a user's password to a default value. Admin only."""
+    """Resets a user's password. Admin only."""
     if not current_user.is_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can reset passwords")
 
@@ -223,8 +274,7 @@ async def reset_user_password(
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
-    temporary_password = secrets.token_urlsafe(12)
-    user.password_hash = get_password_hash(temporary_password)
+    user.password_hash = get_password_hash(payload.new_password)
     session.add(user)
     await session.commit()
 
@@ -236,7 +286,6 @@ async def reset_user_password(
 
     return {
         "message": "Password reset completed.",
-        "temporary_password": temporary_password,
     }
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
@@ -252,17 +301,18 @@ async def register_user(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can register new staff")
 
     # Check if user already exists
-    statement = select(Users).where(Users.email == user_data.email)
+    normalized_email = user_data.email.strip().lower()
+    statement = select(Users).where(func.lower(Users.email) == normalized_email)
     result = await session.exec(statement)
     if result.first():
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"A user with email {user_data.email} is already registered")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"A user with email {normalized_email} is already registered")
     
     # Validate Grade/HOD assignments
     await validate_assignments(session, user_data.grade_levels, user_data.hod_subject_names)
 
     new_user = Users(
         full_name=user_data.full_name,
-        email=user_data.email,
+        email=normalized_email,
         password_hash=get_password_hash(user_data.password),
         department=user_data.department,
         is_admin=user_data.is_admin
@@ -296,7 +346,8 @@ async def login_for_access_token(
     session: AsyncSession = Depends(get_session)
 ):
     """Logs in a user and returns a JWT access token."""
-    statement = select(Users).where(Users.email == form_data.username)
+    normalized_email = form_data.username.strip().lower()
+    statement = select(Users).where(func.lower(Users.email) == normalized_email)
     result = await session.exec(statement)
     user = result.first()
     
@@ -339,6 +390,8 @@ async def update_user(
     hod_subject_names = update_data.pop("hod_subject_names", None)
 
     for key, val in update_data.items():
+        if key == "email" and isinstance(val, str):
+            val = val.strip().lower()
         setattr(user, key, val)
     
     # Sync Subjects

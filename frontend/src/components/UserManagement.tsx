@@ -152,12 +152,19 @@ const UserManagement: React.FC = () => {
   });
   
   const passwordResetMutation = useMutation({
-    mutationFn: (userId: number) => client.post(`/auth/users/${userId}/reset-password`),
+    mutationFn: ({ userId, newPassword }: { userId: number; newPassword: string }) =>
+      client.post(`/auth/users/${userId}/reset-password`, { new_password: newPassword }),
     onSuccess: () => {
         setPasswordResetSuccess(true);
         setTimeout(() => setPasswordResetSuccess(false), 3000);
     }
   });
+
+  const promptAndResetPassword = (userId: number) => {
+    const nextPassword = window.prompt('Enter a new temporary password (min 12 chars, uppercase, number, special char):');
+    if (!nextPassword) return;
+    passwordResetMutation.mutate({ userId, newPassword: nextPassword });
+  };
 
   const toggleItem = (listName: 'subject_ids' | 'grade_levels' | 'hod_subject_names', value: number | string) => {
     const currentList = formData[listName] as Array<number | string>;
@@ -393,14 +400,14 @@ const UserManagement: React.FC = () => {
                     <div className="pt-4">
                         <button
                             type="button"
-                            onClick={() => passwordResetMutation.mutate(editingUserId!)}
+                            onClick={() => promptAndResetPassword(editingUserId!)}
                             disabled={passwordResetMutation.isPending}
                             className="w-full flex items-center justify-center gap-2 px-4 py-3 text-xs font-black text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-lg disabled:opacity-50"
                         >
                             {passwordResetMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                             Force Password Reset
                         </button>
-                        {passwordResetSuccess && <p className="text-emerald-500 text-xs font-bold mt-2 text-center">Password has been reset and temporary credentials were issued.</p>}
+                        {passwordResetSuccess && <p className="text-emerald-500 text-xs font-bold mt-2 text-center">Password reset completed.</p>}
                     </div>
                 )}
               

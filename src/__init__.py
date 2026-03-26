@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
@@ -17,6 +17,11 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from fastapi.responses import JSONResponse
 import os
+import logging
+import uuid
+
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -40,22 +45,23 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Configure CORS
-# This allows our React frontend (running on localhost:5173) to talk to this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-if settings.FORCE_HTTPS:
+if settings.FORCE_HTTPS and not settings.TESTING:
     app.add_middleware(HTTPSRedirectMiddleware)
 
 
 @app.middleware("http")
-async def add_security_and_cache_headers(request, call_next):
+async def add_security_and_cache_headers(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
     response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
 
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
@@ -71,6 +77,7 @@ async def add_security_and_cache_headers(request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
 
     if settings.FORCE_HTTPS:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -102,9 +109,10 @@ async def health_check():
     try:
         async with async_engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-        return {"status": "ok", "database": "reachable"}
+        return {"status": "ok"}
     except Exception:
+        logger.exception("health_check_failed")
         return JSONResponse(
             status_code=503,
-            content={"status": "error", "database": "unreachable"},
+            content={"status": "error"},
         )

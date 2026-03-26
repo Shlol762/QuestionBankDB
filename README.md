@@ -443,6 +443,52 @@ Use `offset` and `limit` query parameters to paginate through results.
 - **Node.js 18+** and **npm**
 - A running **PostgreSQL** server (version 13+ recommended)
 
+### One-Step Production Install (Client Testing)
+
+If you are handing this build to a client and want the simplest possible setup with persistent data, use the deployment scripts:
+
+Linux:
+
+```bash
+bash scripts/install.sh
+```
+
+Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+```
+
+To push updates later while preserving existing database and uploaded files:
+
+Linux:
+
+```bash
+bash scripts/update.sh
+```
+
+Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\update.ps1
+```
+
+To uninstall safely (keep DB/uploads data):
+
+Linux:
+
+```bash
+bash scripts/uninstall.sh
+```
+
+Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
+```
+
+For full operations guidance (backup, restore, logs), see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ---
 
 ### 1. Clone the Repository

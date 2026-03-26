@@ -3,7 +3,10 @@ import toast from 'react-hot-toast';
 
 const client = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '', // Empty string makes Axios use the current origin (the Vite dev server, which will then proxy to the backend)
+  timeout: 30000,
 });
+
+let hasRedirectedFor401 = false;
 
 // Add a request interceptor to include the JWT token in all requests
 client.interceptors.request.use((config) => {
@@ -22,7 +25,8 @@ client.interceptors.response.use(
       toast.error('Session expired. Please sign in again.');
       sessionStorage.removeItem('token');
       // Redirect to login if not already there
-      if (!window.location.pathname.includes('/login')) {
+      if (!hasRedirectedFor401 && !window.location.pathname.includes('/login')) {
+        hasRedirectedFor401 = true;
         window.location.href = '/login?expired=1';
       }
     }
