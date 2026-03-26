@@ -27,6 +27,58 @@ RUNTIME_PATHS=(
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Error: Missing required command '$1'."
+    case "$1" in
+      docker)
+        echo "Install Docker Engine + Compose plugin, then retry."
+        ;;
+      curl)
+        echo "Install curl, then retry."
+        ;;
+      tar)
+        echo "Install tar, then retry."
+        ;;
+      openssl)
+        echo "Install openssl, then retry."
+        ;;
+    esac
+    exit 1
+  fi
+}
+
+print_docker_access_help() {
+  local docker_info_output
+  docker_info_output="$1"
+
+  echo "Error: Docker daemon is not available."
+  if echo "$docker_info_output" | grep -qi "permission denied"; then
+    echo "Reason: current user cannot access Docker socket."
+    echo "Fix (Linux):"
+    echo "  sudo usermod -aG docker \$USER"
+    echo "  newgrp docker"
+    echo "Then retry update."
+    return
+  fi
+
+  echo "Possible fixes:"
+  echo "  - Start Docker service (for example: sudo systemctl start docker)"
+  echo "  - Ensure current user can access Docker"
+  echo "  - Verify with: docker info"
+}
+
+validate_docker_ready() {
+  if ! docker compose version >/dev/null 2>&1; then
+    echo "Error: Docker Compose plugin is missing."
+    echo "Fix: install docker-compose-plugin (or Docker Desktop with Compose), then retry."
+    exit 1
+  fi
+
+  local docker_info_output
+  set +e
+  docker_info_output="$(docker info 2>&1)"
+  local docker_info_rc=$?
+  set -e
+  if [[ $docker_info_rc -ne 0 ]]; then
+    print_docker_access_help "$docker_info_output"
     exit 1
   fi
 }
@@ -37,7 +89,12 @@ sync_from_github_archive() {
   trap 'rm -rf "$tmp_dir"' RETURN
 
   echo "Syncing runtime files from GitHub (${BRANCH})..."
-  curl -fsSL "$ARCHIVE_URL" -o "$tmp_dir/repo.tar.gz"
+  if ! curl --retry 3 --retry-delay 2 --connect-timeout 20 -fsSL "$ARCHIVE_URL" -o "$tmp_dir/repo.tar.gz"; then
+    echo "Error: Failed to download project archive from GitHub."
+    echo "Check internet/DNS access and verify URL is reachable:"
+    echo "  $ARCHIVE_URL"
+    exit 1
+  fi
   tar -xzf "$tmp_dir/repo.tar.gz" -C "$tmp_dir"
 
   local extracted_dir
@@ -48,6 +105,10 @@ sync_from_github_archive() {
   fi
 
   for path in "${RUNTIME_PATHS[@]}"; do
+    if [[ ! -e "$extracted_dir/$path" ]]; then
+      echo "Error: GitHub archive is missing required path: $path"
+      exit 1
+    fi
     rm -rf "$ROOT_DIR/$path"
     cp -a "$extracted_dir/$path" "$ROOT_DIR/$path"
   done
@@ -81,6 +142,7 @@ require_cmd curl
 require_cmd tar
 require_cmd cp
 require_cmd openssl
+validate_docker_ready
 
 sync_from_github_archive
 ensure_env_file
@@ -97,6 +159,11 @@ print_backend_diagnostics() {
 }
 
 echo "Step 1/4: Creating pre-update database backup..."
+if [[ ! -x "$ROOT_DIR/scripts/backup-db.sh" ]]; then
+  echo "Error: Missing backup helper: $ROOT_DIR/scripts/backup-db.sh"
+  echo "Run install script again to restore required runtime files."
+  exit 1
+fi
 "$ROOT_DIR/scripts/backup-db.sh"
 
 echo "Step 2/4: Pulling latest images (if available)..."

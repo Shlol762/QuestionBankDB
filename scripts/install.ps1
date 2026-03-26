@@ -2,7 +2,46 @@ $ErrorActionPreference = 'Stop'
 
 function Require-Command([string]$Name) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+        $hint = switch ($Name) {
+            'docker' { 'Install Docker Desktop (includes Docker Engine + Compose).' }
+            'tar' { 'Install tar support or use a modern PowerShell/Windows build with bsdtar.' }
+            default { '' }
+        }
+        if ($hint) {
+            throw "Error: Missing required command '$Name'. $hint"
+        }
         throw "Error: Missing required command '$Name'."
+    }
+}
+
+function Test-DockerReady {
+    $composeOutput = & docker compose version 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw @"
+Error: Docker Compose plugin is missing.
+Fix: install/update Docker Desktop, then verify with:
+  docker compose version
+"@
+    }
+
+    $dockerInfoOutput = & docker info 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        if (($dockerInfoOutput | Out-String) -match 'Access is denied|permission denied') {
+            throw @"
+Error: Docker is installed but this user cannot access Docker.
+Fix:
+  - Start Docker Desktop
+  - Re-open terminal with appropriate privileges
+  - Verify with: docker info
+"@
+        }
+
+        throw @"
+Error: Docker daemon is not available.
+Fix:
+  - Start Docker Desktop
+  - Verify with: docker info
+"@
     }
 }
 
@@ -40,7 +79,17 @@ function Sync-FromGitHubArchive {
     try {
         Write-Host "Downloading latest $RepoName ($Branch) from GitHub..."
         $archivePath = Join-Path $tmpDir 'repo.tar.gz'
-        Invoke-WebRequest -Uri $ArchiveUrl -OutFile $archivePath -UseBasicParsing
+                try {
+                        Invoke-WebRequest -Uri $ArchiveUrl -OutFile $archivePath -UseBasicParsing -TimeoutSec 120
+                }
+                catch {
+                        throw @"
+Error: Failed to download project archive from GitHub.
+Check internet/DNS access and verify URL:
+    $ArchiveUrl
+Original error: $($_.Exception.Message)
+"@
+                }
 
         tar -xzf $archivePath -C $tmpDir
 
@@ -54,6 +103,10 @@ function Sync-FromGitHubArchive {
         foreach ($path in $RuntimePaths) {
             $source = Join-Path $extractedDir.FullName $path
             $target = Join-Path $TargetDir $path
+
+            if (-not (Test-Path $source)) {
+                throw "GitHub archive is missing required path: $path"
+            }
 
             if (Test-Path $target) {
                 Remove-Item -Path $target -Recurse -Force
@@ -71,6 +124,7 @@ function Sync-FromGitHubArchive {
 
 Require-Command 'docker'
 Require-Command 'tar'
+Test-DockerReady
 
 Write-Host "Install target: $TargetDir"
 Write-Host "Source: $ArchiveUrl"
