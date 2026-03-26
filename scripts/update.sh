@@ -52,17 +52,27 @@ print_docker_access_help() {
   echo "Error: Docker daemon is not available."
   if echo "$docker_info_output" | grep -qi "permission denied"; then
     echo "Reason: current user cannot access Docker socket."
-    echo "Fix (Linux):"
+    echo "Fix (Linux) - copy/paste these commands:"
     echo "  sudo usermod -aG docker \$USER"
     echo "  newgrp docker"
-    echo "Then retry update."
+    echo "  docker info"
+    echo "Then rerun update:"
+    echo "  curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/scripts/update.sh | bash"
     return
   fi
 
-  echo "Possible fixes:"
-  echo "  - Start Docker service (for example: sudo systemctl start docker)"
-  echo "  - Ensure current user can access Docker"
-  echo "  - Verify with: docker info"
+  echo "Fix (Linux) - copy/paste these commands:"
+  echo "  sudo systemctl enable --now docker"
+  echo "  sudo systemctl status docker --no-pager"
+  echo "  docker info"
+  echo "If docker info still fails with permission denied, run:"
+  echo "  sudo usermod -aG docker \$USER"
+  echo "  newgrp docker"
+  echo "Then rerun update:"
+  echo "  curl -fsSL https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${BRANCH}/scripts/update.sh | bash"
+  echo
+  echo "Raw docker error:"
+  echo "$docker_info_output"
 }
 
 validate_docker_ready() {

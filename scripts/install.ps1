@@ -15,12 +15,14 @@ function Require-Command([string]$Name) {
 }
 
 function Test-DockerReady {
-    $composeOutput = & docker compose version 2>&1
+        $composeOutput = & docker compose version 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw @"
 Error: Docker Compose plugin is missing.
 Fix: install/update Docker Desktop, then verify with:
   docker compose version
+Raw error:
+$($composeOutput | Out-String)
 "@
     }
 
@@ -29,18 +31,28 @@ Fix: install/update Docker Desktop, then verify with:
         if (($dockerInfoOutput | Out-String) -match 'Access is denied|permission denied') {
             throw @"
 Error: Docker is installed but this user cannot access Docker.
-Fix:
-  - Start Docker Desktop
-  - Re-open terminal with appropriate privileges
-  - Verify with: docker info
+Fix - copy/paste these commands in PowerShell:
+    Start-Process "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
+    Start-Sleep -Seconds 10
+    docker info
+If still failing, close/reopen terminal as your regular user and try again.
+Then rerun installer:
+    powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch/scripts/install.ps1).Content)"
+Raw error:
+$($dockerInfoOutput | Out-String)
 "@
         }
 
         throw @"
 Error: Docker daemon is not available.
-Fix:
-  - Start Docker Desktop
-  - Verify with: docker info
+Fix - copy/paste these commands in PowerShell:
+    Start-Process "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
+    Start-Sleep -Seconds 10
+    docker info
+Then rerun installer:
+    powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch/scripts/install.ps1).Content)"
+Raw error:
+$($dockerInfoOutput | Out-String)
 "@
     }
 }
