@@ -1,101 +1,77 @@
-# Deployment Guide (Temporary Reset State)
+# Deployment Guide
 
-This project is currently in a reset phase for deployment.
+This project deploys with Docker Compose using prebuilt images from Docker Hub.
 
-Container deployment files and deployment scripts were intentionally removed so deployment can be redesigned later in a simpler way.
+## Services
 
-## Supported Right Now
-
-- Local or bare-metal PostgreSQL setup
-- Local backend run via `python runserver.py`
-- Local frontend run via Vite (`npm run dev`) or static build (`npm run build`)
+- `postgres`: PostgreSQL 16 with persistent named volume `postgres_data`
+- `backend`: FastAPI API container with persistent named volume `uploads_data`
+- `frontend`: nginx container serving the React build and proxying API routes to backend
 
 ## Prerequisites
 
-- Python 3.8+
-- Node.js 18+ and npm
-- PostgreSQL 13+
+- Docker Engine 24+
+- Docker Compose v2+
 
-## First-Time Setup
+## Configure Environment
 
-1. Clone repository:
-
-```bash
-git clone https://github.com/Shlol762/QuestionBankDB.git
-cd QuestionBankDB
-```
-
-2. Backend environment:
+1. Create an env file that Compose auto-loads:
 
 ```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+cp .env.production.example .env
 ```
 
-On Windows PowerShell:
+2. Update values in `.env` (minimum recommended):
 
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+- `POSTGRES_PASSWORD`
+- `SECRET_KEY`
+- optional image tags: `BACKEND_IMAGE`, `FRONTEND_IMAGE`
 
-3. Configure environment:
+`POSTGRES_URL` is generated automatically inside Compose from `POSTGRES_USER`,
+`POSTGRES_PASSWORD`, and `POSTGRES_DB`.
+
+## Deploy
+
+Run from repository root:
 
 ```bash
-cp .env.example .env
+docker compose pull
+docker compose up -d
 ```
 
-Set at least:
-
-- `POSTGRES_URL=postgresql+asyncpg://USER:PASSWORD@localhost/questionbank`
-- `SECRET_KEY=<strong-random-value>`
-
-4. Run backend:
+Stop services:
 
 ```bash
-python runserver.py
+docker compose down
 ```
 
-5. Run frontend (in a separate terminal):
+Do not use `down -v` unless you want to delete database and upload data.
+
+## First Admin Bootstrap
+
+No automatic seeding is performed in production. Create the first admin manually:
 
 ```bash
-cd frontend
-npm ci
-npm run dev
+docker compose exec backend python seed_admin.py
 ```
 
-## Build Frontend For Static Hosting
+## Persistence
+
+- PostgreSQL data is stored in named volume `postgres_data`
+- Uploaded files are stored in named volume `uploads_data`
+
+These survive normal `docker compose down` and `docker compose up` cycles.
+
+## Backup
+
+Database backup:
 
 ```bash
-cd frontend
-npm ci
-npm run build
-```
-
-Build output is generated in `frontend/dist/`.
-
-## Database Backup and Restore (Manual)
-
-Backup:
-
-```bash
-pg_dump -U USER -d questionbank > backup_$(date +%Y%m%d_%H%M%S).sql
+docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" > backup_$(date +%Y%m%d_%H%M%S).sql
 ```
 
 Restore:
 
 ```bash
-psql -U USER -d questionbank < backup_YYYYMMDD_HHMMSS.sql
+cat backup_YYYYMMDD_HHMMSS.sql | docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
 ```
-
-## Project URLs (Default Local)
-
-- Frontend dev: `http://localhost:5173`
-- Backend API/docs: `http://localhost:8000/docs`
-
-## Important Note
-
-Production orchestration is intentionally not defined in this temporary reset state.
-A new simplified deployment approach can be introduced in a later iteration.

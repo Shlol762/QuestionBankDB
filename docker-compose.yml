@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-questionbank}
+      POSTGRES_USER: ${POSTGRES_USER:-questionbank}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-questionbank} -d ${POSTGRES_DB:-questionbank}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  backend:
+    image: ${BACKEND_IMAGE:-shlol762d/questiondb-backend:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_URL: postgresql+asyncpg://${POSTGRES_USER:-questionbank}:${POSTGRES_PASSWORD:-questionbank_dev_password}@postgres:5432/${POSTGRES_DB:-questionbank}
+      SECRET_KEY: ${SECRET_KEY:-dev_only_change_me}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      FORCE_HTTPS: ${FORCE_HTTPS:-false}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost,http://127.0.0.1}
+      UVICORN_HOST: ${UVICORN_HOST:-0.0.0.0}
+      UVICORN_PORT: ${UVICORN_PORT:-8000}
+      UVICORN_RELOAD: ${UVICORN_RELOAD:-false}
+    volumes:
+      - uploads_data:/app/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ping', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-shlol762d/questiondb-frontend:latest}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+
+volumes:
+  postgres_data:
+  uploads_data:
