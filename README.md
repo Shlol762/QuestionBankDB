@@ -443,64 +443,15 @@ Use `offset` and `limit` query parameters to paginate through results.
 - **Node.js 18+** and **npm**
 - A running **PostgreSQL** server (version 13+ recommended)
 
-### One-Step Production Install (Client Testing)
+### Deployment Status
 
-If you are handing this build to a client and want the simplest possible setup with persistent data, use the deployment scripts:
+Containerized deployment assets and deployment scripts were intentionally removed to reset deployment architecture.
 
-What the one-line installer does now:
-- Downloads the latest runtime files directly from GitHub into `QuestionBankDB/` by default.
-- Runs Docker Compose build/start from that runtime folder.
-- Creates `.env.production` automatically on first install if missing.
+Current supported workflow:
+- Local/bare-metal backend + frontend development.
+- Manual PostgreSQL management.
 
-Why downloads can still be large:
-- Most download size is Docker base images and package layers, not repository code.
-- First install commonly pulls hundreds of MB depending on what images are already cached.
-
-If install exits with a missing docker error:
-- Linux: install Docker Engine and docker-compose-plugin, then verify with `docker --version` and `docker compose version`.
-- Windows: install Docker Desktop, start it, then verify with `docker --version` and `docker compose version`.
-
-Linux:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/install.sh | bash
-```
-
-Windows (PowerShell):
-
-```powershell
-powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/install.ps1).Content)"
-```
-
-To push updates later while preserving existing database and uploaded files:
-
-Linux:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/update.sh | bash
-```
-
-Windows (PowerShell):
-
-```powershell
-powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/update.ps1).Content)"
-```
-
-To uninstall safely (keep DB/uploads data):
-
-Linux:
-
-```bash
-bash scripts/uninstall.sh
-```
-
-Windows (PowerShell):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
-```
-
-For full operations guidance (backup, restore, logs), see [DEPLOYMENT.md](DEPLOYMENT.md).
+For temporary local run instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 

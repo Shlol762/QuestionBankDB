@@ -1,169 +1,101 @@
-# Production Deployment Guide
+# Deployment Guide (Temporary Reset State)
 
-This guide gives you a one-command install and one-command update flow while preserving database and upload data.
+This project is currently in a reset phase for deployment.
 
-The one-line installer fetches a minimal runtime checkout (not full source history), then runs the normal installer.
+Container deployment files and deployment scripts were intentionally removed so deployment can be redesigned later in a simpler way.
 
-## What this deployment does
+## Supported Right Now
 
-- Runs `postgres`, `backend`, and `frontend` with Docker Compose.
-- Uses persistent volumes for database and uploads:
-  - `questiondb_postgres_data`
-  - `questiondb_uploads_data`
-- Initializes database schema directly from SQLModel metadata at backend startup.
-- Creates automatic DB backup before each update.
+- Local or bare-metal PostgreSQL setup
+- Local backend run via `python runserver.py`
+- Local frontend run via Vite (`npm run dev`) or static build (`npm run build`)
 
 ## Prerequisites
 
-- Docker Engine with Compose support (`docker compose`)
+- Python 3.8+
+- Node.js 18+ and npm
+- PostgreSQL 13+
 
-Linux:
-- `curl`
-- `openssl`
+## First-Time Setup
 
-Windows:
-- PowerShell 5.1+ (or PowerShell 7+)
-
-If install exits with a missing docker error:
-- Linux: install Docker Engine and docker-compose-plugin, then verify with `docker --version` and `docker compose version`.
-- Windows: install Docker Desktop, start it, then verify with `docker --version` and `docker compose version`.
-
-If install fails with `password authentication failed for user "questionbank"`:
-- Cause: an old Postgres Docker volume exists, but `.env.production` was regenerated with a new password.
-- Fix option A (keep existing data): restore the previous `.env.production` used with that volume.
-- Fix option B (fresh install): remove containers and the DB volume, then rerun install.
-
-## First-time install
-
-From any directory.
-
-Linux:
+1. Clone repository:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/install.sh | bash
+git clone https://github.com/Shlol762/QuestionBankDB.git
+cd QuestionBankDB
 ```
 
-Windows (PowerShell):
+2. Backend environment:
+
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+On Windows PowerShell:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/install.ps1).Content)"
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 ```
 
-What happens:
-1. Generates `.env.production` from `.env.production.example` if missing.
-2. Generates strong defaults for DB password and app `SECRET_KEY`.
-3. Builds and starts services.
-4. Waits for backend health endpoint.
-
-Note on download size:
-- Runtime files are downloaded from GitHub each install/update.
-- Most data usage comes from Docker image and package layer downloads during build.
-
-## Update to latest code
-
-Linux:
+3. Configure environment:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/update.sh | bash
+cp .env.example .env
 ```
 
-Windows (PowerShell):
+Set at least:
 
-```powershell
-powershell -ExecutionPolicy Bypass -Command "Invoke-Expression ((Invoke-WebRequest https://raw.githubusercontent.com/Shlol762/QuestionBankDB/Live-Version/scripts/update.ps1).Content)"
-```
+- `POSTGRES_URL=postgresql+asyncpg://USER:PASSWORD@localhost/questionbank`
+- `SECRET_KEY=<strong-random-value>`
 
-What happens:
-1. Creates SQL backup in `backups/`.
-2. Pulls newer images when available.
-3. Rebuilds/restarts services.
-4. Verifies backend health.
-
-## Backup and restore
-
-Create backup manually:
-
-Linux:
+4. Run backend:
 
 ```bash
-bash scripts/backup-db.sh
+python runserver.py
 ```
 
-Windows (PowerShell):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\backup-db.ps1
-```
-
-Restore from backup:
-
-Linux:
+5. Run frontend (in a separate terminal):
 
 ```bash
-bash scripts/restore-db.sh backups/questionbank_YYYYMMDD_HHMMSS.sql
+cd frontend
+npm ci
+npm run dev
 ```
 
-Windows (PowerShell):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\restore-db.ps1 -BackupFile .\backups\questionbank_YYYYMMDD_HHMMSS.sql
-```
-
-## Uninstall and cleanup
-
-Safe uninstall (keeps DB/uploads volumes):
-
-Linux:
+## Build Frontend For Static Hosting
 
 ```bash
-bash scripts/uninstall.sh
+cd frontend
+npm ci
+npm run build
 ```
 
-Windows (PowerShell):
+Build output is generated in `frontend/dist/`.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
-```
+## Database Backup and Restore (Manual)
 
-Full cleanup (removes DB/uploads data, backups, env file, and prunes dangling images):
-
-Linux:
+Backup:
 
 ```bash
-bash scripts/uninstall.sh --purge-data --purge-backups --remove-env --prune-images
+pg_dump -U USER -d questionbank > backup_$(date +%Y%m%d_%H%M%S).sql
 ```
 
-Windows (PowerShell):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1 -PurgeData -PurgeBackups -RemoveEnv -PruneImages
-```
-
-## Important data-safety rule
-
-Do not run `docker compose down -v` in production. The `-v` flag deletes volumes and will remove database/uploads data.
-
-## Service management
-
-Start/restart:
+Restore:
 
 ```bash
-docker compose --env-file .env.production -f docker-compose.production.yml up -d --build
+psql -U USER -d questionbank < backup_YYYYMMDD_HHMMSS.sql
 ```
 
-Stop services (data preserved):
+## Project URLs (Default Local)
 
-```bash
-docker compose --env-file .env.production -f docker-compose.production.yml down
-```
+- Frontend dev: `http://localhost:5173`
+- Backend API/docs: `http://localhost:8000/docs`
 
-View logs:
+## Important Note
 
-```bash
-docker compose --env-file .env.production -f docker-compose.production.yml logs --tail=200
-```
-
-## URLs
-
-- Frontend: `http://<server-ip>` or `http://<server-ip>:<FRONTEND_PORT>`
-- Backend docs: `http://<server-ip>:8000/docs`
+Production orchestration is intentionally not defined in this temporary reset state.
+A new simplified deployment approach can be introduced in a later iteration.
