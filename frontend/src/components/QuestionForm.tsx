@@ -10,7 +10,11 @@ import {
   Tag,
   Pencil,
   ArrowRightLeft,
-  Trash2
+  Trash2,
+  ChevronDown,
+  ChevronRight,
+  FolderRoot,
+  Layers
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, type SubmitHandler } from 'react-hook-form';
@@ -59,7 +63,8 @@ interface QuestionFormProps {
 type MatchPair = { left: string; right: string };
 type MCQOptions = { A: string; B: string; C: string; D: string };
 type MatchOptions = { pairs: MatchPair[] };
-type QuestionOptions = MCQOptions | MatchOptions | null;
+type GenericOptions = Record<string, unknown>;
+type QuestionOptions = MCQOptions | MatchOptions | GenericOptions | null;
 
 interface HierarchyTopic {
   topic_id: number;
@@ -69,17 +74,21 @@ interface HierarchyTopic {
 interface HierarchySubject {
   subject_id: number;
   subject_name: string;
+  config_id?: number;
   topics: HierarchyTopic[];
-  display?: string;
 }
 
 interface HierarchyGrade {
+  config_id: number;
+  syllabus_id: number;
   grade_level: number;
   subjects: HierarchySubject[];
 }
 
 interface HierarchySyllabus {
+  syllabus_id: number;
   syllabus_name: string;
+  academic_year?: string;
   grades: HierarchyGrade[];
 }
 
@@ -100,11 +109,7 @@ const questionSchema = z.object({
   difficulty: z.enum(['Easy', 'Medium', 'Hard']),
   q_type: z.enum(QUESTION_TYPES),
   status: z.enum(['draft', 'published', 'archived']),
-  options: z.union([
-    z.object({ A: z.string(), B: z.string(), C: z.string(), D: z.string() }),
-    z.object({ pairs: z.array(z.object({ left: z.string(), right: z.string() })) }),
-    z.null(),
-  ]).optional()
+  options: z.any().optional()
 }).superRefine((data, ctx) => {
   if (data.q_type === 'MCQ') {
     const opts = data.options && 'A' in data.options ? data.options : null;
@@ -124,7 +129,8 @@ const questionSchema = z.object({
     }
   }
   if (data.q_type === 'Match the Following') {
-    const pairs = data.options && 'pairs' in data.options ? data.options.pairs : [];
+    const optionObj = (data.options || {}) as Record<string, unknown>;
+    const pairs = Array.isArray(optionObj.pairs) ? optionObj.pairs as MatchPair[] : [];
     if (pairs.length < 2) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -135,6 +141,48 @@ const questionSchema = z.object({
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "All pairs must be complete",
+        path: ["options"]
+      });
+    }
+  }
+
+  if (data.q_type === 'One Word Answer' && data.answer_text.trim().includes(' ')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "One Word Answer must be a single word",
+      path: ["answer_text"]
+    });
+  }
+
+  if (data.q_type === 'Ordering/Sequencing') {
+    const optionObj = (data.options || {}) as Record<string, unknown>;
+    const items = Array.isArray(optionObj.items) ? optionObj.items as string[] : [];
+    if (items.filter((i) => i.trim()).length < 2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Provide at least 2 ordering items",
+        path: ["options"]
+      });
+    }
+  }
+
+  if (data.q_type === 'Assertion/Reason') {
+    const optionObj = (data.options || {}) as Record<string, unknown>;
+    if (!String(optionObj.assertion || '').trim() || !String(optionObj.reason || '').trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Assertion and reason are both required",
+        path: ["options"]
+      });
+    }
+  }
+
+  if (data.q_type === 'Case Study' || data.q_type === 'Comprehension Passage') {
+    const optionObj = (data.options || {}) as Record<string, unknown>;
+    if (!String(optionObj.passage || '').trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A passage/case block is required for this question type",
         path: ["options"]
       });
     }
@@ -155,13 +203,40 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
 
   const defaultOptions = { A: '', B: '', C: '', D: '' };
   const defaultPairs = [{ left: '', right: '' }, { left: '', right: '' }];
+  const defaultOrdering = ['First event', 'Second event', 'Third event'];
+  const defaultLabels = ['Label A', 'Label B'];
   const defaultQuestionType: QuestionTypeValue = QUESTION_TYPES.includes((initialData?.q_type || 'MCQ') as QuestionTypeValue)
     ? (initialData?.q_type as QuestionTypeValue)
     : 'MCQ';
   const defaultStatus: 'draft' | 'published' | 'archived' =
     initialData?.status === 'published' || initialData?.status === 'archived' ? initialData.status : 'draft';
-  const initialOptions: QuestionOptions =
-    initialData?.options ?? (defaultQuestionType === 'Match the Following' ? { pairs: defaultPairs } : defaultOptions);
+  const defaultOptionsForType = (qType: QuestionTypeValue): QuestionOptions => {
+    switch (qType) {
+      case 'MCQ':
+        return defaultOptions;
+      case 'Match the Following':
+        return { pairs: defaultPairs };
+      case 'Assertion/Reason':
+        return { assertion: '', reason: '' };
+      case 'Case Study':
+        return { passage: '' };
+      case 'Comprehension Passage':
+        return { passage: '' };
+      case 'Ordering/Sequencing':
+        return { items: defaultOrdering };
+      case 'Diagram Labeling':
+        return { labels: defaultLabels };
+      case 'Short Answer':
+      case 'Long Answer':
+      case 'Fill in the Blanks':
+      case 'One Word Answer':
+      case 'True/False':
+      default:
+        return null;
+    }
+  };
+
+  const initialOptions: QuestionOptions = initialData?.options ?? defaultOptionsForType(defaultQuestionType);
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isDirty } } = useForm<QuestionFormData>({
     resolver: zodResolver(questionSchema),
@@ -182,20 +257,36 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   const currentOptions = watch('options');
   const currentAnswer = watch('answer_text');
   const currentImageUrl = watch('image_url');
+  const currentTopicId = Number(watch('topic_id'));
 
   const asMCQOptions = (options: QuestionOptions | undefined): MCQOptions => {
-    if (options && 'A' in options) return options;
+    if (options && typeof options === 'object' && 'A' in options && 'B' in options && 'C' in options && 'D' in options) {
+      return options as MCQOptions;
+    }
     return defaultOptions;
   };
 
   const asMatchOptions = (options: QuestionOptions | undefined): MatchOptions => {
-    if (options && 'pairs' in options) return options;
+    if (options && typeof options === 'object' && 'pairs' in options) {
+      const maybePairs = (options as Record<string, unknown>).pairs;
+      if (Array.isArray(maybePairs)) {
+        return { pairs: maybePairs as MatchPair[] };
+      }
+    }
     return { pairs: defaultPairs };
   };
 
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string>(
-    initialData?.topic?.subject_id?.toString() || ''
-  );
+  const getObjectOptions = (options: QuestionOptions | undefined): GenericOptions => {
+    if (options && typeof options === 'object' && !Array.isArray(options)) {
+      return options as GenericOptions;
+    }
+    return {};
+  };
+
+  const [expandedSyllabus, setExpandedSyllabus] = useState<number[]>([]);
+  const [expandedGrade, setExpandedGrade] = useState<number[]>([]);
+  const [expandedSubject, setExpandedSubject] = useState<number[]>([]);
+  const [topicSearch, setTopicSearch] = useState('');
 
   const { data: rawHierarchy = [] } = useQuery<HierarchySyllabus[]>({
     queryKey: ['curriculum-hierarchy'],
@@ -207,32 +298,67 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     queryFn: () => client.get('/allowed-subjects/?active_only=true&limit=500').then(r => r.data),
   });
 
-  // Derived available subjects and topics
-  const availableSubjects = useMemo(() => {
-    const subjects: HierarchySubject[] = [];
-    rawHierarchy.forEach((s) => {
-      s.grades.forEach((g) => {
-        const isCoord = user?.is_admin || user?.grade_levels?.includes(g.grade_level);
-        g.subjects.forEach((sub) => {
-          if (isCoord || user?.subjects?.some((as) => as.subject_id === sub.subject_id) || user?.hod_subject_names?.includes(sub.subject_name)) {
-            subjects.push({ ...sub, display: `${s.syllabus_name} • G${g.grade_level} • ${sub.subject_name}` });
-          }
+  // Scoped hierarchy for topic picking (Syllabus -> Grade -> Subject -> Topic)
+  const scopedHierarchy = useMemo(() => {
+    return rawHierarchy
+      .map((syllabus) => {
+        const grades = syllabus.grades
+          .map((grade) => {
+            const isCoordinator = user?.is_admin || user?.grade_levels?.includes(grade.grade_level);
+            const subjects = grade.subjects.filter((subject) => {
+              return (
+                isCoordinator ||
+                user?.subjects?.some((assigned) => assigned.subject_id === subject.subject_id) ||
+                user?.hod_subject_names?.includes(subject.subject_name)
+              );
+            });
+
+            return {
+              ...grade,
+              subjects,
+            };
+          })
+          .filter((grade) => grade.subjects.length > 0);
+
+        return {
+          ...syllabus,
+          grades,
+        };
+      })
+      .filter((syllabus) => syllabus.grades.length > 0);
+  }, [rawHierarchy, user]);
+
+  const topicIndex = useMemo(() => {
+    const lookup = new Map<number, { topic: HierarchyTopic; subject: HierarchySubject; grade: HierarchyGrade; syllabus: HierarchySyllabus }>();
+    scopedHierarchy.forEach((syllabus) => {
+      syllabus.grades.forEach((grade) => {
+        grade.subjects.forEach((subject) => {
+          subject.topics.forEach((topic) => {
+            lookup.set(topic.topic_id, { topic, subject, grade, syllabus });
+          });
         });
       });
     });
-    return subjects;
-  }, [user, rawHierarchy]);
+    return lookup;
+  }, [scopedHierarchy]);
 
-  const availableTopics = useMemo(() => {
-    if (!selectedSubjectId) return [];
-    const sub = availableSubjects.find(s => s.subject_id === parseInt(selectedSubjectId));
-    return sub?.topics || [];
-  }, [selectedSubjectId, availableSubjects]);
+  const selectedTopicMeta = useMemo(() => {
+    const topicId = currentTopicId;
+    if (!Number.isFinite(topicId)) return undefined;
+    return topicIndex.get(topicId);
+  }, [topicIndex, currentTopicId]);
 
-  const selectedSubject = useMemo(() => {
-    if (!selectedSubjectId) return undefined;
-    return availableSubjects.find(s => s.subject_id === parseInt(selectedSubjectId));
-  }, [availableSubjects, selectedSubjectId]);
+  const filteredTopicEntries = useMemo(() => {
+    const q = topicSearch.trim().toLowerCase();
+    if (!q) return [];
+
+    const entries: Array<{ topic: HierarchyTopic; subject: HierarchySubject; grade: HierarchyGrade; syllabus: HierarchySyllabus }> = [];
+    topicIndex.forEach((value) => {
+      const searchable = `${value.topic.topic_name} ${value.subject.subject_name} ${value.grade.grade_level} ${value.syllabus.syllabus_name}`.toLowerCase();
+      if (searchable.includes(q)) entries.push(value);
+    });
+    return entries.slice(0, 30);
+  }, [topicIndex, topicSearch]);
 
   const allowedNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -242,12 +368,12 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     return map;
   }, [allowedSubjectsData]);
 
-  const recommendation = selectedSubject
-    ? allowedNameMap.get(selectedSubject.subject_name.trim().toLowerCase())
+  const recommendation = selectedTopicMeta
+    ? allowedNameMap.get(selectedTopicMeta.subject.subject_name.trim().toLowerCase())
     : undefined;
 
-  const isRecommendedSubject = selectedSubject
-    ? allowedNameMap.has(selectedSubject.subject_name.trim().toLowerCase())
+  const isRecommendedSubject = selectedTopicMeta
+    ? allowedNameMap.has(selectedTopicMeta.subject.subject_name.trim().toLowerCase())
     : true;
 
   // Mutations
@@ -335,6 +461,317 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     mutation.mutate({ ...data, status: submitMode });
   };
 
+  const updateObjectOption = (key: string, value: unknown) => {
+    const existing = getObjectOptions(currentOptions);
+    setValue('options', { ...existing, [key]: value }, { shouldDirty: true, shouldValidate: false });
+  };
+
+  const renderTypeSpecificEditor = () => {
+    const objectOptions = getObjectOptions(currentOptions);
+
+    if (currentQType === 'MCQ') {
+      return (
+        <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Options Blueprint</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {['A', 'B', 'C', 'D'].map((key) => (
+              <div key={key} className="relative group">
+                <span className={`absolute left-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-lg font-black text-xs transition-all ${currentAnswer === key ? 'bg-academy-600 text-white shadow-lg' : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
+                  {key}
+                </span>
+                <input
+                  type="text"
+                  value={asMCQOptions(currentOptions)[key as keyof MCQOptions] || ''}
+                  onChange={(e) => setValue('options', { ...asMCQOptions(currentOptions), [key]: e.target.value }, { shouldDirty: true })}
+                  className={`w-full pl-12 pr-12 py-3 bg-gray-50 dark:bg-gray-900 border rounded-xl outline-none focus:ring-4 focus:ring-academy-500/10 transition-all font-bold text-sm dark:text-white ${currentAnswer === key ? 'border-academy-500 bg-white dark:bg-gray-800 shadow-sm' : 'border-gray-200 dark:border-gray-700'}`}
+                  placeholder={`Choice ${key}...`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setValue('answer_text', key, { shouldDirty: true })}
+                  className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md transition-colors ${currentAnswer === key ? 'text-academy-600' : 'text-gray-300 hover:text-gray-400 dark:text-gray-600'}`}
+                >
+                  <CheckCircle2 className="w-5 h-5" />
+                </button>
+              </div>
+            ))}
+          </div>
+          {errors.options && <p className="text-red-500 text-[10px] font-bold">{errors.options.message as string}</p>}
+          {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
+        </div>
+      );
+    }
+
+    if (currentQType === 'True/False') {
+      return (
+        <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest text-center">Correct Assertion</label>
+          <div className="flex gap-4">
+            {['True', 'False'].map((val) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => setValue('answer_text', val, { shouldDirty: true })}
+                className={`flex-1 py-6 rounded-2xl border-2 font-black text-lg transition-all flex flex-col items-center gap-2 ${currentAnswer === val ? 'bg-academy-600 border-academy-600 text-white shadow-xl shadow-academy-600/20' : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-400 hover:border-academy-300 hover:text-gray-600 dark:hover:text-gray-300'}`}
+              >
+                <CheckCircle2 className={`w-6 h-6 ${currentAnswer === val ? 'opacity-100 scale-110' : 'opacity-0 scale-50'} transition-all`} />
+                {val}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (currentQType === 'Match the Following') {
+      return (
+        <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">Logic Pairs</label>
+            <button type="button" onClick={addPair} className="flex items-center gap-1.5 text-[10px] font-black text-academy-600 dark:text-academy-400 uppercase hover:underline transition-all">
+              <Plus className="w-3.5 h-3.5" /> Extend Pairs
+            </button>
+          </div>
+          <div className="space-y-3 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
+            {asMatchOptions(currentOptions).pairs.map((pair: MatchPair, idx: number) => (
+              <div key={idx} className="flex items-center gap-3 animate-in slide-in-from-left-2">
+                <div className="flex-1">
+                  <input type="text" value={pair.left} onChange={(e) => handlePairChange(idx, 'left', e.target.value)} placeholder="Term" className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-academy-500 font-bold text-sm dark:text-white" />
+                </div>
+                <ArrowRightLeft className="w-4 h-4 text-gray-300 dark:text-gray-700 flex-shrink-0" />
+                <div className="flex-1">
+                  <input type="text" value={pair.right} onChange={(e) => handlePairChange(idx, 'right', e.target.value)} placeholder="Relation" className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-academy-500 font-bold text-sm dark:text-white" />
+                </div>
+                {asMatchOptions(currentOptions).pairs.length > 2 && (
+                  <button type="button" onClick={() => removePair(idx)} className="p-2 text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                )}
+              </div>
+            ))}
+          </div>
+          {errors.options && <p className="text-red-500 text-[10px] font-bold">{errors.options.message as string}</p>}
+        </div>
+      );
+    }
+
+    if (currentQType === 'Fill in the Blanks') {
+      const blanks = (watch('question_text').match(/_{3,}/g) || []).length;
+      return (
+        <div className="space-y-3">
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Blank Inputs</p>
+          <p className="text-xs font-bold text-gray-500">Detected blank slots in question text: {blanks}</p>
+          <input
+            {...register('answer_text')}
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white"
+            placeholder="Comma-separated answers in order: chlorophyll, glucose"
+          />
+          {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
+        </div>
+      );
+    }
+
+    if (currentQType === 'One Word Answer') {
+      return (
+        <div className="space-y-3">
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Single-Token Answer</p>
+          <input
+            {...register('answer_text')}
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-black text-sm dark:text-white"
+            placeholder="Expected one-word answer"
+          />
+          {currentAnswer.trim().includes(' ') && <p className="text-amber-600 text-[10px] font-bold">Use one word only.</p>}
+          {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
+        </div>
+      );
+    }
+
+    if (currentQType === 'Assertion/Reason') {
+      return (
+        <div className="space-y-4">
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Assertion/Reason Designer</p>
+          <textarea
+            value={String(objectOptions.assertion || '')}
+            onChange={(e) => updateObjectOption('assertion', e.target.value)}
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none min-h-[80px] font-bold text-sm dark:text-white"
+            placeholder="Assertion statement"
+          />
+          <textarea
+            value={String(objectOptions.reason || '')}
+            onChange={(e) => updateObjectOption('reason', e.target.value)}
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none min-h-[80px] font-bold text-sm dark:text-white"
+            placeholder="Reason statement"
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {[
+              'Both true, reason explains assertion',
+              'Both true, reason does not explain assertion',
+              'Assertion true, reason false',
+              'Assertion false, reason true',
+            ].map((choice) => (
+              <button
+                type="button"
+                key={choice}
+                onClick={() => setValue('answer_text', choice, { shouldDirty: true })}
+                className={`text-left px-3 py-2 rounded-lg border text-xs font-bold transition-all ${currentAnswer === choice ? 'bg-academy-600 border-academy-600 text-white' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}
+              >
+                {choice}
+              </button>
+            ))}
+          </div>
+          {errors.options && <p className="text-red-500 text-[10px] font-bold">{errors.options.message as string}</p>}
+        </div>
+      );
+    }
+
+    if (currentQType === 'Case Study' || currentQType === 'Comprehension Passage') {
+      return (
+        <div className="space-y-3">
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Passage Workspace</p>
+          <textarea
+            value={String(objectOptions.passage || '')}
+            onChange={(e) => updateObjectOption('passage', e.target.value)}
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none min-h-[120px] font-medium text-sm dark:text-white"
+            placeholder={currentQType === 'Case Study' ? 'Enter the case study context...' : 'Enter the comprehension passage...'}
+          />
+          <textarea
+            {...register('answer_text')}
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none min-h-[100px] font-bold text-sm dark:text-white"
+            placeholder="Model answer / scoring points"
+          />
+          {errors.options && <p className="text-red-500 text-[10px] font-bold">{errors.options.message as string}</p>}
+          {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
+        </div>
+      );
+    }
+
+    if (currentQType === 'Ordering/Sequencing') {
+      const items = Array.isArray(objectOptions.items) ? objectOptions.items as string[] : defaultOrdering;
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sequence Builder</p>
+            <button type="button" onClick={() => updateObjectOption('items', [...items, ''])} className="text-[10px] font-black text-academy-600 uppercase">Add Step</button>
+          </div>
+          <div className="space-y-2">
+            {items.map((item, index) => (
+              <div key={`order-${index}`} className="flex items-center gap-2">
+                <span className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] font-black flex items-center justify-center">{index + 1}</span>
+                <input
+                  value={item}
+                  onChange={(e) => {
+                    const next = [...items];
+                    next[index] = e.target.value;
+                    updateObjectOption('items', next);
+                  }}
+                  className="flex-1 px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none text-sm font-bold dark:text-white"
+                  placeholder={`Step ${index + 1}`}
+                />
+                {items.length > 2 && (
+                  <button
+                    type="button"
+                    onClick={() => updateObjectOption('items', items.filter((_, i) => i !== index))}
+                    className="p-2 text-gray-400 hover:text-red-500"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <input
+            {...register('answer_text')}
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none text-sm font-bold dark:text-white"
+            placeholder="Correct order indices, e.g. 2,1,3"
+          />
+          {errors.options && <p className="text-red-500 text-[10px] font-bold">{errors.options.message as string}</p>}
+          {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
+        </div>
+      );
+    }
+
+    if (currentQType === 'Diagram Labeling') {
+      const labels = Array.isArray(objectOptions.labels) ? objectOptions.labels as string[] : defaultLabels;
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Label Bank</p>
+            <button type="button" onClick={() => updateObjectOption('labels', [...labels, ''])} className="text-[10px] font-black text-academy-600 uppercase">Add Label</button>
+          </div>
+          {labels.map((label, index) => (
+            <input
+              key={`label-${index}`}
+              value={label}
+              onChange={(e) => {
+                const next = [...labels];
+                next[index] = e.target.value;
+                updateObjectOption('labels', next);
+              }}
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white"
+              placeholder={`Label ${index + 1}`}
+            />
+          ))}
+          <textarea
+            {...register('answer_text')}
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none min-h-[90px] font-bold text-sm dark:text-white"
+            placeholder="Answer map, e.g. A-Leaf, B-Stem"
+          />
+          {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
+        </div>
+      );
+    }
+
+    if (currentQType === 'Short Answer') {
+      return (
+        <div className="space-y-3">
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Short Answer Rubric</p>
+          <input
+            value={String(objectOptions.keywords || '')}
+            onChange={(e) => updateObjectOption('keywords', e.target.value)}
+            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white"
+            placeholder="Must-have keywords (comma separated)"
+          />
+          <textarea
+            {...register('answer_text')}
+            className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 outline-none min-h-[110px] font-bold dark:text-white"
+            placeholder="Concise model answer..."
+          />
+          {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
+        </div>
+      );
+    }
+
+    if (currentQType === 'Long Answer') {
+      return (
+        <div className="space-y-3">
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Long-Form Evaluation Guide</p>
+          <textarea
+            value={String(objectOptions.rubric || '')}
+            onChange={(e) => updateObjectOption('rubric', e.target.value)}
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none min-h-[90px] font-medium text-sm dark:text-white"
+            placeholder="Rubric notes (criteria, score split, required depth)"
+          />
+          <textarea
+            {...register('answer_text')}
+            className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 outline-none min-h-[160px] font-bold dark:text-white"
+            placeholder="Exemplar long-form response"
+          />
+          {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Answer Key</label>
+        <textarea
+          {...register('answer_text')}
+          className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 outline-none min-h-[120px] font-bold dark:text-white placeholder:text-gray-300 dark:placeholder:text-gray-700 transition-all"
+          placeholder="Provide the expected solution..."
+        />
+        {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
+      </div>
+    );
+  };
+
   // Reset options when type changes
   useEffect(() => {
     if (isFirstRender.current) {
@@ -344,10 +781,19 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
 
     if (currentQType === 'MCQ') setValue('options', defaultOptions);
     else if (currentQType === 'Match the Following') setValue('options', { pairs: defaultPairs });
+    else if (currentQType === 'Assertion/Reason') setValue('options', { assertion: '', reason: '' });
+    else if (currentQType === 'Case Study' || currentQType === 'Comprehension Passage') setValue('options', { passage: '' });
+    else if (currentQType === 'Ordering/Sequencing') setValue('options', { items: defaultOrdering });
+    else if (currentQType === 'Diagram Labeling') setValue('options', { labels: defaultLabels });
     else setValue('options', null);
-    
-    // Clear answer if type changes (except for types that don't need explicit answer text in UI logic)
-    if (currentQType !== 'Match the Following') setValue('answer_text', '');
+
+    if (currentQType === 'True/False') {
+      setValue('answer_text', 'True');
+    } else if (currentQType === 'Match the Following') {
+      setValue('answer_text', 'Pairs matched');
+    } else {
+      setValue('answer_text', '');
+    }
   }, [currentQType, setValue]);
 
   return (
@@ -382,55 +828,132 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
             
             {/* Context & Content */}
             <div className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex justify-between">
-                    <span>Curriculum Hub</span>
-                    {!availableSubjects.length && <span className="text-red-400 normal-case font-bold">No assigned subjects found</span>}
-                  </label>
-                  <div className="relative group">
-                    <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-academy-600" />
-                    <select 
-                      value={selectedSubjectId}
-                      onChange={(e) => { 
-                        setSelectedSubjectId(e.target.value); 
-                        setValue('topic_id', ''); 
-                      }}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-4 focus:ring-academy-500/10 outline-none font-bold text-sm dark:text-white transition-all"
-                    >
-                      <option value="">Select Subject</option>
-                      {availableSubjects.map((s) => (
-                        <option key={s.subject_id} value={s.subject_id}>{s.display}</option>
-                      ))}
-                    </select>
-                  </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex justify-between">
+                  <span>Topic Selection Flow</span>
+                  {!scopedHierarchy.length && <span className="text-red-400 normal-case font-bold">No accessible curriculum found</span>}
+                </label>
+
+                <div className="relative">
+                  <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    value={topicSearch}
+                    onChange={(e) => setTopicSearch(e.target.value)}
+                    placeholder="Quick search topic / subject / grade"
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-4 focus:ring-academy-500/10 outline-none font-bold text-sm dark:text-white transition-all"
+                  />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Specific Topic</label>
-                  <div className="relative group">
-                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-academy-600" />
-                    <select 
-                      disabled={!selectedSubjectId || !availableTopics.length}
-                      {...register("topic_id")}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-4 focus:ring-academy-500/10 outline-none font-bold text-sm dark:text-white disabled:opacity-50 transition-all"
-                    >
-                      <option value="">{selectedSubjectId ? (availableTopics.length ? 'Choose Topic' : 'No topics in this subject') : 'Choose Topic'}</option>
-                      {availableTopics.map((t) => (
-                        <option key={t.topic_id} value={t.topic_id}>{t.topic_name}</option>
-                      ))}
-                    </select>
+                {topicSearch.trim() && (
+                  <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 max-h-44 overflow-y-auto space-y-2">
+                    {filteredTopicEntries.length ? filteredTopicEntries.map((entry) => (
+                      <button
+                        key={`search-${entry.topic.topic_id}`}
+                        type="button"
+                        onClick={() => setValue('topic_id', String(entry.topic.topic_id), { shouldValidate: true, shouldDirty: true })}
+                        className={`w-full text-left px-3 py-2 rounded-xl border transition-all ${currentTopicId === entry.topic.topic_id ? 'border-academy-500 bg-academy-50 dark:bg-academy-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-academy-300'}`}
+                      >
+                        <p className="text-xs font-black text-gray-900 dark:text-white">{entry.topic.topic_name}</p>
+                        <p className="text-[10px] font-bold text-gray-500">{entry.syllabus.syllabus_name} • G{entry.grade.grade_level} • {entry.subject.subject_name}</p>
+                      </button>
+                    )) : (
+                      <p className="text-[10px] font-bold text-gray-500">No matching topics found.</p>
+                    )}
                   </div>
-                  {selectedSubject && !isRecommendedSubject && (
-                    <p className="text-amber-600 text-[10px] font-bold mt-1">
-                      Soft recommendation: this subject is not in the Allowed Subjects catalog.
-                    </p>
-                  )}
-                  {selectedSubject && isRecommendedSubject && recommendation && (
-                    <p className="text-emerald-600 text-[10px] font-bold mt-1">Recommendation: {recommendation}</p>
-                  )}
-                  {errors.topic_id && <p className="text-red-500 text-[10px] font-bold">{errors.topic_id.message as string}</p>}
+                )}
+
+                <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-3xl p-4 max-h-[320px] overflow-y-auto">
+                  {scopedHierarchy.map((syllabus) => (
+                    <div key={syllabus.syllabus_id} className="mb-3">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedSyllabus((prev) => prev.includes(syllabus.syllabus_id) ? prev.filter((id) => id !== syllabus.syllabus_id) : [...prev, syllabus.syllabus_id])}
+                        className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-white dark:hover:bg-gray-800 transition-all"
+                      >
+                        <div className="flex items-center gap-2">
+                          {expandedSyllabus.includes(syllabus.syllabus_id) ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+                          <FolderRoot className="w-4 h-4 text-academy-500" />
+                          <span className="text-xs font-black text-gray-700 dark:text-gray-200">{syllabus.syllabus_name}</span>
+                        </div>
+                      </button>
+
+                      {expandedSyllabus.includes(syllabus.syllabus_id) && (
+                        <div className="ml-4 pl-3 border-l border-gray-200 dark:border-gray-700 space-y-2">
+                          {syllabus.grades.map((grade) => (
+                            <div key={grade.config_id}>
+                              <button
+                                type="button"
+                                onClick={() => setExpandedGrade((prev) => prev.includes(grade.config_id) ? prev.filter((id) => id !== grade.config_id) : [...prev, grade.config_id])}
+                                className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-white dark:hover:bg-gray-800 transition-all"
+                              >
+                                <div className="flex items-center gap-2">
+                                  {expandedGrade.includes(grade.config_id) ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />}
+                                  <Layers className="w-3.5 h-3.5 text-amber-500" />
+                                  <span className="text-[11px] font-black text-gray-600 dark:text-gray-300">Grade {grade.grade_level}</span>
+                                </div>
+                              </button>
+
+                              {expandedGrade.includes(grade.config_id) && (
+                                <div className="ml-4 pl-3 border-l border-gray-100 dark:border-gray-800 space-y-2">
+                                  {grade.subjects.map((subject) => (
+                                    <div key={subject.subject_id}>
+                                      <button
+                                        type="button"
+                                        onClick={() => setExpandedSubject((prev) => prev.includes(subject.subject_id) ? prev.filter((id) => id !== subject.subject_id) : [...prev, subject.subject_id])}
+                                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-white dark:hover:bg-gray-800"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          {expandedSubject.includes(subject.subject_id) ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
+                                          <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
+                                          <span className="text-[10px] font-black text-gray-500 dark:text-gray-400">{subject.subject_name}</span>
+                                        </div>
+                                      </button>
+
+                                      {expandedSubject.includes(subject.subject_id) && (
+                                        <div className="ml-4 space-y-1 mt-1">
+                                          {subject.topics.map((topic) => (
+                                            <button
+                                              key={topic.topic_id}
+                                              type="button"
+                                              onClick={() => setValue('topic_id', String(topic.topic_id), { shouldValidate: true, shouldDirty: true })}
+                                              className={`w-full text-left px-3 py-2 rounded-lg border text-[11px] font-bold transition-all ${currentTopicId === topic.topic_id ? 'bg-academy-600 border-academy-600 text-white' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-academy-300'}`}
+                                            >
+                                              {topic.topic_name}
+                                            </button>
+                                          ))}
+                                          {!subject.topics.length && <p className="text-[10px] text-gray-400">No topics available</p>}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
+
+                {selectedTopicMeta && (
+                  <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/30 bg-emerald-50/60 dark:bg-emerald-900/10 px-3 py-2">
+                    <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Selected Topic</p>
+                    <p className="text-xs font-black text-gray-800 dark:text-gray-200 mt-1">{selectedTopicMeta.topic.topic_name}</p>
+                    <p className="text-[10px] font-bold text-gray-500 mt-0.5">{selectedTopicMeta.syllabus.syllabus_name} • Grade {selectedTopicMeta.grade.grade_level} • {selectedTopicMeta.subject.subject_name}</p>
+                  </div>
+                )}
+
+                {selectedTopicMeta && !isRecommendedSubject && (
+                  <p className="text-amber-600 text-[10px] font-bold mt-1">
+                    Soft recommendation: this subject is not in the Allowed Subjects catalog.
+                  </p>
+                )}
+                {selectedTopicMeta && isRecommendedSubject && recommendation && (
+                  <p className="text-emerald-600 text-[10px] font-bold mt-1">Recommendation: {recommendation}</p>
+                )}
+                <input type="hidden" {...register("topic_id")} />
+                {errors.topic_id && <p className="text-red-500 text-[10px] font-bold">{errors.topic_id.message as string}</p>}
               </div>
 
               <div className="space-y-1.5">
@@ -444,92 +967,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
               </div>
 
               {/* Dynamic Type Fields */}
-              {currentQType === 'MCQ' ? (
-                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                  <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Options Blueprint</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {['A', 'B', 'C', 'D'].map((key) => (
-                      <div key={key} className="relative group">
-                        <span className={`absolute left-3 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded-lg font-black text-xs transition-all ${currentAnswer === key ? 'bg-academy-600 text-white shadow-lg' : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
-                          {key}
-                        </span>
-                        <input 
-                          type="text"
-                          value={asMCQOptions(currentOptions)[key as keyof MCQOptions] || ''}
-                          onChange={(e) => setValue('options', { ...asMCQOptions(currentOptions), [key]: e.target.value })}
-                          className={`w-full pl-12 pr-12 py-3 bg-gray-50 dark:bg-gray-900 border rounded-xl outline-none focus:ring-4 focus:ring-academy-500/10 transition-all font-bold text-sm dark:text-white ${currentAnswer === key ? 'border-academy-500 bg-white dark:bg-gray-800 shadow-sm' : 'border-gray-200 dark:border-gray-700'}`}
-                          placeholder={`Choice ${key}...`}
-                        />
-                        <button 
-                          type="button"
-                          onClick={() => setValue('answer_text', key)}
-                          className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md transition-colors ${currentAnswer === key ? 'text-academy-600' : 'text-gray-300 hover:text-gray-400 dark:text-gray-600'}`}
-                        >
-                          <CheckCircle2 className="w-5 h-5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  {errors.options && <p className="text-red-500 text-[10px] font-bold">{errors.options.message as string}</p>}
-                  {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
-                </div>
-              ) : currentQType === 'True/False' ? (
-                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                  <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest text-center">Correct Assertion</label>
-                  <div className="flex gap-4">
-                    {['True', 'False'].map((val) => (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => setValue('answer_text', val)}
-                        className={`flex-1 py-6 rounded-2xl border-2 font-black text-lg transition-all flex flex-col items-center gap-2
-                          ${currentAnswer === val 
-                            ? 'bg-academy-600 border-academy-600 text-white shadow-xl shadow-academy-600/20' 
-                            : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-400 hover:border-academy-300 hover:text-gray-600 dark:hover:text-gray-300'}`}
-                      >
-                        <CheckCircle2 className={`w-6 h-6 ${currentAnswer === val ? 'opacity-100 scale-110' : 'opacity-0 scale-50'} transition-all`} />
-                        {val}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : currentQType === 'Match the Following' ? (
-                <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">Logic Pairs</label>
-                    <button type="button" onClick={addPair} className="flex items-center gap-1.5 text-[10px] font-black text-academy-600 dark:text-academy-400 uppercase hover:underline transition-all">
-                      <Plus className="w-3.5 h-3.5" /> Extend Pairs
-                    </button>
-                  </div>
-                  <div className="space-y-3 max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
-                    {asMatchOptions(currentOptions).pairs.map((pair: MatchPair, idx: number) => (
-                      <div key={idx} className="flex items-center gap-3 animate-in slide-in-from-left-2">
-                        <div className="flex-1">
-                          <input type="text" value={pair.left} onChange={(e) => handlePairChange(idx, 'left', e.target.value)} placeholder="Term" className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-academy-500 font-bold text-sm dark:text-white" />
-                        </div>
-                        <ArrowRightLeft className="w-4 h-4 text-gray-300 dark:text-gray-700 flex-shrink-0" />
-                        <div className="flex-1">
-                          <input type="text" value={pair.right} onChange={(e) => handlePairChange(idx, 'right', e.target.value)} placeholder="Relation" className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-academy-500 font-bold text-sm dark:text-white" />
-                        </div>
-                        {asMatchOptions(currentOptions).pairs.length > 2 && (
-                          <button type="button" onClick={() => removePair(idx)} className="p-2 text-gray-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  {errors.options && <p className="text-red-500 text-[10px] font-bold">{errors.options.message as string}</p>}
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Answer Key</label>
-                  <textarea 
-                    {...register("answer_text")}
-                    className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 outline-none min-h-[120px] font-bold dark:text-white placeholder:text-gray-300 dark:placeholder:text-gray-700 transition-all"
-                    placeholder="Provide the expected solution..."
-                  />
-                  {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
-                </div>
-              )}
+              {renderTypeSpecificEditor()}
             </div>
 
             {/* Classification & Media */}
