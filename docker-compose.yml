@@ -15,7 +15,7 @@ services:
       retries: 6
 
   backend:
-    image: ${BACKEND_IMAGE:-shlol762d/questiondb-backend:latest}
+    image: ${BACKEND_IMAGE:-shlok762d/questiondb-backend:latest}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -40,7 +40,7 @@ services:
       retries: 8
 
   frontend:
-    image: ${FRONTEND_IMAGE:-shlol762d/questiondb-frontend:latest}
+    image: ${FRONTEND_IMAGE:-shlok762d/questiondb-frontend:latest}
     restart: unless-stopped
     depends_on:
       backend:
