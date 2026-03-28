@@ -134,7 +134,7 @@ const Setup: React.FC<SetupProps> = ({ onComplete }) => {
           <div className="lg:w-7/12 p-8 lg:p-16 bg-white dark:bg-gray-900">
             <div className="max-w-md mx-auto w-full space-y-10">
               <div>
-                <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Root Configuration</h2>
+                <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">HELLOOOOOOOO</h2>
                 <p className="text-gray-500 dark:text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-2">Administrator Credentialing</p>
               </div>
 
