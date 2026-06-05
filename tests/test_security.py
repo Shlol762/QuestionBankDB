@@ -122,7 +122,8 @@ async def test_unauthorized_data_modification(client: AsyncClient):
     s_id = s_res.json()["syllabus_id"]
     g_res = await client.post("/curriculum/grades", json={"syllabus_id": s_id, "grade_level": 11}, headers=admin_headers)
     g_id = g_res.json()["config_id"]
-    sub_res = await client.post("/curriculum/subjects", json={"config_id": g_id, "subject_name": "Math_Sec"}, headers=admin_headers)
+    await client.post("/allowed-subjects/", json={"subject_name": "Math_Sec"}, headers=admin_headers)
+    sub_res = await client.post("/curriculum/subjects", json={"config_id": g_id, "subject_name": "Math_Sec", "allowed_subject_id": 1}, headers=admin_headers)
     sub_id = sub_res.json()["subject_id"]
     
     # Let's have Admin create Topic too.

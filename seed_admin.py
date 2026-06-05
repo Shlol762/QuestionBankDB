@@ -27,8 +27,8 @@ async def create_initial_admin():
         if password != confirm:
             print("❌ Passwords do not match. Aborting.")
             return
-        if len(password) < 8:
-            print("❌ Password must be at least 8 characters.")
+        if len(password) < 12:
+            print("❌ Password must be at least 12 characters.")
             return
 
         # 1. Check if admin already exists
@@ -49,7 +49,7 @@ async def create_initial_admin():
             department=department,
             is_admin=True,
             grade_coordinating=[],
-            hod_subjects=[]
+            hod_assignments=[]
         )
 
         session.add(admin_user)

@@ -12,15 +12,16 @@ async def test_duplicate_topic_case_sensitivity(client: AsyncClient):
     """
     # Setup: Admin login, Syllabus, Grade, Subject
     await client.post("/auth/initial-setup", json={
-        "full_name": "Admin", "email": "admin@test.com", "password": "password123", "department": "IT"
+        "full_name": "Admin", "email": "admin@test.com", "password": "Password123!", "department": "IT"
     })
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     await client.post("/curriculum/syllabuses", json={"syllabus_name": "S1", "academic_year": "Y1"}, headers=headers)
     await client.post("/curriculum/grades", json={"syllabus_id": 1, "grade_level": 10}, headers=headers)
-    await client.post("/curriculum/subjects", json={"config_id": 1, "subject_name": "Math"}, headers=headers)
+    await client.post("/allowed-subjects/", json={"subject_name": "Math"}, headers=headers)
+    await client.post("/curriculum/subjects", json={"config_id": 1, "subject_name": "Math", "allowed_subject_id": 1}, headers=headers)
 
     # 1. Create 'Algebra'
     res1 = await client.post("/curriculum/topics", json={"subject_id": 1, "topic_name": "Algebra"}, headers=headers)
@@ -39,7 +40,7 @@ async def test_negative_marks_question(client: AsyncClient):
     Scenario: Teacher accidentally enters -5 marks for a question.
     Expected: Should be blocked (ge=0).
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -61,7 +62,7 @@ async def test_mcq_without_options(client: AsyncClient):
     Scenario: Teacher creates an MCQ but forgets to provide options.
     Expected: Should be blocked (Value Error in validator).
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -86,26 +87,26 @@ async def test_hod_permission_leak(client: AsyncClient):
     Expected: HOD SHOULD see both (Intentional Feature), but not unrelated subjects.
     """
     # Setup: Create Syllabus 2, Grade 10, Subject 'Math'
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     await client.post("/curriculum/syllabuses", json={"syllabus_name": "CBSE", "academic_year": "2026"}, headers=headers)
     await client.post("/curriculum/grades", json={"syllabus_id": 2, "grade_level": 10}, headers=headers)
-    await client.post("/curriculum/subjects", json={"config_id": 2, "subject_name": "Math"}, headers=headers)
+    await client.post("/curriculum/subjects", json={"config_id": 2, "subject_name": "Math", "allowed_subject_id": 1}, headers=headers)
     await client.post("/curriculum/topics", json={"subject_id": 2, "topic_name": "Geometry"}, headers=headers)
 
     # Register a new user as HOD of 'Math'
     await client.post("/auth/register", json={
         "full_name": "HOD Math",
         "email": "hod@math.com",
-        "password": "password123",
+        "password": "Password123!",
         "department": "Math",
-        "hod_subject_names": ["Math"]
+        "hod_allowed_subject_ids": [1]
     }, headers=headers)
 
     # Login as HOD
-    login_hod = await client.post("/auth/login", data={"username": "hod@math.com", "password": "password123"})
+    login_hod = await client.post("/auth/login", data={"username": "hod@math.com", "password": "Password123!"})
     token_hod = login_hod.json()["access_token"]
     headers_hod = {"Authorization": f"Bearer {token_hod}"}
 
@@ -126,13 +127,14 @@ async def test_hod_permission_leak(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_hod_cannot_manage_unassigned_subject(client: AsyncClient):
-    login_admin = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login_admin = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     if login_admin.status_code != 200:
-        login_admin = await client.post("/auth/login", data={"username": "admin@test.com", "password": "newsecurepass1"})
+        login_admin = await client.post("/auth/login", data={"username": "admin@test.com", "password": "NewSecure@Pass1"})
     token_admin = login_admin.json()["access_token"]
     admin_headers = {"Authorization": f"Bearer {token_admin}"}
 
-    subject_res = await client.post("/curriculum/subjects", json={"config_id": 1, "subject_name": "Physics"}, headers=admin_headers)
+    await client.post("/allowed-subjects/", json={"subject_name": "Physics"}, headers=admin_headers)
+    subject_res = await client.post("/curriculum/subjects", json={"config_id": 1, "subject_name": "Physics", "allowed_subject_id": 2}, headers=admin_headers)
     if subject_res.status_code not in [201, 400]:
         return
     if subject_res.status_code == 201:
@@ -148,7 +150,7 @@ async def test_hod_cannot_manage_unassigned_subject(client: AsyncClient):
     if topic_res.status_code != 201:
         return
 
-    login_hod = await client.post("/auth/login", data={"username": "hod@math.com", "password": "password123"})
+    login_hod = await client.post("/auth/login", data={"username": "hod@math.com", "password": "Password123!"})
     if login_hod.status_code != 200:
         return
 
@@ -169,7 +171,7 @@ async def test_mcq_answer_integrity(client: AsyncClient):
     Scenario: Teacher sets correct answer to 'E' but only provides options A, B, C, D.
     Expected: Should be blocked.
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -193,7 +195,7 @@ async def test_malicious_file_upload_extension_bypass(client: AsyncClient):
     Scenario: User uploads a script renamed to .pdf.
     Expected: System should check magic numbers (MIME) and block it (400).
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -212,7 +214,7 @@ async def test_question_image_no_extension_check(client: AsyncClient):
     Scenario: Teacher uploads 'virus.exe' as a question image.
     Expected: Should be blocked (400).
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -229,7 +231,7 @@ async def test_extreme_long_input(client: AsyncClient):
     Scenario: User pastes 1MB string into the question text.
     Expected: System should handle it gracefully (likely 201 or 422 if max length set).
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -252,7 +254,7 @@ async def test_cascading_deletion_purge(client: AsyncClient):
     Scenario: Delete a Syllabus.
     Expected: Grades, Subjects, Topics, and Questions under it should be GONE.
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -263,7 +265,8 @@ async def test_cascading_deletion_purge(client: AsyncClient):
     g_res = await client.post("/curriculum/grades", json={"syllabus_id": s_id, "grade_level": 1}, headers=headers)
     g_id = g_res.json()["config_id"]
     
-    sub_res = await client.post("/curriculum/subjects", json={"config_id": g_id, "subject_name": "TempSub"}, headers=headers)
+    await client.post("/allowed-subjects/", json={"subject_name": "TempSub"}, headers=headers)
+    sub_res = await client.post("/curriculum/subjects", json={"config_id": g_id, "subject_name": "TempSub", "allowed_subject_id": 3}, headers=headers)
     sub_id = sub_res.json()["subject_id"]
     
     t_res = await client.post("/curriculum/topics", json={"subject_id": sub_id, "topic_name": "TempTopic"}, headers=headers)
@@ -292,7 +295,7 @@ async def test_sql_injection_attempt(client: AsyncClient):
     Scenario: Search for questions using a malicious payload.
     Expected: Should be handled safely by the ORM.
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -309,14 +312,15 @@ async def test_concurrent_question_update(client: AsyncClient):
     Scenario: Two updates to the same question at once.
     Expected: Database should handle it without corruption due to row locking.
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     # Create Syllabus 3 for clean test
     await client.post("/curriculum/syllabuses", json={"syllabus_name": "S3", "academic_year": "Y3"}, headers=headers)
     await client.post("/curriculum/grades", json={"syllabus_id": 3, "grade_level": 1}, headers=headers)
-    await client.post("/curriculum/subjects", json={"config_id": 3, "subject_name": "C1"}, headers=headers)
+    await client.post("/allowed-subjects/", json={"subject_name": "C1"}, headers=headers)
+    await client.post("/curriculum/subjects", json={"config_id": 3, "subject_name": "C1", "allowed_subject_id": 4}, headers=headers)
     await client.post("/curriculum/topics", json={"subject_id": 3, "topic_name": "T1"}, headers=headers)
     
     q_res = await client.post("/questions/", json={
@@ -345,7 +349,7 @@ async def test_whitespace_syllabus_block(client: AsyncClient):
     Scenario: User enters " " as syllabus name.
     Expected: Should be blocked (422 due to str_strip_whitespace=True or DB error).
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -361,10 +365,10 @@ async def test_initial_setup_lockout_bypass(client: AsyncClient):
     Expected: 403 Forbidden.
     """
     res = await client.post("/auth/initial-setup", json={
-        "full_name": "Hacker", "email": "hacker@test.com", "password": "password123", "department": "Evil"
+        "full_name": "Hacker", "email": "hacker@test.com", "password": "Password123!", "department": "Evil"
     })
     assert res.status_code == 403
-    assert "already configured" in res.json()["detail"]
+    assert "locked" in res.json()["detail"]
 
 @pytest.mark.asyncio
 async def test_unauthenticated_file_upload(client: AsyncClient):
@@ -384,7 +388,7 @@ async def test_delete_last_admin(client: AsyncClient):
     Scenario: Admin tries to delete themselves (or the only other admin).
     Expected: Blocked.
     """
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -414,7 +418,7 @@ async def test_setup_status_endpoint(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_stats_endpoint_coverage(client: AsyncClient):
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -427,32 +431,32 @@ async def test_stats_endpoint_coverage(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_update_my_password_flow(client: AsyncClient):
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     bad = await client.patch(
         "/auth/me/password",
-        json={"current_password": "wrong", "new_password": "newsecurepass1"},
+        json={"current_password": "wrong", "new_password": "NewSecure@Pass1"},
         headers=headers,
     )
     assert bad.status_code == 400
 
     good = await client.patch(
         "/auth/me/password",
-        json={"current_password": "password123", "new_password": "newsecurepass1"},
+        json={"current_password": "Password123!", "new_password": "NewSecure@Pass1"},
         headers=headers,
     )
     assert good.status_code == 204
 
-    relogin = await client.post("/auth/login", data={"username": "admin@test.com", "password": "newsecurepass1"})
+    relogin = await client.post("/auth/login", data={"username": "admin@test.com", "password": "NewSecure@Pass1"})
     assert relogin.status_code == 200
 
     # Revert password to avoid affecting later tests in the shared session DB.
     new_headers = {"Authorization": f"Bearer {relogin.json()['access_token']}"}
     revert = await client.patch(
         "/auth/me/password",
-        json={"current_password": "newsecurepass1", "new_password": "password123"},
+        json={"current_password": "NewSecure@Pass1", "new_password": "Password123!"},
         headers=new_headers,
     )
     assert revert.status_code == 204
@@ -460,16 +464,16 @@ async def test_update_my_password_flow(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_reset_password_endpoint_coverage(client: AsyncClient):
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "newsecurepass1"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "NewSecure@Pass1"})
     if login.status_code != 200:
-        login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+        login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     create_user = await client.post("/auth/register", json={
         "full_name": "Reset Target",
         "email": "reset-target@test.com",
-        "password": "password123",
+        "password": "Password123!",
         "department": "Ops"
     }, headers=headers)
     assert create_user.status_code in [201, 400]
@@ -477,23 +481,23 @@ async def test_reset_password_endpoint_coverage(client: AsyncClient):
     users = await client.get("/auth/users", headers=headers)
     target = next(u for u in users.json()["items"] if u["email"] == "reset-target@test.com")
 
-    reset = await client.post(f"/auth/users/{target['user_id']}/reset-password", headers=headers)
+    reset = await client.post(f"/auth/users/{target['user_id']}/reset-password", json={"new_password": "Password123!"}, headers=headers)
     assert reset.status_code == 200
-    assert "temporary_password" in reset.json()
+    assert "message" in reset.json()
 
 
 @pytest.mark.asyncio
 async def test_delete_only_other_admin_blocked(client: AsyncClient):
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "newsecurepass1"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "NewSecure@Pass1"})
     if login.status_code != 200:
-        login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+        login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     create_admin = await client.post("/auth/register", json={
         "full_name": "Second Admin",
         "email": "second-admin@test.com",
-        "password": "password123",
+        "password": "Password123!",
         "department": "IT",
         "is_admin": True
     }, headers=headers)
@@ -511,9 +515,9 @@ async def test_delete_only_other_admin_blocked(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_mcq_patch_rejects_invalid_answer(client: AsyncClient):
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "newsecurepass1"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "NewSecure@Pass1"})
     if login.status_code != 200:
-        login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+        login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -525,7 +529,8 @@ async def test_mcq_patch_rejects_invalid_answer(client: AsyncClient):
     assert grade.status_code in [201, 400]
     config_id = grade.json()["config_id"] if grade.status_code == 201 else 1
 
-    subject = await client.post("/curriculum/subjects", json={"config_id": config_id, "subject_name": "PatchSubject"}, headers=headers)
+    await client.post("/allowed-subjects/", json={"subject_name": "PatchSubject"}, headers=headers)
+    subject = await client.post("/curriculum/subjects", json={"config_id": config_id, "subject_name": "PatchSubject", "allowed_subject_id": 5}, headers=headers)
     assert subject.status_code in [201, 400]
     if subject.status_code == 201:
         subject_id = subject.json()["subject_id"]

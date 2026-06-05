@@ -8,11 +8,11 @@ async def test_create_and_read_curriculum_hierarchy(client: AsyncClient):
     # Authenticate
     try:
         await client.post("/auth/initial-setup", json={
-            "full_name": "Admin", "email": "admin@test.com", "password": "password123", "department": "IT"
+            "full_name": "Admin", "email": "admin@test.com", "password": "Password123!", "department": "IT"
         })
     except Exception:
         pass
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     
@@ -27,7 +27,8 @@ async def test_create_and_read_curriculum_hierarchy(client: AsyncClient):
     g_id = res.json()["config_id"]
 
     # 3. Create Subject
-    res = await client.post("/curriculum/subjects", json={"config_id": g_id, "subject_name": "Physics"}, headers=headers)
+    await client.post("/allowed-subjects/", json={"subject_name": "Physics"}, headers=headers)
+    res = await client.post("/curriculum/subjects", json={"config_id": g_id, "subject_name": "Physics", "allowed_subject_id": 1}, headers=headers)
     assert res.status_code == 201
     sub_id = res.json()["subject_id"]
 
@@ -47,11 +48,11 @@ async def test_create_orphaned_grade(client: AsyncClient):
     # Authenticate
     try:
         await client.post("/auth/initial-setup", json={
-            "full_name": "Admin", "email": "admin@test.com", "password": "password123", "department": "IT"
+            "full_name": "Admin", "email": "admin@test.com", "password": "Password123!", "department": "IT"
         })
     except Exception:
         pass
-    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "password123"})
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 

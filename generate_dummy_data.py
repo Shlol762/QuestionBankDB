@@ -82,12 +82,31 @@ async def generate_data():
             if confirm.lower() == 'y':
                 print("🧹 Purging existing records...")
                 from sqlalchemy import text
-                await session.execute(text("TRUNCATE users, syllabus_master, grade_config, subjects, topics, question_bank CASCADE"))
+                await session.execute(text("TRUNCATE users, syllabus_master, grade_config, subjects, topics, question_bank, allowed_subjects, hod_link CASCADE"))
                 await session.commit()
             else:
                 print("⏩ Skipping cleanup. Data will be appended.")
 
-        # 2. CREATE STAFF (Users)
+        # 2. SEED ALLOWED SUBJECTS (Master Tag List)
+        print("📋 Seeding Master Tag List (Allowed Subjects)...")
+        existing_allowed = {
+            row[0]
+            for row in (await session.exec(select(AllowedSubject.subject_name))).all()
+        }
+        allowed_map = {}
+        for subject_name in CURRICULUM_DATA.keys():
+            if subject_name not in existing_allowed:
+                item = AllowedSubject(subject_name=subject_name, recommendation_note="Core subject")
+                session.add(item)
+                await session.flush()
+                allowed_map[subject_name] = item.allowed_subject_id
+            else:
+                stmt = select(AllowedSubject).where(AllowedSubject.subject_name == subject_name)
+                res = await session.exec(stmt)
+                item = res.first()
+                allowed_map[subject_name] = item.allowed_subject_id
+
+        # 3. CREATE STAFF (Users)
         print("👤 Provisioning Faculty and Administrators...")
         staff_members = []
         for name in TEACHER_NAMES:
@@ -96,7 +115,7 @@ async def generate_data():
             user = Users(
                 full_name=name,
                 email=email,
-                password_hash=get_password_hash("password123"),
+                password_hash=get_password_hash("Password123!"),
                 department=dept,
                 is_admin=False
             )
@@ -111,7 +130,7 @@ async def generate_data():
             admin = Users(
                 full_name="Head of IT",
                 email="admin@school.edu",
-                password_hash=get_password_hash("admin123"),
+                password_hash=get_password_hash("Admin1234!@#"),
                 department="Administration",
                 is_admin=True
             )
@@ -121,7 +140,7 @@ async def generate_data():
             
         await session.flush()
 
-        # 3. CREATE CURRICULUM (Multi-Year)
+        # 4. CREATE CURRICULUM (Multi-Year)
         print("📚 Constructing Multi-Year Curriculum Hierarchy...")
         academic_years = ["2023-24", "2024-25", "2025-26"]
         all_topics = []
@@ -140,7 +159,11 @@ async def generate_data():
 
                 # Add subjects from our pool
                 for sub_name, data in CURRICULUM_DATA.items():
-                    subject = Subject(subject_name=sub_name, config_id=grade.config_id)
+                    subject = Subject(
+                        subject_name=sub_name, 
+                        config_id=grade.config_id,
+                        allowed_subject_id=allowed_map.get(sub_name)
+                    )
                     session.add(subject)
                     all_subjects.append(subject)
                     await session.flush()
@@ -153,21 +176,18 @@ async def generate_data():
         
         await session.flush()
 
-        # 4. ASSIGN ROLES (HODs & Coordinators)
+        # 5. ASSIGN ROLES (HODs & Coordinators)
         print("🔑 Assigning Security Roles and Hooks...")
-        # Seed canonical allowed subjects list used by admin workflows.
-        existing_allowed = {
-            row[0]
-            for row in (await session.exec(select(AllowedSubject.subject_name))).all()
-        }
-        for subject_name in CURRICULUM_DATA.keys():
-            if subject_name not in existing_allowed:
-                session.add(AllowedSubject(subject_name=subject_name, recommendation_note="Core subject"))
-
-        # Assign 3 HODs
+        
+        # Assign 3 HODs using IDs
         hod_candidates = random.sample(staff_members, 3)
-        for i, sub_name in enumerate(list(CURRICULUM_DATA.keys())[:3]):
-            session.add(HODLink(user_id=hod_candidates[i].user_id, subject_name=sub_name))
+        subject_names = list(CURRICULUM_DATA.keys())
+        for i in range(3):
+            sub_name = subject_names[i]
+            session.add(HODLink(
+                user_id=hod_candidates[i].user_id, 
+                allowed_subject_id=allowed_map[sub_name]
+            ))
         
         # Assign 2 Grade Coordinators
         coord_candidates = random.sample(staff_members, 2)
@@ -180,7 +200,7 @@ async def generate_data():
             for sub in assigned:
                 session.add(UserSubjectLink(user_id=teacher.user_id, subject_id=sub.subject_id))
 
-        # 5. GENERATE QUESTIONS (Bulk)
+        # 6. GENERATE QUESTIONS (Bulk)
         print("❓ Generating Assessment Content (Questions)...")
         question_count = 0
         for topic in all_topics:
