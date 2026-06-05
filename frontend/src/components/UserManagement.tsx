@@ -80,7 +80,10 @@ const UserManagement: React.FC = () => {
     }
   });
 
-  const formData = watch();
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const gradeLevels = watch('grade_levels') || [];
+  const subjectIds = watch('subject_ids') || [];
+  const hodSubjectNames = watch('hod_subject_names') || [];
 
   // Fetch Paginated Users
   const { data: usersData, isLoading } = useQuery({
@@ -97,7 +100,7 @@ const UserManagement: React.FC = () => {
     placeholderData: { items: [], total: 0 }
   });
   
-  const users: UserListItem[] = usersData?.items || [];
+  const users: UserListItem[] = useMemo(() => usersData?.items || [], [usersData?.items]);
   const totalUsers = usersData?.total || 0;
 
   // Fetch Curriculum for Assignments
@@ -113,19 +116,19 @@ const UserManagement: React.FC = () => {
   // Derived Selection Lists
   const uniqueSubjectNames = useMemo(() => {
     const names = new Set<string>();
-    hierarchy.forEach((s: any) => s.grades.forEach((g: any) => g.subjects.forEach((sub: any) => names.add(sub.subject_name))));
+    hierarchy.forEach((s: { grades: { subjects: { subject_name: string }[] }[] }) => s.grades.forEach((g) => g.subjects.forEach((sub) => names.add(sub.subject_name))));
     return Array.from(names).sort();
   }, [hierarchy]);
 
   const allGradeLevels = useMemo(() => {
     const levels = new Set<number>();
-    hierarchy.forEach((s: any) => s.grades.forEach((g: any) => levels.add(g.grade_level)));
+    hierarchy.forEach((s: { grades: { grade_level: number }[] }) => s.grades.forEach((g) => levels.add(g.grade_level)));
     return Array.from(levels).sort((a, b) => a - b);
   }, [hierarchy]);
 
   // Mutations
   const userMutation = useMutation({
-    mutationFn: async (payload: any) => {
+    mutationFn: async (payload: Record<string, unknown>) => {
       if (isEditing && editingUserId) {
         // Remove password if empty to avoid overwriting
         if (!payload.password) delete payload.password;
@@ -146,8 +149,9 @@ const UserManagement: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setDeleteTarget(null);
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || "Revoke access failed.");
+    onError: (err: unknown) => {
+      const error = err as { response?: { data?: { detail?: string } } };
+      toast.error(error.response?.data?.detail || "Revoke access failed.");
     }
   });
   
@@ -167,7 +171,11 @@ const UserManagement: React.FC = () => {
   };
 
   const toggleItem = (listName: 'subject_ids' | 'grade_levels' | 'hod_subject_names', value: number | string) => {
-    const currentList = formData[listName] as Array<number | string>;
+    let currentList: Array<number | string>;
+    if (listName === 'subject_ids') currentList = subjectIds as Array<number>;
+    else if (listName === 'grade_levels') currentList = gradeLevels as Array<number>;
+    else currentList = hodSubjectNames as Array<string>;
+
     const newList = currentList.includes(value)
       ? currentList.filter(v => v !== value)
       : [...currentList, value];
@@ -368,7 +376,7 @@ const UserManagement: React.FC = () => {
           {userMutation.isError && (
             <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-2xl text-xs font-black border border-red-100 dark:border-red-900/30 flex items-center gap-3 animate-in fade-in slide-in-from-top-1">
               <AlertCircle className="w-5 h-5 flex-shrink-0" />
-              {(userMutation.error as any)?.response?.data?.detail || 'Execution failed. Verify network connectivity.'}
+              {(userMutation.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Execution failed. Verify network connectivity.'}
             </div>
           )}
 
@@ -431,7 +439,7 @@ const UserManagement: React.FC = () => {
                   <label className="flex items-center gap-2.5 text-[10px] font-black text-gray-500 uppercase mb-4 tracking-widest"><GraduationCap className="w-4 h-4 text-indigo-500" /> Grade Logic</label>
                   <div className="flex flex-wrap gap-2.5">
                     {allGradeLevels.map((level) => (
-                      <button key={level} type="button" onClick={() => toggleItem('grade_levels', level)} className={`px-3.5 py-2 rounded-xl text-[10px] font-black border transition-all ${formData.grade_levels.includes(level) ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-indigo-300'}`}>GR {level}</button>
+                      <button key={level} type="button" onClick={() => toggleItem('grade_levels', level)} className={`px-3.5 py-2 rounded-xl text-[10px] font-black border transition-all ${gradeLevels.includes(level) ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-indigo-300'}`}>GR {level}</button>
                     ))}
                   </div>
                 </div>
@@ -439,7 +447,7 @@ const UserManagement: React.FC = () => {
                   <label className="flex items-center gap-2.5 text-[10px] font-black text-gray-500 uppercase mb-4 tracking-widest"><BookOpen className="w-4 h-4 text-purple-500" /> Subject Lead</label>
                   <div className="flex flex-wrap gap-2.5">
                     {uniqueSubjectNames.map((name) => (
-                      <button key={name} type="button" onClick={() => toggleItem('hod_subject_names', name)} className={`px-3 py-2 rounded-xl text-[10px] font-black border transition-all ${formData.hod_subject_names.includes(name) ? 'bg-purple-600 border-purple-600 text-white shadow-lg' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-purple-300'}`}>{name}</button>
+                      <button key={name} type="button" onClick={() => toggleItem('hod_subject_names', name)} className={`px-3 py-2 rounded-xl text-[10px] font-black border transition-all ${hodSubjectNames.includes(name) ? 'bg-purple-600 border-purple-600 text-white shadow-lg' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-purple-300'}`}>{name}</button>
                     ))}
                   </div>
                 </div>
@@ -450,7 +458,7 @@ const UserManagement: React.FC = () => {
             <div className="lg:col-span-5 space-y-6">
               <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] border-b dark:border-gray-700 pb-3">Curriculum Hookups</h4>
               <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-[32px] p-6 h-[440px] overflow-y-auto custom-scrollbar shadow-inner">
-                {hierarchy.map((syllabus: any) => (
+                {hierarchy.map((syllabus: { syllabus_id: number; syllabus_name: string; grades: { config_id: number; grade_level: number; subjects: { subject_id: number; subject_name: string }[] }[] }) => (
                   <div key={syllabus.syllabus_id} className="mb-6">
                     <button type="button" onClick={() => setExpandedSyllabus(prev => prev.includes(syllabus.syllabus_id) ? prev.filter(id => id !== syllabus.syllabus_id) : [...prev, syllabus.syllabus_id])} className="w-full flex items-center justify-between p-3 hover:bg-white dark:hover:bg-gray-800 rounded-2xl transition-all group">
                       <div className="flex items-center gap-3">
@@ -461,7 +469,7 @@ const UserManagement: React.FC = () => {
                     </button>
                     {expandedSyllabus.includes(syllabus.syllabus_id) && (
                       <div className="ml-6 mt-2 border-l-2 border-academy-100 dark:border-academy-900 pl-6 space-y-4 animate-in slide-in-from-top-1">
-                        {syllabus.grades.map((grade: any) => (
+                        {syllabus.grades.map((grade) => (
                           <div key={grade.config_id}>
                             <button type="button" onClick={() => setExpandedGrade(prev => prev.includes(grade.config_id) ? prev.filter(id => id !== grade.config_id) : [...prev, grade.config_id])} className="w-full flex items-center justify-between p-2 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-colors group">
                               <div className="flex items-center gap-3">
@@ -472,15 +480,15 @@ const UserManagement: React.FC = () => {
                             </button>
                             {expandedGrade.includes(grade.config_id) && (
                               <div className="ml-6 mt-3 grid grid-cols-1 gap-2 animate-in slide-in-from-left-1">
-                                {grade.subjects.map((subject: any) => (
-                                  <label key={subject.subject_id} className={`flex items-center justify-between p-3.5 rounded-[18px] cursor-pointer border-2 transition-all ${formData.subject_ids.includes(subject.subject_id) ? 'bg-academy-600 border-academy-600 text-white shadow-xl scale-[1.02]' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-academy-200'}`}>
+                                {grade.subjects.map((subject) => (
+                                  <label key={subject.subject_id} className={`flex items-center justify-between p-3.5 rounded-[18px] cursor-pointer border-2 transition-all ${subjectIds.includes(subject.subject_id) ? 'bg-academy-600 border-academy-600 text-white shadow-xl scale-[1.02]' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-academy-200'}`}>
                                     <div className="flex items-center gap-3.5">
-                                      <Book className={`w-4 h-4 ${formData.subject_ids.includes(subject.subject_id) ? 'text-white' : 'text-blue-500'}`} />
+                                      <Book className={`w-4 h-4 ${subjectIds.includes(subject.subject_id) ? 'text-white' : 'text-blue-500'}`} />
                                       <span className="text-[11px] font-black uppercase tracking-tight">{subject.subject_name}</span>
                                     </div>
-                                    <input type="checkbox" className="hidden" checked={formData.subject_ids.includes(subject.subject_id)} onChange={() => toggleItem('subject_ids', subject.subject_id)} />
-                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${formData.subject_ids.includes(subject.subject_id) ? 'bg-white border-white' : 'border-gray-200 dark:border-gray-600'}`}>
-                                      {formData.subject_ids.includes(subject.subject_id) && <div className="w-2 h-2 bg-academy-600 rounded-full" />}
+                                    <input type="checkbox" className="hidden" checked={subjectIds.includes(subject.subject_id)} onChange={() => toggleItem('subject_ids', subject.subject_id)} />
+                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${subjectIds.includes(subject.subject_id) ? 'bg-white border-white' : 'border-gray-200 dark:border-gray-600'}`}>
+                                      {subjectIds.includes(subject.subject_id) && <div className="w-2 h-2 bg-academy-600 rounded-full" />}
                                     </div>
                                   </label>
                                 ))}

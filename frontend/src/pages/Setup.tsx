@@ -17,8 +17,9 @@ interface SetupProps {
   onComplete: () => void;
 }
 
-const formatApiError = (err: any, fallback: string): string => {
-  const detail = err?.response?.data?.detail;
+const formatApiError = (err: unknown, fallback: string): string => {
+  const errorObj = err as { response?: { data?: { detail?: unknown } } };
+  const detail = errorObj?.response?.data?.detail;
   if (!detail) return fallback;
   if (typeof detail === 'string') return detail;
   if (Array.isArray(detail)) {
@@ -26,7 +27,8 @@ const formatApiError = (err: any, fallback: string): string => {
       .map((item) => (typeof item?.msg === 'string' ? item.msg : JSON.stringify(item)))
       .join(' | ');
   }
-  if (typeof detail?.msg === 'string') return detail.msg;
+  const detailObj = detail as { msg?: string };
+  if (typeof detailObj?.msg === 'string') return detailObj.msg;
   return fallback;
 };
 
@@ -74,7 +76,7 @@ const Setup: React.FC<SetupProps> = ({ onComplete }) => {
       setTimeout(() => {
         onComplete();
       }, 2000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(formatApiError(err, "Setup logic failure. Verify server connectivity."));
     } finally {
       setLoading(false);

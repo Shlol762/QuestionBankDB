@@ -53,7 +53,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ isLoading: true });
       const response = await client.get('/auth/me');
       set({ user: response.data, isAuthenticated: true, lastFetched: Date.now() });
-    } catch (error) {
+    } catch {
       set({ user: null, isAuthenticated: false, lastFetched: null });
       sessionStorage.removeItem('token');
     } finally {

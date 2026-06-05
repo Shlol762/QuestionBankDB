@@ -146,6 +146,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
 
   // Reset page when filters change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPage(0);
   }, [filterType, filterDifficulty, filterStatus, mineOnly]);
 
@@ -314,7 +315,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                   </div>
                   <div className="space-y-1.5">
                     <label htmlFor="default-difficulty" className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Base Complexity</label>
-                    <select id="default-difficulty" value={defaultDifficulty} onChange={(e) => setDefaultDifficulty(e.target.value as any)} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white">
+                    <select id="default-difficulty" value={defaultDifficulty} onChange={(e) => setDefaultDifficulty(e.target.value as 'Easy' | 'Medium' | 'Hard')} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-bold text-sm dark:text-white">
                       <option value="Easy">Easy</option><option value="Medium">Medium</option><option value="Hard">Hard</option>
                     </select>
                   </div>
@@ -331,7 +332,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                 {passwordMutation.isError && (
                     <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-2xl text-xs font-black border border-red-100 dark:border-red-900/30 flex items-center gap-3">
                         <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                        {(passwordMutation.error as any)?.response?.data?.detail || "Passwords do not match."}
+                        {(passwordMutation.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Passwords do not match."}
                     </div>
                 )}
 
@@ -737,7 +738,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
               <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-700 rounded-3xl p-5 max-h-[180px] overflow-y-auto">
                 {user?.subjects?.length > 0 ? (
                   <div className="flex flex-wrap gap-2.5">
-                    {user.subjects.map((s: any) => <span key={s.subject_id} className="px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-[10px] font-black text-gray-600 dark:text-gray-300 uppercase tracking-tight shadow-sm">{s.subject_name}</span>)}
+                    {user.subjects.map((s: { subject_id: number; subject_name: string }) => <span key={s.subject_id} className="px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-[10px] font-black text-gray-600 dark:text-gray-300 uppercase tracking-tight shadow-sm">{s.subject_name}</span>)}
                   </div>
                 ) : <p className="text-xs text-gray-400 italic py-4 text-center">No individual subject hooks.</p>}
               </div>

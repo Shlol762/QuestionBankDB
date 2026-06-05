@@ -44,8 +44,9 @@ const AllowedSubjectsManager: React.FC = () => {
       setActive(true);
       toast.success('Allowed subject added');
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || 'Failed to add allowed subject');
+    onError: (err: unknown) => {
+      const error = err as { response?: { data?: { detail?: string } } };
+      toast.error(error.response?.data?.detail || 'Failed to add allowed subject');
     },
   });
 
@@ -60,8 +61,9 @@ const AllowedSubjectsManager: React.FC = () => {
       setActive(true);
       toast.success('Allowed subject updated');
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || 'Failed to update allowed subject');
+    onError: (err: unknown) => {
+      const error = err as { response?: { data?: { detail?: string } } };
+      toast.error(error.response?.data?.detail || 'Failed to update allowed subject');
     },
   });
 
@@ -71,8 +73,9 @@ const AllowedSubjectsManager: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['allowed-subjects'] });
       toast.success('Allowed subject removed');
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || 'Failed to remove allowed subject');
+    onError: (err: unknown) => {
+      const error = err as { response?: { data?: { detail?: string } } };
+      toast.error(error.response?.data?.detail || 'Failed to remove allowed subject');
     },
   });
 

@@ -42,6 +42,11 @@ const QUESTION_TYPES = [
 
 type QuestionTypeValue = typeof QUESTION_TYPES[number];
 
+const defaultOptions = { A: '', B: '', C: '', D: '' };
+const defaultPairs = [{ left: '', right: '' }, { left: '', right: '' }];
+const defaultOrdering = ['First event', 'Second event', 'Third event'];
+const defaultLabels = ['Label A', 'Label B'];
+
 interface QuestionFormProps {
   initialData?: {
     question_id?: number;
@@ -54,7 +59,7 @@ interface QuestionFormProps {
     difficulty?: string;
     q_type?: string;
     status?: string;
-    options?: any;
+    options?: unknown;
   };
   onSuccess: () => void;
   onCancel: () => void;
@@ -200,11 +205,6 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   
   const isEditing = !!initialData?.question_id;
   const isFirstRender = useRef(true);
-
-  const defaultOptions = { A: '', B: '', C: '', D: '' };
-  const defaultPairs = [{ left: '', right: '' }, { left: '', right: '' }];
-  const defaultOrdering = ['First event', 'Second event', 'Third event'];
-  const defaultLabels = ['Label A', 'Label B'];
   const defaultQuestionType: QuestionTypeValue = QUESTION_TYPES.includes((initialData?.q_type || 'MCQ') as QuestionTypeValue)
     ? (initialData?.q_type as QuestionTypeValue)
     : 'MCQ';
@@ -433,7 +433,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
       const res = await client.post('/questions/upload-image', uploadData);
       setValue('image_url', res.data.image_url);
       toast.success("Image uploaded!");
-    } catch (err: unknown) {
+    } catch {
       toast.error("Upload failed");
     } finally {
       setUploading(false);
@@ -819,7 +819,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
         {mutation.isError && (
           <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 rounded-2xl flex items-center gap-3 text-red-700 dark:text-red-400 text-xs font-black animate-in slide-in-from-top-2">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            {(mutation.error as any)?.response?.data?.detail || "Failed to save."}
+            {(mutation.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Failed to save."}
           </div>
         )}
 

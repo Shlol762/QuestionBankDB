@@ -26,9 +26,15 @@ interface CurriculumManagerProps {
   onAddQuestion?: (topic: { topic_id: number; topic_name: string; subject_id: number }) => void;
 }
 
+interface Topic { topic_id: number; topic_name: string; }
+interface Subject { subject_id: number; subject_name: string; }
+interface Grade { config_id: number; grade_level: number; pdf_url?: string | null; syllabus_id?: number; isCoordinator?: boolean; }
+interface Syllabus { syllabus_id: number; syllabus_name: string; academic_year: string; pdf_url?: string | null; }
+
+
 // --- Helper Components for Lazy Loading ---
 
-const TopicNode = ({ topic, subject, canModifyTopic, onAddQuestion, openEdit, setDeleteTarget }: any) => {
+const TopicNode = ({ topic, subject, canModifyTopic, onAddQuestion, openEdit, setDeleteTarget }: { topic: Topic; subject: Subject; canModifyTopic: boolean; onAddQuestion: unknown; openEdit: unknown; setDeleteTarget: unknown }) => {
   return (
     <div className="group/topic flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl text-xs font-bold transition-all hover:border-academy-300 dark:hover:border-academy-500 hover:shadow-sm">
       <div className="flex items-center gap-2.5">
@@ -50,7 +56,7 @@ const TopicNode = ({ topic, subject, canModifyTopic, onAddQuestion, openEdit, se
   );
 };
 
-const SubjectNode = ({ subject, grade, isAdmin, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, openTopicModal }: any) => {
+const SubjectNode = ({ subject, grade, isAdmin, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, openTopicModal }: { subject: Subject; grade: Grade; isAdmin: boolean; hodSubjects: string[]; assignedSubjectIds: number[]; expanded: string[]; toggleExpand: unknown; openEdit: unknown; setDeleteTarget: unknown; onAddQuestion: unknown; openTopicModal: unknown }) => {
   const isExpanded = expanded.includes(`sub-${subject.subject_id}`);
   const canModifySubject = isAdmin || grade.isCoordinator;
   const canModifyTopic = isAdmin || grade.isCoordinator || hodSubjects.includes(subject.subject_name) || assignedSubjectIds.includes(subject.subject_id);
@@ -96,7 +102,7 @@ const SubjectNode = ({ subject, grade, isAdmin, hodSubjects, assignedSubjectIds,
             <Loader2 className="w-4 h-4 animate-spin text-gray-400 my-2" />
           ) : (
             <>
-              {topics.map((topic: any) => (
+              {topics.map((topic: Topic) => (
                 <TopicNode key={`t-${topic.topic_id}`} topic={topic} subject={subject} canModifyTopic={canModifyTopic} onAddQuestion={onAddQuestion} openEdit={openEdit} setDeleteTarget={setDeleteTarget} />
               ))}
               {topics.length === 0 && (
@@ -110,7 +116,7 @@ const SubjectNode = ({ subject, grade, isAdmin, hodSubjects, assignedSubjectIds,
   );
 };
 
-const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openSubjectModal, openTopicModal }: any) => {
+const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openSubjectModal, openTopicModal }: { grade: Grade; isAdmin: boolean; gradeLevels: number[]; hodSubjects: string[]; assignedSubjectIds: number[]; expanded: string[]; toggleExpand: unknown; openEdit: unknown; setDeleteTarget: unknown; onAddQuestion: unknown; triggerUpload: unknown; uploadingGradeId: unknown; removePdfMutation: unknown; openSubjectModal: unknown; openTopicModal: unknown }) => {
   const isExpanded = expanded.includes(`g-${grade.config_id}`);
   const isCoordinator = gradeLevels.includes(grade.grade_level);
   const enrichedGrade = { ...grade, isCoordinator };
@@ -125,7 +131,7 @@ const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectId
   const subjects = useMemo(() => {
     const rawSubjects = data?.items || [];
     if (isAdmin) return rawSubjects;
-    return rawSubjects.filter((subject: any) => {
+    return rawSubjects.filter((subject: Subject) => {
       if (isCoordinator) return true;
       if (hodSubjects.includes(subject.subject_name)) return true;
       return assignedSubjectIds.includes(subject.subject_id);
@@ -177,7 +183,7 @@ const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectId
             <Loader2 className="w-5 h-5 animate-spin text-gray-400 my-2" />
           ) : (
             <>
-              {subjects.map((subject: any) => (
+              {subjects.map((subject: Subject) => (
                 <SubjectNode 
                   key={`sub-${subject.subject_id}`} 
                   subject={subject} 
@@ -204,7 +210,7 @@ const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectId
   );
 };
 
-const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openGradeModal, openSubjectModal, openTopicModal }: any) => {
+const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openGradeModal, openSubjectModal, openTopicModal }: { syllabus: Syllabus; isAdmin: boolean; gradeLevels: number[]; hodSubjects: string[]; assignedSubjectIds: number[]; expanded: string[]; toggleExpand: unknown; openEdit: unknown; setDeleteTarget: unknown; onAddQuestion: unknown; triggerUpload: unknown; uploadingGradeId: unknown; removePdfMutation: unknown; openGradeModal: unknown; openSubjectModal: unknown; openTopicModal: unknown }) => {
   const isExpanded = expanded.includes(`s-${syllabus.syllabus_id}`);
 
   // Lazy load grades
@@ -258,7 +264,7 @@ const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSub
             <Loader2 className="w-6 h-6 animate-spin text-gray-400 my-2 mx-auto" />
           ) : (
             <>
-              {grades.map((grade: any) => (
+              {grades.map((grade: Grade) => (
                 <GradeNode 
                   key={`g-${grade.config_id}`} 
                   grade={grade}
@@ -312,13 +318,20 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
   const { user } = useAuthStore();
 
   const isAdmin = user?.is_admin || false;
-  const assignedSubjectIds = user?.subjects?.map((s: any) => s.subject_id) || [];
+  const assignedSubjectIds = user?.subjects?.map((s: { subject_id: number }) => s.subject_id) || [];
   const gradeLevels = user?.grade_levels || [];
   const hodSubjects = user?.hod_subject_names || [];
 
+  // Fetch Allowed Subjects for subject creation dropdown
+  const { data: allowedSubjectsData } = useQuery({
+    queryKey: ['allowed-subjects-active'],
+    queryFn: () => client.get('/allowed-subjects/?active_only=true&limit=500').then(r => r.data),
+  });
+  const allowedSubjects = allowedSubjectsData?.items || [];
+
   // Modal State
   const [modalType, setModalType] = useState<'syllabus' | 'grade' | 'subject' | 'topic' | null>(null);
-  const [modalData, setModalData] = useState<any>({});
+  const [modalData, setModalData] = useState<Record<string, unknown>>({});
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState('');
 
@@ -334,11 +347,11 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
     }
   });
 
-  const syllabuses = syllabusesData?.items || [];
+  const syllabuses = useMemo(() => syllabusesData?.items || [], [syllabusesData?.items]);
 
   const validExpandedIds = useMemo(() => {
     const ids = new Set<string>();
-    syllabuses.forEach((s: any) => ids.add(`s-${s.syllabus_id}`));
+    syllabuses.forEach((s: Syllabus) => ids.add(`s-${s.syllabus_id}`));
     return ids;
   }, [syllabuses]);
 
@@ -358,8 +371,9 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
 
   // Mutations
   const mutation = useMutation({
-    mutationFn: async ({ method, endpoint, payload }: any) => {
-      const res = await (client as any)[method](endpoint, payload);
+    mutationFn: async ({ method, endpoint, payload }: { method: string, endpoint: string, payload: unknown }) => {
+      const clientAny = client as unknown as Record<string, (url: string, data?: unknown) => Promise<{ data: unknown }>>;
+      const res = await clientAny[method](endpoint, payload);
       return res.data;
     },
     onSuccess: () => {
@@ -376,8 +390,9 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
       setModalData({});
       setIsEditing(false);
     },
-    onError: (err: any) => {
-      setError(err.response?.data?.detail || 'An unexpected error occurred.');
+    onError: (err: unknown) => {
+      const error = err as { response?: { data?: { detail?: string } } };
+      setError(error.response?.data?.detail || 'An unexpected error occurred.');
     }
   });
 
@@ -395,8 +410,9 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
       }
       setDeleteTarget(null);
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || "Delete operation failed.");
+    onError: (err: unknown) => {
+      const error = err as { response?: { data?: { detail?: string } } };
+      toast.error(error.response?.data?.detail || "Delete operation failed.");
     }
   });
 
@@ -407,8 +423,9 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['syllabuses'] });
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || "Failed to remove PDF");
+    onError: (err: unknown) => {
+      const error = err as { response?: { data?: { detail?: string } } };
+      toast.error(error.response?.data?.detail || "Failed to remove PDF");
     }
   });
 
@@ -427,8 +444,9 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
       queryClient.invalidateQueries({ queryKey: ['syllabuses'] });
       setUploadingGradeId(null);
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.detail || "Upload failed");
+    onError: (err: unknown) => {
+      const error = err as { response?: { data?: { detail?: string } } };
+      toast.error(error.response?.data?.detail || "Upload failed");
     }
   });
 
@@ -465,7 +483,11 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
         break;
       case 'subject':
         endpoint = `/curriculum/subjects${isEditing ? `/${modalData.id}` : ''}`;
-        payload = { config_id: modalData.parentId, subject_name: modalData.name };
+        if (isEditing) {
+          payload = { subject_name: modalData.name };
+        } else {
+          payload = { config_id: modalData.parentId, subject_name: modalData.name, allowed_subject_id: modalData.allowedSubjectId };
+        }
         break;
       case 'topic':
         endpoint = `/curriculum/topics${isEditing ? `/${modalData.id}` : ''}`;
@@ -486,7 +508,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
     deleteMutation.mutate(url);
   };
 
-  const openEdit = (type: any, item: any) => {
+  const openEdit = (type: 'syllabus' | 'grade' | 'subject' | 'topic', item: Record<string, unknown>) => {
     setIsEditing(true);
     setModalType(type);
     setError('');
@@ -547,7 +569,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
               <p className="text-gray-400 dark:text-gray-600 font-medium italic">{isAdmin ? "The curriculum is currently empty. Start by defining a syllabus." : "No assigned subjects or grades found."}</p>
             </div>
           ) : (
-            syllabuses.map((syllabus: any) => (
+            syllabuses.map((syllabus: Syllabus) => (
               <SyllabusNode 
                 key={`s-${syllabus.syllabus_id}`} 
                 syllabus={syllabus}
@@ -600,7 +622,30 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
                 <input required autoFocus type="number" min="1" max="15" className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 font-bold dark:text-white transition-all" placeholder="e.g. 10" value={modalData.level || ''} onChange={e => setModalData({...modalData, level: e.target.value})} />
               </div>
             )}
-            {(modalType === 'subject' || modalType === 'topic') && (
+            {modalType === 'subject' && !isEditing && (
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Subject (from Allowed Subjects)</label>
+                <select
+                  required
+                  autoFocus
+                  className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 font-bold dark:text-white transition-all"
+                  value={modalData.allowedSubjectId || ''}
+                  onChange={e => {
+                    const selected = allowedSubjects.find((s: { allowed_subject_id: number; subject_name: string }) => s.allowed_subject_id === parseInt(e.target.value));
+                    setModalData({...modalData, allowedSubjectId: parseInt(e.target.value), name: selected?.subject_name || ''});
+                  }}
+                >
+                  <option value="" disabled>Select a subject...</option>
+                  {allowedSubjects.map((s: { allowed_subject_id: number; subject_name: string }) => (
+                    <option key={s.allowed_subject_id} value={s.allowed_subject_id}>{s.subject_name}</option>
+                  ))}
+                </select>
+                {allowedSubjects.length === 0 && (
+                  <p className="text-[10px] text-amber-500 font-medium ml-1">No allowed subjects registered. An admin must add them first.</p>
+                )}
+              </div>
+            )}
+            {((modalType === 'subject' && isEditing) || modalType === 'topic') && (
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">{modalType} Name</label>
                 <input required autoFocus className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 font-bold dark:text-white transition-all" placeholder={`Enter ${modalType} name...`} value={modalData.name || ''} onChange={e => setModalData({...modalData, name: e.target.value})} maxLength={60} />

@@ -8,8 +8,9 @@ interface LoginProps {
   isDarkMode?: boolean;
 }
 
-const formatApiError = (err: any, fallback: string): string => {
-  const detail = err?.response?.data?.detail;
+const formatApiError = (err: unknown, fallback: string): string => {
+  const errorObj = err as { response?: { data?: { detail?: unknown } } };
+  const detail = errorObj?.response?.data?.detail;
   if (!detail) return fallback;
   if (typeof detail === 'string') return detail;
   if (Array.isArray(detail)) {
@@ -17,7 +18,8 @@ const formatApiError = (err: any, fallback: string): string => {
       .map((item) => (typeof item?.msg === 'string' ? item.msg : JSON.stringify(item)))
       .join(' | ');
   }
-  if (typeof detail?.msg === 'string') return detail.msg;
+  const detailObj = detail as { msg?: string };
+  if (typeof detailObj?.msg === 'string') return detailObj.msg;
   return fallback;
 };
 
@@ -44,7 +46,7 @@ const Login: React.FC<LoginProps> = () => {
       login(response.data.access_token);
       await fetchMe();
       navigate('/dashboard');
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(formatApiError(err, 'Login failed. Please check your credentials.'));
     } finally {
       setLoading(false);
