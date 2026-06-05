@@ -21,7 +21,7 @@ async def get_dashboard_stats(
     
     # Determine user role scopes
     is_coordinator = bool(current_user.grade_coordinating)
-    is_hod = bool(current_user.hod_subjects)
+    is_hod = bool(current_user.hod_assignments)
     
     # 1. Base Counts
     if current_user.is_admin:
@@ -51,7 +51,7 @@ async def get_dashboard_stats(
         )
     elif is_hod:
         # HOD: count by subject name
-        subject_names = [h.subject_name for h in current_user.hod_subjects]
+        subject_names = [h.allowed_subject.subject_name for h in current_user.hod_assignments]
         q_count_stmt = select(func.count(QuestionBank.question_id)).join(
             Topic
         ).join(Subject).where(
@@ -104,7 +104,7 @@ async def get_dashboard_stats(
             )
         ).group_by(QuestionBank.difficulty)
     elif is_hod:
-        subject_names = [h.subject_name for h in current_user.hod_subjects]
+        subject_names = [h.allowed_subject.subject_name for h in current_user.hod_assignments]
         diff_stmt = select(QuestionBank.difficulty, func.count(QuestionBank.question_id)).join(
             Topic
         ).join(Subject).where(
@@ -160,7 +160,7 @@ async def get_dashboard_stats(
             QuestionBank.created_at.desc(), QuestionBank.question_id.desc()
         ).limit(5)
     elif is_hod:
-        subject_names = [h.subject_name for h in current_user.hod_subjects]
+        subject_names = [h.allowed_subject.subject_name for h in current_user.hod_assignments]
         recent_stmt = select(
             QuestionBank.question_id,
             func.substr(QuestionBank.question_text, 1, 100).label("short_text"),
@@ -225,7 +225,7 @@ async def get_dashboard_stats(
             )
         ).limit(10)
     elif is_hod:
-        subject_names = [h.subject_name for h in current_user.hod_subjects]
+        subject_names = [h.allowed_subject.subject_name for h in current_user.hod_assignments]
         coverage_stmt = select(Topic.topic_id, Topic.topic_name, Subject.subject_name).join(
             Subject
         ).outerjoin(
@@ -282,7 +282,7 @@ async def get_dashboard_stats(
             func.count(QuestionBank.question_id).desc()
         ).limit(10)
     elif is_hod:
-        subject_names = [h.subject_name for h in current_user.hod_subjects]
+        subject_names = [h.allowed_subject.subject_name for h in current_user.hod_assignments]
         leaderboard_stmt = select(
             Users.full_name,
             func.count(QuestionBank.question_id).label("count")

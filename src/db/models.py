@@ -55,13 +55,16 @@ class GradeCoordinatorLink(BaseSQLModel, table=True):
     grade_level: int = Field(primary_key=True)
 
 # ==========================================
-# LINK TABLE: HOD <-> SUBJECT NAME
+# LINK TABLE: HOD <-> ALLOWED SUBJECT ID
 # ==========================================
 class HODLink(BaseSQLModel, table=True):
     __tablename__ = "hod_link"
     
     user_id: int = Field(foreign_key="users.user_id", primary_key=True, ondelete="CASCADE")
-    subject_name: str = Field(primary_key=True)
+    allowed_subject_id: int = Field(foreign_key="allowed_subjects.allowed_subject_id", primary_key=True, ondelete="CASCADE")
+    
+    # New connection for easy name lookup
+    allowed_subject: "AllowedSubject" = Relationship()
 
 # ==========================================
 # LEVEL 1: THE CONTEXT (Syllabus)
@@ -107,6 +110,8 @@ class Subject(BaseSQLModel, table=True):
     
     subject_id: Optional[int] = Field(default=None, primary_key=True)
     subject_name: str
+    allowed_subject_id: Optional[int] = Field(default=None, foreign_key="allowed_subjects.allowed_subject_id", ondelete="SET NULL")
+    
     config_id: int = Field(foreign_key="grade_config.config_id", ondelete="CASCADE")
     grade: GradeConfig = Relationship(back_populates="subjects")
     
@@ -149,7 +154,7 @@ class Users(BaseSQLModel, table=True):
     
     subjects: List[Subject] = Relationship(back_populates="teachers", link_model=UserSubjectLink)
     grade_coordinating: List[GradeCoordinatorLink] = Relationship(cascade_delete=True)
-    hod_subjects: List[HODLink] = Relationship(cascade_delete=True)
+    hod_assignments: List[HODLink] = Relationship(cascade_delete=True)
     
     # Cascade: If Teacher is deleted, delete their Questions (or we could set to NULL, but cascade is safer for now)
     questions: List["QuestionBank"] = Relationship(back_populates="teacher", cascade_delete=True)
@@ -167,13 +172,12 @@ class Users(BaseSQLModel, table=True):
         if self.is_admin: return True
         return any(g.grade_level == grade_level for g in self.grade_coordinating)
 
-    def can_modify_topic(self, subject_id: int, subject_name: str, grade_level: int) -> bool:
+    def can_modify_topic(self, subject_id: int, allowed_subject_id: Optional[int], grade_level: int) -> bool:
         """Admins, Coordinators, HODs, and Assigned Teachers can modify topics."""
         if self.is_admin: return True
         
-        # Normalized comparison for HOD (Case-Insensitive)
-        search_name = subject_name.strip().lower()
-        if any(h.subject_name.strip().lower() == search_name for h in self.hod_subjects):
+        # HOD check via Master Tag ID
+        if allowed_subject_id and any(h.allowed_subject_id == allowed_subject_id for h in self.hod_assignments):
             return True
             
         # Grade Coordinator for the grade

@@ -80,6 +80,7 @@ class GradeCreate(BaseCurriculumModel):
 
 class SubjectCreate(BaseCurriculumModel):
     config_id: int
+    allowed_subject_id: int
     subject_name: str = Field(min_length=1)
 
 class TopicCreate(BaseCurriculumModel):
@@ -233,7 +234,7 @@ async def get_full_hierarchy(
     # Filter hierarchy for non-admins
     filtered_syllabuses: List[SyllabusHierarchyRead] = []
     teacher_sub_ids = [s.subject_id for s in current_user.subjects]
-    hod_sub_names = [h.subject_name.strip().lower() for h in current_user.hod_subjects]
+    hod_sub_names = [h.allowed_subject.subject_name.strip().lower() for h in current_user.hod_assignments]
     coord_grade_levels = [g.grade_level for g in current_user.grade_coordinating]
 
     for syllabus in syllabuses:
@@ -522,7 +523,7 @@ async def create_topic(data: TopicCreate, session: AsyncSession = Depends(get_se
     if not subject: 
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Subject not found")
 
-    if not current_user.can_modify_topic(subject.subject_id, subject.subject_name, subject.grade.grade_level):
+    if not current_user.can_modify_topic(subject.subject_id, subject.allowed_subject_id, subject.grade.grade_level):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized to manage topics for this subject")
 
     # Case-insensitive duplicate check
@@ -551,7 +552,7 @@ async def update_topic(id: int, data: TopicUpdate, session: AsyncSession = Depen
     result = await session.exec(stmt)
     subject = result.first()
 
-    if not current_user.can_modify_topic(subject.subject_id, subject.subject_name, subject.grade.grade_level):
+    if not current_user.can_modify_topic(subject.subject_id, subject.allowed_subject_id, subject.grade.grade_level):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized to modify topics for this subject")
 
     for key, val in data.model_dump(exclude_unset=True).items(): 
@@ -570,7 +571,7 @@ async def delete_topic(id: int, session: AsyncSession = Depends(get_session), cu
     result = await session.exec(stmt)
     subject = result.first()
 
-    if not current_user.can_modify_topic(subject.subject_id, subject.subject_name, subject.grade.grade_level):
+    if not current_user.can_modify_topic(subject.subject_id, subject.allowed_subject_id, subject.grade.grade_level):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized to delete topics for this subject")
 
     await session.delete(item)

@@ -182,7 +182,7 @@ async def create_question(
     if not topic:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Target topic not found")
     
-    if not current_user.can_modify_topic(topic.subject_id, topic.subject.subject_name, topic.subject.grade.grade_level):
+    if not current_user.can_modify_topic(topic.subject_id, topic.subject.allowed_subject_id, topic.subject.grade.grade_level):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to add questions to this topic")
     
     new_question = QuestionBank(
@@ -223,7 +223,7 @@ async def list_questions(
     
     if not current_user.is_admin:
         teacher_subject_ids = [s.subject_id for s in current_user.subjects]
-        hod_subject_names = [h.subject_name for h in current_user.hod_subjects]
+        hod_subject_names = [h.allowed_subject.subject_name for h in current_user.hod_assignments]
         coordinator_grade_levels = [g.grade_level for g in current_user.grade_coordinating]
         
         base_stmt = base_stmt.join(Topic).join(Subject).join(GradeConfig)
@@ -310,7 +310,7 @@ async def get_question(
     if not current_user.is_admin:
         can_view = current_user.can_modify_topic(
             question.topic.subject_id,
-            question.topic.subject.subject_name,
+            question.topic.subject.allowed_subject_id,
             question.topic.subject.grade.grade_level
         )
         if question.teacher_id != current_user.user_id and not can_view:
@@ -343,7 +343,7 @@ async def update_question(
     
     can_manage = current_user.can_modify_topic(
         question.topic.subject_id, 
-        question.topic.subject.subject_name, 
+        question.topic.subject.allowed_subject_id, 
         question.topic.subject.grade.grade_level
     )
     
@@ -391,7 +391,7 @@ async def delete_question(
     
     can_manage = current_user.can_modify_topic(
         question.topic.subject_id, 
-        question.topic.subject.subject_name, 
+        question.topic.subject.allowed_subject_id, 
         question.topic.subject.grade.grade_level
     )
     
