@@ -395,14 +395,14 @@ const UserManagement: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
             {/* Column 1: Core Profile */}
             <div className="lg:col-span-4 space-y-6 border-r border-gray-100 dark:border-gray-700 pr-10">
-              <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] border-b dark:border-gray-700 pb-3">Operational Identity</h4>
+              <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] border-b dark:border-gray-700 pb-3">Staff Details</h4>
               <div className="space-y-4">
                 <label htmlFor="user-full-name" className="sr-only">Full Name</label>
-                <input id="user-full-name" autoFocus {...register("full_name")} className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Legal Full Name" />
+                <input id="user-full-name" autoFocus {...register("full_name")} className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Full Name" />
                 {errors.full_name && <p className="text-red-500 text-[10px] font-bold">{errors.full_name.message}</p>}
                 
                 <label htmlFor="user-email" className="sr-only">Email</label>
-                <input id="user-email" {...register("email")} type="email" className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Corporate Email Address" />
+                <input id="user-email" {...register("email")} type="email" className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="School Email" />
                 {errors.email && <p className="text-red-500 text-[10px] font-bold">{errors.email.message}</p>}
 
                 <label htmlFor="user-password" className="sr-only">Password</label>
@@ -412,7 +412,7 @@ const UserManagement: React.FC = () => {
                 </div>
                 
                 <label htmlFor="user-department" className="sr-only">Department</label>
-                <input id="user-department" {...register("department")} className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Assigned Department" />
+                <input id="user-department" {...register("department")} className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 text-sm font-bold dark:text-white transition-all" placeholder="Department" />
                 {errors.department && <p className="text-red-500 text-[10px] font-bold">{errors.department.message}</p>}
               </div>
 
@@ -435,8 +435,8 @@ const UserManagement: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <Shield className="w-6 h-6 text-amber-600 dark:text-amber-400" />
                   <div>
-                    <span className="text-xs font-black text-amber-900 dark:text-amber-100 block uppercase">Root Privilege</span>
-                    <span className="text-[9px] font-bold text-amber-600/70">Full System Access</span>
+                    <span className="text-xs font-black text-amber-900 dark:text-amber-100 block uppercase">Administrator Permissions</span>
+                    <span className="text-[9px] font-bold text-amber-600/70">Full Platform Access</span>
                   </div>
                 </div>
                 <input type="checkbox" className="w-6 h-6 accent-amber-600 cursor-pointer rounded-lg" {...register("is_admin")} />
@@ -445,10 +445,10 @@ const UserManagement: React.FC = () => {
 
             {/* Column 2: Scope Definitions */}
             <div className="lg:col-span-3 space-y-8 border-r border-gray-100 dark:border-gray-700 pr-10">
-              <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] border-b dark:border-gray-700 pb-3">Authority Scopes</h4>
+              <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] border-b dark:border-gray-700 pb-3">Management Roles</h4>
               <div className="space-y-8">
                 <div>
-                  <label className="flex items-center gap-2.5 text-[10px] font-black text-gray-500 uppercase mb-4 tracking-widest"><GraduationCap className="w-4 h-4 text-indigo-500" /> Grade Logic</label>
+                  <label className="flex items-center gap-2.5 text-[10px] font-black text-gray-500 uppercase mb-4 tracking-widest"><GraduationCap className="w-4 h-4 text-indigo-500" /> Coordinator Of</label>
                   <div className="flex flex-wrap gap-2.5">
                     {allGradeLevels.map((level) => (
                       <button key={level} type="button" onClick={() => toggleItem('grade_levels', level)} className={`px-3.5 py-2 rounded-xl text-[10px] font-black border transition-all ${gradeLevels.includes(level) ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-indigo-300'}`}>GR {level}</button>
@@ -456,7 +456,7 @@ const UserManagement: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <label className="flex items-center gap-2.5 text-[10px] font-black text-gray-500 uppercase mb-4 tracking-widest"><BookOpen className="w-4 h-4 text-purple-500" /> Subject Lead</label>
+                  <label className="flex items-center gap-2.5 text-[10px] font-black text-gray-500 uppercase mb-4 tracking-widest"><BookOpen className="w-4 h-4 text-purple-500" /> Head Of</label>
                   <div className="flex flex-wrap gap-2.5">
                     {allowedSubjects.map((sub: { allowed_subject_id: number; subject_name: string }) => (
                       <button key={sub.allowed_subject_id} type="button" onClick={() => toggleItem('hod_allowed_subject_ids', sub.allowed_subject_id)} className={`px-3 py-2 rounded-xl text-[10px] font-black border transition-all ${hodAllowedSubjectIds.includes(sub.allowed_subject_id) ? 'bg-purple-600 border-purple-600 text-white shadow-lg' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-purple-300'}`}>{sub.subject_name}</button>
@@ -468,7 +468,7 @@ const UserManagement: React.FC = () => {
 
             {/* Column 3: Hierarchical Logic */}
             <div className="lg:col-span-5 space-y-6">
-              <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] border-b dark:border-gray-700 pb-3">Curriculum Hookups</h4>
+              <h4 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] border-b dark:border-gray-700 pb-3">Teaching Responsibilities</h4>
               <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-[32px] p-6 h-[440px] overflow-y-auto custom-scrollbar shadow-inner">
                 {hierarchy.map((syllabus: { syllabus_id: number; syllabus_name: string; grades: { config_id: number; grade_level: number; subjects: { subject_id: number; subject_name: string }[] }[] }) => (
                   <div key={syllabus.syllabus_id} className="mb-6">
@@ -517,27 +517,27 @@ const UserManagement: React.FC = () => {
           </div>
 
           <div className="pt-10 border-t border-gray-100 dark:border-gray-700 flex gap-6">
-            <button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} className="flex-1 py-5 font-black text-[10px] uppercase tracking-[0.2em] text-gray-400 hover:text-gray-600 transition-colors">Discard Draft</button>
+            <button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} className="flex-1 py-5 font-black text-[10px] uppercase tracking-[0.2em] text-gray-400 hover:text-gray-600 transition-colors">Cancel</button>
             <button 
               type="submit" 
               disabled={userMutation.isPending} 
               className="flex-[2] bg-academy-700 hover:bg-academy-800 text-white font-black py-5 rounded-[24px] shadow-2xl shadow-academy-700/20 transition-all flex items-center justify-center gap-3 active:scale-[0.98] disabled:opacity-50"
             >
               {userMutation.isPending ? <Loader2 className="w-6 h-6 animate-spin" /> : <UserPlus className="w-6 h-6" />}
-              <span className="text-xs uppercase tracking-widest">{isEditing ? 'Commit Structural Changes' : 'Execute Registration'}</span>
+              <span className="text-xs uppercase tracking-widest">{isEditing ? 'Save Changes' : 'Register'}</span>
             </button>
           </div>
         </form>
       </Modal>
 
-      <Modal isOpen={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="Destructive Revoke">
+      <Modal isOpen={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="Delete Staff Member">
         <div className="space-y-8 text-center p-6">
           <div className="w-24 h-24 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-[32px] flex items-center justify-center mx-auto border-4 border-red-100 dark:border-red-900/30 shadow-inner group">
             <Trash2 className="w-12 h-12 transition-transform group-hover:rotate-12" />
           </div>
           <div className="space-y-3">
             <h4 className="text-2xl font-black text-gray-900 dark:text-white">Delete {deleteTarget?.name}?</h4>
-            <p className="text-sm text-gray-500 dark:text-gray-400 px-8 leading-relaxed font-medium">Permanently purge this staff member from the system. This will immediately revoke all access and erase logic hooks. This action is terminal.</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 px-8 leading-relaxed font-medium">Permanently remove this staff member from the system. This will immediately revoke all access.</p>
           </div>
           <div className="flex gap-4">
             <button onClick={() => setDeleteTarget(null)} className="flex-1 py-5 text-gray-400 font-black text-[10px] uppercase tracking-widest">Retain User</button>

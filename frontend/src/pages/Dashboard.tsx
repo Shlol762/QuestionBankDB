@@ -444,7 +444,16 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                   </button>
                 </div>
 
-                {showColumnPicker && (
+                {showColumnPicker && (() => {
+                  const COLUMN_LABELS: Record<string, string> = {
+                    type: 'Type',
+                    difficulty: 'Difficulty',
+                    marks: 'Marks',
+                    status: 'Status',
+                    updated_at: 'Updated At',
+                    author: 'Author',
+                  };
+                  return (
                   <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-100 dark:border-gray-700">
                     {Object.entries(visibleColumns).map(([column, enabled]) => (
                       <button
@@ -452,11 +461,11 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                         onClick={() => setVisibleColumns((prev) => ({ ...prev, [column]: !prev[column] }))}
                         className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${enabled ? 'bg-academy-600 border-academy-600 text-white' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500'}`}
                       >
-                        {column.replace('_', ' ')}
+                        {COLUMN_LABELS[column] || column}
                       </button>
                     ))}
                   </div>
-                )}
+                )})()}
 
                 {showFilters && (
                   <div className="flex flex-wrap gap-8 pt-4 pb-2 animate-in slide-in-from-top-2 duration-200 border-t border-gray-100 dark:border-gray-700 mt-2">
@@ -501,11 +510,11 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                   <thead>
                     <tr className="text-[10px] uppercase tracking-widest text-gray-400 font-black border-b border-gray-100 dark:border-gray-700">
                       <th scope="col" className="px-8 py-5">Question Detail</th>
-                      {visibleColumns.type && <th scope="col" className="px-8 py-5">Classification</th>}
-                      {visibleColumns.difficulty && <th scope="col" className="px-8 py-5">Complexity</th>}
-                      {visibleColumns.marks && <th scope="col" className="px-8 py-5 text-center">Score</th>}
+                      {visibleColumns.type && <th scope="col" className="px-8 py-5">Type</th>}
+                      {visibleColumns.difficulty && <th scope="col" className="px-8 py-5">Difficulty</th>}
+                      {visibleColumns.marks && <th scope="col" className="px-8 py-5 text-center">Marks</th>}
                       {visibleColumns.status && <th scope="col" className="px-8 py-5 text-center">Status</th>}
-                      {visibleColumns.updated_at && <th scope="col" className="px-8 py-5 text-center">Updated</th>}
+                      {visibleColumns.updated_at && <th scope="col" className="px-8 py-5 text-center">Updated At</th>}
                       {visibleColumns.author && <th scope="col" className="px-8 py-5">Author</th>}
                       <th scope="col" className="px-8 py-5 text-right">Actions</th>
                     </tr>

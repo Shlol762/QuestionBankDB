@@ -42,6 +42,21 @@ const QUESTION_TYPES = [
 
 type QuestionTypeValue = typeof QUESTION_TYPES[number];
 
+const QUESTION_TYPE_TIPS: Record<QuestionTypeValue, string> = {
+  'MCQ': 'Provide exactly 4 options. The answer field must contain the correct option text exactly as it appears.',
+  'True/False': 'The answer should simply be "True" or "False".',
+  'Match the Following': 'Add pairs of items that correspond to each other. The system will automatically shuffle the right side for the student.',
+  'Short Answer': 'Provide the exact expected answer or the main keyword the student needs to include.',
+  'Long Answer': 'Provide a detailed example answer or a list of key points that the student should include.',
+  'Fill in the Blanks': 'Use underscores (___) in the question text to denote blanks. Provide the exact words separated by commas in the answer field.',
+  'One Word Answer': 'The answer must be a single word without spaces.',
+  'Assertion/Reason': 'Write the Assertion and Reason clearly. The answer should be one of the standard A/R options (e.g., Both A and R are true...).',
+  'Case Study': 'Provide a detailed scenario. This question can act as a parent to multiple sub-questions.',
+  'Ordering/Sequencing': 'Enter the items in the CORRECT chronological or logical order. The system will shuffle them for the student.',
+  'Diagram Labeling': 'Upload an image. Use the fields to define the correct labels for points A, B, C, etc., as marked on the image.',
+  'Comprehension Passage': 'Provide a reading passage. You can create multiple sub-questions linked to this passage.',
+};
+
 const defaultOptions = { A: '', B: '', C: '', D: '' };
 const defaultPairs = [{ left: '', right: '' }, { left: '', right: '' }];
 const defaultOrdering = ['First event', 'Second event', 'Third event'];
@@ -554,7 +569,8 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     }
 
     if (currentQType === 'Fill in the Blanks') {
-      const blanks = (watch('question_text').match(/_{3,}/g) || []).length;
+      const qText = watch('question_text') || '';
+      const blanks = (qText.match(/_{3,}/g) || []).length;
       return (
         <div className="space-y-3">
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Blank Inputs</p>
@@ -578,7 +594,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
             className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none font-black text-sm dark:text-white"
             placeholder="Expected one-word answer"
           />
-          {currentAnswer.trim().includes(' ') && <p className="text-amber-600 text-[10px] font-bold">Use one word only.</p>}
+          {(currentAnswer || '').trim().includes(' ') && <p className="text-amber-600 text-[10px] font-bold">Use one word only.</p>}
           {errors.answer_text && <p className="text-red-500 text-[10px] font-bold">{errors.answer_text.message as string}</p>}
         </div>
       );
@@ -1045,6 +1061,21 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                   <input type="file" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-not-allowed" accept="image/*" disabled={uploading} />
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Tips Box */}
+          <div className="mt-8 mb-4 p-4 rounded-2xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 flex items-start gap-4">
+            <div className="p-2 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-500 rounded-xl">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-amber-900 dark:text-amber-500 mb-1">
+                Tip for {currentQType}
+              </p>
+              <p className="text-sm text-amber-800 dark:text-amber-600">
+                {QUESTION_TYPE_TIPS[currentQType as QuestionTypeValue] || 'Select a question type for instructions.'}
+              </p>
             </div>
           </div>
 
