@@ -15,9 +15,6 @@ from sqlalchemy.orm import selectinload
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger(__name__)
 
-PASSWORD_UPPER_RE = re.compile(r"[A-Z]")
-PASSWORD_NUMBER_RE = re.compile(r"\d")
-PASSWORD_SPECIAL_RE = re.compile(r"[^A-Za-z0-9]")
 
 # --- SCHEMAS ---
 
@@ -49,18 +46,7 @@ class UserCreate(BaseAuthModel):
     grade_levels: List[int] = []
     hod_allowed_subject_ids: List[int] = []
 
-    @field_validator('password')
-    @classmethod
-    def password_strength(cls, v: str) -> str:
-        if len(v) < 12:
-            raise ValueError('Password must be at least 12 characters')
-        if not PASSWORD_UPPER_RE.search(v):
-            raise ValueError('Password must include at least one uppercase letter')
-        if not PASSWORD_NUMBER_RE.search(v):
-            raise ValueError('Password must include at least one number')
-        if not PASSWORD_SPECIAL_RE.search(v):
-            raise ValueError('Password must include at least one special character')
-        return v
+
 
 class UserUpdate(BaseAuthModel):
     full_name: Optional[str] = None
@@ -72,37 +58,13 @@ class UserUpdate(BaseAuthModel):
     grade_levels: Optional[List[int]] = None
     hod_allowed_subject_ids: Optional[List[int]] = None
 
-    @field_validator('password')
-    @classmethod
-    def password_strength(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return v
-        if len(v) < 12:
-            raise ValueError('Password must be at least 12 characters')
-        if not PASSWORD_UPPER_RE.search(v):
-            raise ValueError('Password must include at least one uppercase letter')
-        if not PASSWORD_NUMBER_RE.search(v):
-            raise ValueError('Password must include at least one number')
-        if not PASSWORD_SPECIAL_RE.search(v):
-            raise ValueError('Password must include at least one special character')
-        return v
+
 
 
 class PasswordResetRequest(BaseAuthModel):
     new_password: str
 
-    @field_validator("new_password")
-    @classmethod
-    def password_strength(cls, v: str) -> str:
-        if len(v) < 12:
-            raise ValueError('Password must be at least 12 characters')
-        if not PASSWORD_UPPER_RE.search(v):
-            raise ValueError('Password must include at least one uppercase letter')
-        if not PASSWORD_NUMBER_RE.search(v):
-            raise ValueError('Password must include at least one number')
-        if not PASSWORD_SPECIAL_RE.search(v):
-            raise ValueError('Password must include at least one special character')
-        return v
+
 
 class Token(BaseModel):
     access_token: str
@@ -115,20 +77,17 @@ class PasswordUpdate(BaseModel):
     current_password: str
     new_password: str
 
-    @field_validator("new_password")
-    @classmethod
-    def password_strength(cls, v: str) -> str:
-        if len(v) < 12:
-            raise ValueError('Password must be at least 12 characters')
-        if not PASSWORD_UPPER_RE.search(v):
-            raise ValueError('Password must include at least one uppercase letter')
-        if not PASSWORD_NUMBER_RE.search(v):
-            raise ValueError('Password must include at least one number')
-        if not PASSWORD_SPECIAL_RE.search(v):
-            raise ValueError('Password must include at least one special character')
-        return v
+
 
 # --- HELPERS ---
+
+def validate_password_strength(password: str, is_admin: bool):
+    min_len = 12 if is_admin else 8
+    if len(password) < min_len:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[{"loc": ["body", "password"], "msg": f"Password must be at least {min_len} characters"}]
+        )
 
 async def validate_assignments(session: AsyncSession, grade_levels: List[int] = None, hod_allowed_subject_ids: List[int] = None):
     """
@@ -194,6 +153,8 @@ async def initial_setup(user_data: UserCreate, session: AsyncSession = Depends(g
     if count > 0:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Setup wizard is locked.")
 
+    validate_password_strength(user_data.password, is_admin=True)
+
     new_admin = Users(
         full_name=user_data.full_name,
         email=user_data.email,
@@ -219,6 +180,8 @@ async def update_my_password(
     """Updates the current user's password."""
     if not verify_password(data.current_password, current_user.password_hash):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Incorrect current password")
+    
+    validate_password_strength(data.new_password, current_user.is_admin)
     current_user.password_hash = get_password_hash(data.new_password)
     session.add(current_user)
     await session.commit()
@@ -267,6 +230,8 @@ async def register_user(
     
     await validate_assignments(session, user_data.grade_levels, user_data.hod_allowed_subject_ids)
 
+    validate_password_strength(user_data.password, user_data.is_admin)
+
     new_user = Users(
         full_name=user_data.full_name,
         email=normalized_email,
@@ -308,7 +273,9 @@ async def update_user(
     await validate_assignments(session, data.grade_levels, data.hod_allowed_subject_ids)
 
     update_data = data.model_dump(exclude_unset=True)
+    is_admin_check = update_data.get("is_admin", user.is_admin)
     if "password" in update_data and update_data["password"]:
+        validate_password_strength(update_data["password"], is_admin_check)
         user.password_hash = get_password_hash(update_data.pop("password"))
     
     subject_ids = update_data.pop("subject_ids", None)
@@ -385,6 +352,7 @@ async def reset_user_password(user_id: int, payload: PasswordResetRequest, sessi
     if not current_user.is_admin: raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin only")
     user = await session.get(Users, user_id)
     if user:
+        validate_password_strength(payload.new_password, user.is_admin)
         user.password_hash = get_password_hash(payload.new_password)
         session.add(user)
         await session.commit()
