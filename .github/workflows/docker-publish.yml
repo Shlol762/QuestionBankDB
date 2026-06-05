@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - Live-Version
+      - development
     tags:
       - "v*"
   workflow_dispatch:
@@ -75,14 +76,25 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Determine image suffix
+        if: matrix.changed == 'true'
+        id: img-suffix
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/development" ]]; then
+            echo "suffix=" >> $GITHUB_OUTPUT
+          else
+            echo "suffix=-prod" >> $GITHUB_OUTPUT
+          fi
+
       - name: Docker metadata
         if: matrix.changed == 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image_name }}
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image_name }}${{ steps.img-suffix.outputs.suffix }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
+            type=ref,event=tag
             type=sha,prefix=sha-
 
       - name: Build and push
