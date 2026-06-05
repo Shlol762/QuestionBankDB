@@ -37,6 +37,7 @@ class UserRead(BaseAuthModel):
     subjects: List[SubjectSimple] = []
     grade_levels: List[int] = [] 
     hod_subject_names: List[str] = []
+    hod_allowed_subject_ids: List[int] = []
 
 class UserCreate(BaseAuthModel):
     full_name: str
@@ -165,8 +166,10 @@ def map_user_to_read(user: Users) -> dict:
     
     # Fetch names from the Master List IDs
     d["hod_subject_names"] = []
+    d["hod_allowed_subject_ids"] = []
     if hasattr(user, "hod_assignments") and user.hod_assignments:
         for h in user.hod_assignments:
+            d["hod_allowed_subject_ids"].append(h.allowed_subject_id)
             # This relies on the relationship being eager-loaded (via selectinload)
             # or lazy-loaded if within a session.
             if hasattr(h, "allowed_subject") and h.allowed_subject:

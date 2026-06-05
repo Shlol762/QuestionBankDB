@@ -34,7 +34,7 @@ const userSchema = z.object({
   is_admin: z.boolean(),
   subject_ids: z.array(z.number()),
   grade_levels: z.array(z.number()),
-  hod_subject_names: z.array(z.string())
+  hod_allowed_subject_ids: z.array(z.number())
 });
 
 type UserFormData = z.infer<typeof userSchema>;
@@ -47,6 +47,7 @@ interface UserListItem {
   is_admin: boolean;
   grade_levels: number[];
   hod_subject_names: string[];
+  hod_allowed_subject_ids?: number[];
   subjects: { subject_id: number; subject_name: string }[];
 }
 
@@ -76,14 +77,14 @@ const UserManagement: React.FC = () => {
       is_admin: false,
       subject_ids: [],
       grade_levels: [],
-      hod_subject_names: []
+      hod_allowed_subject_ids: []
     }
   });
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const gradeLevels = watch('grade_levels') || [];
   const subjectIds = watch('subject_ids') || [];
-  const hodSubjectNames = watch('hod_subject_names') || [];
+  const hodAllowedSubjectIds = watch('hod_allowed_subject_ids') || [];
 
   // Fetch Paginated Users
   const { data: usersData, isLoading } = useQuery({
@@ -113,12 +114,16 @@ const UserManagement: React.FC = () => {
     enabled: isModalOpen
   });
 
-  // Derived Selection Lists
-  const uniqueSubjectNames = useMemo(() => {
-    const names = new Set<string>();
-    hierarchy.forEach((s: { grades: { subjects: { subject_name: string }[] }[] }) => s.grades.forEach((g) => g.subjects.forEach((sub) => names.add(sub.subject_name))));
-    return Array.from(names).sort();
-  }, [hierarchy]);
+  // Fetch Allowed Subjects for HOD Assignment
+  const { data: allowedSubjectsData } = useQuery({
+    queryKey: ['allowed-subjects-all'],
+    queryFn: async () => {
+      const res = await client.get('/allowed-subjects/?limit=500');
+      return res.data;
+    },
+    enabled: isModalOpen
+  });
+  const allowedSubjects = useMemo(() => allowedSubjectsData?.items || [], [allowedSubjectsData?.items]);
 
   const allGradeLevels = useMemo(() => {
     const levels = new Set<number>();
@@ -170,11 +175,11 @@ const UserManagement: React.FC = () => {
     passwordResetMutation.mutate({ userId, newPassword: nextPassword });
   };
 
-  const toggleItem = (listName: 'subject_ids' | 'grade_levels' | 'hod_subject_names', value: number | string) => {
+  const toggleItem = (listName: 'subject_ids' | 'grade_levels' | 'hod_allowed_subject_ids', value: number | string) => {
     let currentList: Array<number | string>;
     if (listName === 'subject_ids') currentList = subjectIds as Array<number>;
     else if (listName === 'grade_levels') currentList = gradeLevels as Array<number>;
-    else currentList = hodSubjectNames as Array<string>;
+    else currentList = hodAllowedSubjectIds as Array<number>;
 
     const newList = currentList.includes(value)
       ? currentList.filter(v => v !== value)
@@ -193,7 +198,7 @@ const UserManagement: React.FC = () => {
       is_admin: false,
       subject_ids: [],
       grade_levels: [],
-      hod_subject_names: []
+      hod_allowed_subject_ids: []
     });
     setExpandedSyllabus([]);
     setExpandedGrade([]);
@@ -210,7 +215,7 @@ const UserManagement: React.FC = () => {
       is_admin: user.is_admin,
       subject_ids: user.subjects?.map((s) => s.subject_id) || [],
       grade_levels: user.grade_levels || [],
-      hod_subject_names: user.hod_subject_names || []
+      hod_allowed_subject_ids: user.hod_allowed_subject_ids || []
     });
     setIsModalOpen(true);
   };
@@ -374,9 +379,16 @@ const UserManagement: React.FC = () => {
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 p-2">
           {userMutation.isError && (
-            <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-2xl text-xs font-black border border-red-100 dark:border-red-900/30 flex items-center gap-3 animate-in fade-in slide-in-from-top-1">
-              <AlertCircle className="w-5 h-5 flex-shrink-0" />
-              {(userMutation.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Execution failed. Verify network connectivity.'}
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-2xl text-xs font-black border border-red-100 dark:border-red-900/30 flex flex-col gap-2 animate-in fade-in slide-in-from-top-1">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                <span>Execution failed.</span>
+              </div>
+              <div className="ml-8 font-medium">
+                {Array.isArray((userMutation.error as any)?.response?.data?.detail)
+                  ? (userMutation.error as any).response.data.detail.map((e: any, i: number) => <div key={i}>{e.loc?.join('.')}: {e.msg}</div>)
+                  : ((userMutation.error as any)?.response?.data?.detail || 'Verify network connectivity.')}
+              </div>
             </div>
           )}
 
@@ -446,8 +458,8 @@ const UserManagement: React.FC = () => {
                 <div>
                   <label className="flex items-center gap-2.5 text-[10px] font-black text-gray-500 uppercase mb-4 tracking-widest"><BookOpen className="w-4 h-4 text-purple-500" /> Subject Lead</label>
                   <div className="flex flex-wrap gap-2.5">
-                    {uniqueSubjectNames.map((name) => (
-                      <button key={name} type="button" onClick={() => toggleItem('hod_subject_names', name)} className={`px-3 py-2 rounded-xl text-[10px] font-black border transition-all ${hodSubjectNames.includes(name) ? 'bg-purple-600 border-purple-600 text-white shadow-lg' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-purple-300'}`}>{name}</button>
+                    {allowedSubjects.map((sub: { allowed_subject_id: number; subject_name: string }) => (
+                      <button key={sub.allowed_subject_id} type="button" onClick={() => toggleItem('hod_allowed_subject_ids', sub.allowed_subject_id)} className={`px-3 py-2 rounded-xl text-[10px] font-black border transition-all ${hodAllowedSubjectIds.includes(sub.allowed_subject_id) ? 'bg-purple-600 border-purple-600 text-white shadow-lg' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-purple-300'}`}>{sub.subject_name}</button>
                     ))}
                   </div>
                 </div>

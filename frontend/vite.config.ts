@@ -14,6 +14,7 @@ export default defineConfig({
       '/questions': 'http://localhost:8000',
       '/stats': 'http://localhost:8000',
       '/static': 'http://localhost:8000', // for image uploads if applicable
+      '/allowed-subjects': 'http://localhost:8000',
     }
   },
 })
