@@ -14,7 +14,8 @@ import {
   FolderRoot,
   Layers,
   Book,
-  RefreshCw
+  RefreshCw,
+  X
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -244,7 +245,9 @@ const UserManagement: React.FC = () => {
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <div className="flex items-center justify-between mb-8 text-gray-900 dark:text-white">
+      {!isModalOpen && (
+        <>
+          <div className="flex items-center justify-between mb-8 text-gray-900 dark:text-white">
         <div>
           <h2 className="text-3xl font-black tracking-tight">Staff Management</h2>
           <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Oversee operational roles and curriculum hookups.</p>
@@ -370,14 +373,26 @@ const UserManagement: React.FC = () => {
           onPageChange={setPage}
         />
       </div>
+        </>
+      )}
 
-      <Modal 
-        isOpen={isModalOpen} 
-        onClose={() => { if (!userMutation.isPending) { setIsModalOpen(false); resetForm(); } }}
-        title={isEditing ? 'Refine Staff Identity' : 'Register New Faculty'}
-        maxWidth="max-w-6xl"
-      >
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 p-2">
+      {isModalOpen && (
+        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden animate-in fade-in zoom-in-95 duration-300 w-full min-h-[calc(100vh-6rem)] flex flex-col text-gray-900 dark:text-white transition-colors duration-300">
+          <div className="p-8 flex-1">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className={`p-3 ${isEditing ? 'bg-amber-500 shadow-amber-500/20' : 'bg-academy-600 shadow-academy-600/20'} text-white rounded-2xl shadow-xl`}>
+                  {isEditing ? <Pencil className="w-6 h-6" /> : <UserPlus className="w-6 h-6" />}
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black tracking-tight">{isEditing ? 'Refine Staff Identity' : 'Register New Faculty'}</h2>
+                </div>
+              </div>
+              <button aria-label="Close form" onClick={() => { if (!userMutation.isPending) { setIsModalOpen(false); resetForm(); } }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors text-gray-400">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
           {userMutation.isError && (
             <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-2xl text-xs font-black border border-red-100 dark:border-red-900/30 flex flex-col gap-2 animate-in fade-in slide-in-from-top-1">
               <div className="flex items-center gap-3">
@@ -527,8 +542,10 @@ const UserManagement: React.FC = () => {
               <span className="text-xs uppercase tracking-widest">{isEditing ? 'Save Changes' : 'Register'}</span>
             </button>
           </div>
-        </form>
-      </Modal>
+            </form>
+          </div>
+        </div>
+      )}
 
       <Modal isOpen={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="Delete Staff Member">
         <div className="space-y-8 text-center p-6">

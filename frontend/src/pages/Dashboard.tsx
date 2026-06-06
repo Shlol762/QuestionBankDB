@@ -718,7 +718,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
         </header>
 
         <div className="flex-1 overflow-y-auto p-12 bg-[#fcfdfe] dark:bg-gray-950 transition-colors duration-300">
-          <div className="max-w-6xl mx-auto">{renderContent()}</div>
+          <div className="w-full h-full">{renderContent()}</div>
         </div>
       </main>
 

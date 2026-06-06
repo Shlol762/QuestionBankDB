@@ -72,7 +72,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 lg:left-72 z-50 flex items-center justify-center p-4 lg:p-8">
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-academy-900/60 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-300"
@@ -86,9 +86,9 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
         aria-modal="true"
         aria-labelledby="modal-title"
         tabIndex={-1}
-        className={`relative bg-white dark:bg-gray-800 w-full ${maxWidth} rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300 transition-colors duration-300`}
+        className={`relative bg-white dark:bg-gray-800 w-full ${maxWidth} max-h-[calc(100vh-2rem)] lg:max-h-[calc(100vh-4rem)] flex flex-col rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300 transition-colors duration-300`}
       >
-        <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
+        <div className="flex-shrink-0 flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
           <h3 id="modal-title" className="text-xl font-bold text-gray-900 dark:text-white">{title}</h3>
           <button 
             aria-label="Close modal"
@@ -99,7 +99,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, maxWidt
           </button>
         </div>
         
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto flex-1">
           {children}
         </div>
       </div>

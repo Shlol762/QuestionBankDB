@@ -813,8 +813,8 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   }, [currentQType, setValue]);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden animate-in fade-in zoom-in-95 duration-300 max-w-5xl mx-auto text-gray-900 dark:text-white transition-colors duration-300">
-      <div className="p-8">
+    <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden animate-in fade-in zoom-in-95 duration-300 w-full min-h-[calc(100vh-6rem)] flex flex-col text-gray-900 dark:text-white transition-colors duration-300">
+      <div className="p-8 flex-1">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
             <div className={`p-3 ${isEditing ? 'bg-amber-500 shadow-amber-500/20' : 'bg-academy-600 shadow-academy-600/20'} text-white rounded-2xl shadow-xl`}>
