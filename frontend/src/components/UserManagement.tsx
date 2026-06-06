@@ -126,6 +126,20 @@ const UserManagement: React.FC = () => {
   });
   const allowedSubjects = useMemo(() => allowedSubjectsData?.items || [], [allowedSubjectsData?.items]);
 
+  const { data: allowedGradesData } = useQuery({
+    queryKey: ['allowed-grades-all'],
+    queryFn: async () => {
+      const res = await client.get('/allowed-grades/?limit=500');
+      return res.data;
+    }
+  });
+  const allowedGrades = useMemo(() => allowedGradesData?.items || [], [allowedGradesData?.items]);
+
+  const getGradeName = (gradeId: number) => {
+    const grade = allowedGrades.find((g: { allowed_grade_id: number; grade_name: string }) => g.allowed_grade_id === gradeId);
+    return grade ? grade.grade_name : `GR ${gradeId}`;
+  };
+
   const allGradeLevels = useMemo(() => {
     const levels = new Set<number>();
     hierarchy.forEach((s: { grades: { grade_level: number }[] }) => s.grades.forEach((g) => levels.add(g.grade_level)));
@@ -312,7 +326,7 @@ const UserManagement: React.FC = () => {
                       )}
                       {user.grade_levels?.length > 0 && (
                         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-200">
-                          <GraduationCap className="w-3 h-3" /> Coordinator (Gr {user.grade_levels.join(', ')})
+                          <GraduationCap className="w-3 h-3" /> Coordinator ({user.grade_levels.map(getGradeName).join(', ')})
                         </span>
                       )}
                       {user.hod_subject_names?.length > 0 && (
@@ -466,7 +480,7 @@ const UserManagement: React.FC = () => {
                   <label className="flex items-center gap-2.5 text-[10px] font-black text-gray-500 uppercase mb-4 tracking-widest"><GraduationCap className="w-4 h-4 text-indigo-500" /> Coordinator Of</label>
                   <div className="flex flex-wrap gap-2.5">
                     {allGradeLevels.map((level) => (
-                      <button key={level} type="button" onClick={() => toggleItem('grade_levels', level)} className={`px-3.5 py-2 rounded-xl text-[10px] font-black border transition-all ${gradeLevels.includes(level) ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-indigo-300'}`}>GR {level}</button>
+                      <button key={level} type="button" onClick={() => toggleItem('grade_levels', level)} className={`px-3.5 py-2 rounded-xl text-[10px] font-black border transition-all ${gradeLevels.includes(level) ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-indigo-300'}`}>{getGradeName(level)}</button>
                     ))}
                   </div>
                 </div>
@@ -502,7 +516,7 @@ const UserManagement: React.FC = () => {
                               <div className="flex items-center gap-3">
                                 {expandedGrade.includes(grade.config_id) ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />}
                                 <Layers className="w-4 h-4 text-amber-500" />
-                                <span className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase">Grade {grade.grade_level}</span>
+                                <span className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase">{getGradeName(grade.grade_level)}</span>
                               </div>
                             </button>
                             {expandedGrade.includes(grade.config_id) && (

@@ -146,7 +146,7 @@ const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectId
       >
         <div className="flex items-center gap-3">
           <Layers className={`w-4 h-4 ${isExpanded ? 'text-amber-500' : 'text-gray-300'}`} />
-          <span className="font-black text-xs uppercase tracking-widest text-gray-700 dark:text-gray-300">Grade {grade.grade_level}</span>
+          <span className="font-black text-xs uppercase tracking-widest text-gray-700 dark:text-gray-300">{getGradeName(grade.grade_level)}</span>
           {grade.pdf_url && (
             <a href={`${import.meta.env.VITE_API_BASE_URL || ''}${grade.pdf_url}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1 text-academy-600 dark:text-academy-400 hover:bg-academy-100 dark:hover:bg-academy-900/50 rounded-lg transition-colors" title="View Grade PDF">
               <FileText className="w-3.5 h-3.5" />
@@ -166,7 +166,7 @@ const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectId
                   </button>
                 )}
                 <button onClick={(e) => { e.stopPropagation(); openEdit('grade', grade); }} className="p-1.5 text-gray-400 hover:text-academy-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-                <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'grade', id: grade.config_id, name: `Grade ${grade.grade_level}`}); }} className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'grade', id: grade.config_id, name: getGradeName(grade.grade_level)}); }} className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
               </>
             )}
             {(isAdmin || isCoordinator) && (
@@ -328,6 +328,18 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
     queryFn: () => client.get('/allowed-subjects/?active_only=true&limit=500').then(r => r.data),
   });
   const allowedSubjects = allowedSubjectsData?.items || [];
+
+  // Fetch Allowed Grades for grade creation dropdown
+  const { data: allowedGradesData } = useQuery({
+    queryKey: ['allowed-grades-active'],
+    queryFn: () => client.get('/allowed-grades/?active_only=true&limit=500').then(r => r.data),
+  });
+  const allowedGrades = allowedGradesData?.items || [];
+
+  const getGradeName = (gradeId: number) => {
+    const grade = allowedGrades.find((g: { allowed_grade_id: number; grade_name: string }) => g.allowed_grade_id === gradeId);
+    return grade ? grade.grade_name : `Grade ${gradeId}`;
+  };
 
   // Modal State
   const [modalType, setModalType] = useState<'syllabus' | 'grade' | 'subject' | 'topic' | null>(null);
@@ -618,8 +630,20 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
             )}
             {modalType === 'grade' && (
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Numeric Grade Level</label>
-                <input required autoFocus type="number" min="1" max="15" className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 font-bold dark:text-white transition-all" placeholder="e.g. 10" value={modalData.level || ''} onChange={e => setModalData({...modalData, level: e.target.value})} />
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Grade (from Allowed Grades)</label>
+                <select
+                  required
+                  autoFocus
+                  className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 font-bold dark:text-white transition-all"
+                  value={modalData.level || ''}
+                  onChange={e => setModalData({...modalData, level: e.target.value})}
+                  disabled={isEditing}
+                >
+                  <option value="" disabled>Select a grade...</option>
+                  {allowedGrades.map((g: { allowed_grade_id: number; grade_name: string }) => (
+                    <option key={g.allowed_grade_id} value={g.allowed_grade_id}>{g.grade_name}</option>
+                  ))}
+                </select>
               </div>
             )}
             {modalType === 'subject' && !isEditing && (

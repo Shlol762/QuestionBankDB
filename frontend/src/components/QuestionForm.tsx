@@ -313,6 +313,20 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     queryFn: () => client.get('/allowed-subjects/?active_only=true&limit=500').then(r => r.data),
   });
 
+  const { data: allowedGradesData } = useQuery({
+    queryKey: ['allowed-grades-all'],
+    queryFn: async () => {
+      const res = await client.get('/allowed-grades/?limit=500');
+      return res.data;
+    }
+  });
+  const allowedGrades = allowedGradesData?.items || [];
+
+  const getGradeName = (gradeId: number) => {
+    const grade = allowedGrades.find((g: { allowed_grade_id: number; grade_name: string }) => g.allowed_grade_id === gradeId);
+    return grade ? grade.grade_name : `Grade ${gradeId}`;
+  };
+
   // Scoped hierarchy for topic picking (Syllabus -> Grade -> Subject -> Topic)
   const scopedHierarchy = useMemo(() => {
     return rawHierarchy
@@ -870,7 +884,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                         className={`w-full text-left px-3 py-2 rounded-xl border transition-all ${currentTopicId === entry.topic.topic_id ? 'border-academy-500 bg-academy-50 dark:bg-academy-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-academy-300'}`}
                       >
                         <p className="text-xs font-black text-gray-900 dark:text-white">{entry.topic.topic_name}</p>
-                        <p className="text-[10px] font-bold text-gray-500">{entry.syllabus.syllabus_name} • G{entry.grade.grade_level} • {entry.subject.subject_name}</p>
+                        <p className="text-[10px] font-bold text-gray-500">{entry.syllabus.syllabus_name} • {getGradeName(entry.grade.grade_level)} • {entry.subject.subject_name}</p>
                       </button>
                     )) : (
                       <p className="text-[10px] font-bold text-gray-500">No matching topics found.</p>
@@ -905,7 +919,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                                 <div className="flex items-center gap-2">
                                   {expandedGrade.includes(grade.config_id) ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-400" />}
                                   <Layers className="w-3.5 h-3.5 text-amber-500" />
-                                  <span className="text-[11px] font-black text-gray-600 dark:text-gray-300">Grade {grade.grade_level}</span>
+                                  <span className="text-[11px] font-black text-gray-600 dark:text-gray-300">{getGradeName(grade.grade_level)}</span>
                                 </div>
                               </button>
 
@@ -956,7 +970,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                   <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/30 bg-emerald-50/60 dark:bg-emerald-900/10 px-3 py-2">
                     <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Selected Topic</p>
                     <p className="text-xs font-black text-gray-800 dark:text-gray-200 mt-1">{selectedTopicMeta.topic.topic_name}</p>
-                    <p className="text-[10px] font-bold text-gray-500 mt-0.5">{selectedTopicMeta.syllabus.syllabus_name} • Grade {selectedTopicMeta.grade.grade_level} • {selectedTopicMeta.subject.subject_name}</p>
+                    <p className="text-[10px] font-bold text-gray-500 mt-0.5">{selectedTopicMeta.syllabus.syllabus_name} • {getGradeName(selectedTopicMeta.grade.grade_level)} • {selectedTopicMeta.subject.subject_name}</p>
                   </div>
                 )}
 

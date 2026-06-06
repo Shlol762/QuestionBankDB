@@ -27,7 +27,8 @@ import {
   Eye,
   Columns3,
   CalendarClock,
-  UserSquare2
+  UserSquare2,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
@@ -38,7 +39,7 @@ import QuestionForm from '../components/QuestionForm';
 import CurriculumManager from '../components/CurriculumManager';
 import UserManagement from '../components/UserManagement';
 import DashboardOverview from '../components/DashboardOverview';
-import AllowedSubjectsManager from '../components/AllowedSubjectsManager';
+import SystemConfigManager from '../components/SystemConfigManager';
 import Modal from '../components/Modal';
 import Pagination from '../components/Pagination';
 import { useSettingsStore } from '../store/settingsStore';
@@ -259,7 +260,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
   const navItems = [
     { id: 'overview', icon: BarChart3, label: 'Dashboard', role: 'teacher' },
     { id: 'subjects', icon: BookOpen, label: isAdmin ? 'Full Curriculum' : 'My Scope', role: 'teacher' },
-    { id: 'allowed-subjects', icon: UserSquare2, label: 'Allowed Subjects', role: 'admin' },
+    { id: 'system-config', icon: SlidersHorizontal, label: 'System Config', role: 'admin' },
     { id: 'questions', icon: PlusCircle, label: 'Question Bank', role: 'teacher' },
     { id: 'users', icon: UsersIcon, label: 'Staff Directory', role: 'admin' },
     { id: 'settings', icon: SettingsIcon, label: 'Preferences', role: 'teacher' },
@@ -271,8 +272,8 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
         return <DashboardOverview isAdmin={isAdmin} isCoordinator={isCoordinator} isHOD={isHOD} />;
       case 'subjects':
         return <CurriculumManager onAddQuestion={handleAddQuestionFromCurriculum} />;
-      case 'allowed-subjects':
-        return <AllowedSubjectsManager />;
+      case 'system-config':
+        return <SystemConfigManager />;
       case 'users':
         return <UserManagement />;
       case 'settings':

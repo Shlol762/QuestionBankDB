@@ -120,14 +120,8 @@ const AllowedSubjectsManager: React.FC = () => {
   };
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
-      <div>
-        <h2 className="text-3xl font-black tracking-tight text-gray-900 dark:text-white">Allowed Subjects</h2>
-        <p className="text-gray-500 dark:text-gray-400 font-medium">Soft governance catalog for recommended subject naming and onboarding consistency.</p>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-        <div className="xl:col-span-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-3xl p-6 shadow-sm">
+    <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+      <div className="xl:col-span-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-3xl p-6 shadow-sm">
           <h3 className="font-black text-[10px] uppercase tracking-widest text-gray-500 mb-4">{title}</h3>
           <form onSubmit={submit} className="space-y-4">
             <div>
@@ -230,7 +224,6 @@ const AllowedSubjectsManager: React.FC = () => {
             )}
           </div>
         </div>
-      </div>
     </div>
   );
 };

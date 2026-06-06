@@ -52,7 +52,9 @@ class GradeCoordinatorLink(BaseSQLModel, table=True):
     __tablename__ = "grade_coordinator_link"
     
     user_id: int = Field(foreign_key="users.user_id", primary_key=True, ondelete="CASCADE")
-    grade_level: int = Field(primary_key=True)
+    grade_level: int = Field(foreign_key="allowed_grades.allowed_grade_id", primary_key=True, ondelete="CASCADE")
+    
+    allowed_grade: Optional["AllowedGrade"] = Relationship()
 
 # ==========================================
 # LINK TABLE: HOD <-> ALLOWED SUBJECT ID
@@ -93,7 +95,8 @@ class GradeConfig(BaseSQLModel, table=True):
     syllabus_id: int = Field(foreign_key="syllabus_master.syllabus_id", ondelete="CASCADE")
     syllabus: SyllabusMaster = Relationship(back_populates="grades")
     
-    grade_level: int
+    grade_level: int = Field(foreign_key="allowed_grades.allowed_grade_id", ondelete="RESTRICT")
+    allowed_grade: Optional["AllowedGrade"] = Relationship()
     pdf_url: Optional[str] = None
     
     # Cascade: If Grade is deleted, delete all Subjects
@@ -212,6 +215,25 @@ class AllowedSubject(BaseSQLModel, table=True):
 
     def __repr__(self):
         return f"<AllowedSubject(id={self.allowed_subject_id}, subject_name='{self.subject_name}')>"
+
+class AllowedGrade(BaseSQLModel, table=True):
+    __tablename__ = "allowed_grades"
+
+    allowed_grade_id: Optional[int] = Field(default=None, primary_key=True)
+    grade_name: str = Field(unique=True, index=True)
+    recommendation_note: Optional[str] = None
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+    def __repr__(self):
+        return f"<AllowedGrade(id={self.allowed_grade_id}, grade_name='{self.grade_name}')>"
 
 # ==========================================
 # LEVEL 6: THE CONTENT (Questions)
