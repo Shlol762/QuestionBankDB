@@ -251,7 +251,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
     }
   };
 
-  const initialOptions: QuestionOptions = initialData?.options ?? defaultOptionsForType(defaultQuestionType);
+  const initialOptions: QuestionOptions = (initialData?.options as QuestionOptions) ?? defaultOptionsForType(defaultQuestionType);
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isDirty } } = useForm<QuestionFormData>({
     resolver: zodResolver(questionSchema),

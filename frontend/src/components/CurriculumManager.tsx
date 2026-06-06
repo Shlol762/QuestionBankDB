@@ -34,7 +34,7 @@ interface Syllabus { syllabus_id: number; syllabus_name: string; academic_year: 
 
 // --- Helper Components for Lazy Loading ---
 
-const TopicNode = ({ topic, subject, canModifyTopic, onAddQuestion, openEdit, setDeleteTarget }: { topic: Topic; subject: Subject; canModifyTopic: boolean; onAddQuestion: unknown; openEdit: unknown; setDeleteTarget: unknown }) => {
+const TopicNode = ({ topic, subject, canModifyTopic, onAddQuestion, openEdit, setDeleteTarget }: { topic: Topic; subject: Subject; canModifyTopic: boolean; onAddQuestion: any; openEdit: any; setDeleteTarget: any }) => {
   return (
     <div className="group/topic flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl text-xs font-bold transition-all hover:border-academy-300 dark:hover:border-academy-500 hover:shadow-sm">
       <div className="flex items-center gap-2.5">
@@ -56,7 +56,7 @@ const TopicNode = ({ topic, subject, canModifyTopic, onAddQuestion, openEdit, se
   );
 };
 
-const SubjectNode = ({ subject, grade, isAdmin, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, openTopicModal }: { subject: Subject; grade: Grade; isAdmin: boolean; hodSubjects: string[]; assignedSubjectIds: number[]; expanded: string[]; toggleExpand: unknown; openEdit: unknown; setDeleteTarget: unknown; onAddQuestion: unknown; openTopicModal: unknown }) => {
+const SubjectNode = ({ subject, grade, isAdmin, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, openTopicModal }: { subject: Subject; grade: Grade; isAdmin: boolean; hodSubjects: string[]; assignedSubjectIds: number[]; expanded: string[]; toggleExpand: any; openEdit: any; setDeleteTarget: any; onAddQuestion: any; openTopicModal: any }) => {
   const isExpanded = expanded.includes(`sub-${subject.subject_id}`);
   const canModifySubject = isAdmin || grade.isCoordinator;
   const canModifyTopic = isAdmin || grade.isCoordinator || hodSubjects.includes(subject.subject_name) || assignedSubjectIds.includes(subject.subject_id);
@@ -116,7 +116,7 @@ const SubjectNode = ({ subject, grade, isAdmin, hodSubjects, assignedSubjectIds,
   );
 };
 
-const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openSubjectModal, openTopicModal }: { grade: Grade; isAdmin: boolean; gradeLevels: number[]; hodSubjects: string[]; assignedSubjectIds: number[]; expanded: string[]; toggleExpand: unknown; openEdit: unknown; setDeleteTarget: unknown; onAddQuestion: unknown; triggerUpload: unknown; uploadingGradeId: unknown; removePdfMutation: unknown; openSubjectModal: unknown; openTopicModal: unknown }) => {
+const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openSubjectModal, openTopicModal }: { grade: Grade; isAdmin: boolean; gradeLevels: number[]; hodSubjects: string[]; assignedSubjectIds: number[]; expanded: string[]; toggleExpand: any; openEdit: any; setDeleteTarget: any; onAddQuestion: any; triggerUpload: any; uploadingGradeId: any; removePdfMutation: any; openSubjectModal: any; openTopicModal: any }) => {
   const isExpanded = expanded.includes(`g-${grade.config_id}`);
   const isCoordinator = gradeLevels.includes(grade.grade_level);
   const enrichedGrade = { ...grade, isCoordinator };
@@ -210,7 +210,7 @@ const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectId
   );
 };
 
-const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openGradeModal, openSubjectModal, openTopicModal }: { syllabus: Syllabus; isAdmin: boolean; gradeLevels: number[]; hodSubjects: string[]; assignedSubjectIds: number[]; expanded: string[]; toggleExpand: unknown; openEdit: unknown; setDeleteTarget: unknown; onAddQuestion: unknown; triggerUpload: unknown; uploadingGradeId: unknown; removePdfMutation: unknown; openGradeModal: unknown; openSubjectModal: unknown; openTopicModal: unknown }) => {
+const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openGradeModal, openSubjectModal, openTopicModal }: { syllabus: Syllabus; isAdmin: boolean; gradeLevels: number[]; hodSubjects: string[]; assignedSubjectIds: number[]; expanded: string[]; toggleExpand: any; openEdit: any; setDeleteTarget: any; onAddQuestion: any; triggerUpload: any; uploadingGradeId: any; removePdfMutation: any; openGradeModal: any; openSubjectModal: any; openTopicModal: any }) => {
   const isExpanded = expanded.includes(`s-${syllabus.syllabus_id}`);
 
   // Lazy load grades
@@ -331,7 +331,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
 
   // Modal State
   const [modalType, setModalType] = useState<'syllabus' | 'grade' | 'subject' | 'topic' | null>(null);
-  const [modalData, setModalData] = useState<Record<string, unknown>>({});
+  const [modalData, setModalData] = useState<Record<string, any>>({});
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState('');
 
