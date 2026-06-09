@@ -45,7 +45,7 @@ async def test_negative_marks_question(client: AsyncClient):
     headers = {"Authorization": f"Bearer {token}"}
 
     q_data = {
-        "topic_id": 1,
+        "topic_ids": [1],
         "question_text": "What is 1+1?",
         "answer_text": "2",
         "marks": -5
@@ -67,7 +67,7 @@ async def test_mcq_without_options(client: AsyncClient):
     headers = {"Authorization": f"Bearer {token}"}
 
     q_data = {
-        "topic_id": 1,
+        "topic_ids": [1],
         "question_text": "Pick one",
         "answer_text": "A",
         "marks": 1,
@@ -112,7 +112,7 @@ async def test_hod_permission_leak(client: AsyncClient):
 
     # HOD tries to create a question in 'Geometry' (which is in Subject 2, CBSE Math)
     res = await client.post("/questions/", json={
-        "topic_id": 2, "question_text": "Cross-Syllabus Access Test", "answer_text": "X", "marks": 1, "q_type": "Short Answer"
+        "topic_ids": [2], "question_text": "Cross-Syllabus Access Test", "answer_text": "X", "marks": 1, "q_type": "Short Answer"
     }, headers=headers_hod)
 
     # This asserts the INTENTIONAL design: HOD 'Math' manages 'Math' everywhere.
@@ -156,7 +156,7 @@ async def test_hod_cannot_manage_unassigned_subject(client: AsyncClient):
 
     hod_headers = {"Authorization": f"Bearer {login_hod.json()['access_token']}"}
     forbidden = await client.post("/questions/", json={
-        "topic_id": topic_res.json()["topic_id"],
+        "topic_ids": [topic_res.json()["topic_id"]],
         "question_text": "Should not be allowed",
         "answer_text": "X",
         "marks": 1,
@@ -176,7 +176,7 @@ async def test_mcq_answer_integrity(client: AsyncClient):
     headers = {"Authorization": f"Bearer {token}"}
 
     q_data = {
-        "topic_id": 1,
+        "topic_ids": [1],
         "question_text": "Pick one",
         "answer_text": "Option E",
         "marks": 1,
@@ -237,7 +237,7 @@ async def test_extreme_long_input(client: AsyncClient):
 
     long_text = "A" * 100000 # Reduced to 100KB to be polite to test runner, still brutal enough
     q_data = {
-        "topic_id": 1,
+        "topic_ids": [1],
         "question_text": long_text,
         "answer_text": "B",
         "marks": 1,
@@ -273,7 +273,7 @@ async def test_cascading_deletion_purge(client: AsyncClient):
     t_id = t_res.json()["topic_id"]
     
     q_res = await client.post("/questions/", json={
-        "topic_id": t_id, "question_text": "Am I alive?", "answer_text": "Yes", "marks": 1, "q_type": "Short Answer"
+        "topic_ids": [t_id], "question_text": "Am I alive?", "answer_text": "Yes", "marks": 1, "q_type": "Short Answer"
     }, headers=headers)
     q_id = q_res.json()["question_id"]
 
@@ -284,9 +284,10 @@ async def test_cascading_deletion_purge(client: AsyncClient):
     # 3. Delete the Syllabus
     await client.delete(f"/curriculum/syllabuses/{s_id}", headers=headers)
 
-    # 4. Check if Question is gone
+    # 4. Check if Question is orphaned
     res = await client.get(f"/questions/{q_id}", headers=headers)
-    assert res.status_code == 404, f"Question {q_id} was not purged after syllabus {s_id} deletion"
+    assert res.status_code == 200, f"Question {q_id} should remain orphaned"
+    assert len(res.json()["topics"]) == 0, "Question should not be linked to any topics"
 
 @pytest.mark.asyncio
 async def test_sql_injection_attempt(client: AsyncClient):
@@ -324,7 +325,7 @@ async def test_concurrent_question_update(client: AsyncClient):
     await client.post("/curriculum/topics", json={"subject_id": 3, "topic_name": "T1"}, headers=headers)
     
     q_res = await client.post("/questions/", json={
-        "topic_id": 3, "question_text": "Orig", "answer_text": "X", "marks": 1, "q_type": "Short Answer"
+        "topic_ids": [3], "question_text": "Orig", "answer_text": "X", "marks": 1, "q_type": "Short Answer"
     }, headers=headers)
     q_id = q_res.json()["question_id"]
 
@@ -553,7 +554,7 @@ async def test_mcq_patch_rejects_invalid_answer(client: AsyncClient):
         topic_id = topic_item["topic_id"]
 
     create_q = await client.post("/questions/", json={
-        "topic_id": topic_id,
+        "topic_ids": [topic_id],
         "question_text": "Patch MCQ",
         "answer_text": "A",
         "marks": 1,

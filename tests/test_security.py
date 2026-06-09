@@ -148,7 +148,7 @@ async def test_unauthorized_data_modification(client: AsyncClient):
 
     # Now Teacher A creates a question
     q_data = {
-        "topic_id": t_id, "question_text": "Q1", "answer_text": "A1", "marks": 5, "q_type": "Short Answer"
+        "topic_ids": [t_id], "question_text": "Q1", "answer_text": "A1", "marks": 5, "q_type": "Short Answer"
     }
     # Re-login A to refresh claims if needed (though DB check is real-time usually)
     res = await client.post("/questions/", json=q_data, headers={"Authorization": f"Bearer {token_a}"})
