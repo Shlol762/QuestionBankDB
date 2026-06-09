@@ -126,6 +126,15 @@ class Subject(BaseSQLModel, table=True):
         return f"<Subject(id={self.subject_id}, name='{self.subject_name}')>"
 
 # ==========================================
+# LINK TABLE: QUESTION <-> TOPIC
+# ==========================================
+class QuestionTopicLink(BaseSQLModel, table=True):
+    __tablename__ = "question_topic_link"
+    
+    question_id: int = Field(foreign_key="question_bank.question_id", primary_key=True, ondelete="CASCADE")
+    topic_id: int = Field(foreign_key="topics.topic_id", primary_key=True, ondelete="CASCADE")
+
+# ==========================================
 # LEVEL 4: THE TOPIC
 # ==========================================
 class Topic(BaseSQLModel, table=True):
@@ -136,8 +145,7 @@ class Topic(BaseSQLModel, table=True):
     subject_id: int = Field(foreign_key="subjects.subject_id", ondelete="CASCADE")
     subject: Subject = Relationship(back_populates="topics")
     
-    # Cascade: If Topic is deleted, delete all Questions
-    questions: List["QuestionBank"] = Relationship(back_populates="topic", cascade_delete=True)
+    questions: List["QuestionBank"] = Relationship(back_populates="topics", link_model=QuestionTopicLink)
 
     def __repr__(self):
         return f"<Topic(id={self.topic_id}, name='{self.topic_name}')>"
@@ -242,8 +250,7 @@ class QuestionBank(BaseSQLModel, table=True):
     __tablename__ = "question_bank"
 
     question_id: Optional[int] = Field(default=None, primary_key=True)
-    topic_id: int = Field(foreign_key="topics.topic_id", ondelete="CASCADE")
-    topic: Topic = Relationship(back_populates="questions")
+    topics: List[Topic] = Relationship(back_populates="questions", link_model=QuestionTopicLink)
     
     teacher_id: int = Field(foreign_key="users.user_id", ondelete="CASCADE")
     teacher: Users = Relationship(back_populates="questions")
