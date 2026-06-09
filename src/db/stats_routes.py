@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.main import get_session
-from src.db.models import Users, QuestionBank, Subject, Topic, GradeConfig, QuestionStatus
+from src.db.models import Users, QuestionBank, Subject, Topic, GradeConfig, QuestionStatus, QuestionTopicLink
 from src.db.auth_utils import get_current_user
 from sqlalchemy.orm import selectinload
 from sqlalchemy import and_, or_
@@ -34,9 +34,9 @@ async def get_dashboard_stats(
     elif is_coordinator:
         # Coordinator: count by grade level
         grade_levels = [g.grade_level for g in current_user.grade_coordinating]
-        q_count_stmt = select(func.count(QuestionBank.question_id)).join(
-            Topic
-        ).join(Subject).join(GradeConfig).where(
+        q_count_stmt = select(func.count(QuestionBank.question_id.distinct())).join(
+            QuestionTopicLink, QuestionTopicLink.question_id == QuestionBank.question_id
+        ).join(Topic, Topic.topic_id == QuestionTopicLink.topic_id).join(Subject).join(GradeConfig).where(
             and_(
                 GradeConfig.grade_level.in_(grade_levels),
                 QuestionBank.status != STATUS_ARCHIVED
@@ -52,9 +52,9 @@ async def get_dashboard_stats(
     elif is_hod:
         # HOD: count by subject name
         subject_names = [h.allowed_subject.subject_name for h in current_user.hod_assignments]
-        q_count_stmt = select(func.count(QuestionBank.question_id)).join(
-            Topic
-        ).join(Subject).where(
+        q_count_stmt = select(func.count(QuestionBank.question_id.distinct())).join(
+            QuestionTopicLink, QuestionTopicLink.question_id == QuestionBank.question_id
+        ).join(Topic, Topic.topic_id == QuestionTopicLink.topic_id).join(Subject).where(
             and_(
                 Subject.subject_name.in_(subject_names),
                 QuestionBank.status != STATUS_ARCHIVED
@@ -95,9 +95,9 @@ async def get_dashboard_stats(
         ).group_by(QuestionBank.difficulty)
     elif is_coordinator:
         grade_levels = [g.grade_level for g in current_user.grade_coordinating]
-        diff_stmt = select(QuestionBank.difficulty, func.count(QuestionBank.question_id)).join(
-            Topic
-        ).join(Subject).join(GradeConfig).where(
+        diff_stmt = select(QuestionBank.difficulty, func.count(QuestionBank.question_id.distinct())).join(
+            QuestionTopicLink, QuestionTopicLink.question_id == QuestionBank.question_id
+        ).join(Topic, Topic.topic_id == QuestionTopicLink.topic_id).join(Subject).join(GradeConfig).where(
             and_(
                 GradeConfig.grade_level.in_(grade_levels),
                 QuestionBank.status != STATUS_ARCHIVED
@@ -105,9 +105,9 @@ async def get_dashboard_stats(
         ).group_by(QuestionBank.difficulty)
     elif is_hod:
         subject_names = [h.allowed_subject.subject_name for h in current_user.hod_assignments]
-        diff_stmt = select(QuestionBank.difficulty, func.count(QuestionBank.question_id)).join(
-            Topic
-        ).join(Subject).where(
+        diff_stmt = select(QuestionBank.difficulty, func.count(QuestionBank.question_id.distinct())).join(
+            QuestionTopicLink, QuestionTopicLink.question_id == QuestionBank.question_id
+        ).join(Topic, Topic.topic_id == QuestionTopicLink.topic_id).join(Subject).where(
             and_(
                 Subject.subject_name.in_(subject_names),
                 QuestionBank.status != STATUS_ARCHIVED
@@ -131,11 +131,13 @@ async def get_dashboard_stats(
             func.substr(QuestionBank.question_text, 1, 100).label("short_text"),
             QuestionBank.created_at,
             Users.full_name,
-            Topic.topic_name,
+            func.string_agg(Topic.topic_name, ', ').label("topic_name"),
         ).join(Users, Users.user_id == QuestionBank.teacher_id).join(
-            Topic, Topic.topic_id == QuestionBank.topic_id
-        ).where(
+            QuestionTopicLink, QuestionTopicLink.question_id == QuestionBank.question_id
+        ).join(Topic, Topic.topic_id == QuestionTopicLink.topic_id).where(
             QuestionBank.status == STATUS_PUBLISHED
+        ).group_by(
+            QuestionBank.question_id, Users.full_name
         ).order_by(
             QuestionBank.created_at.desc(), QuestionBank.question_id.desc()
         ).limit(5)
@@ -146,16 +148,18 @@ async def get_dashboard_stats(
             func.substr(QuestionBank.question_text, 1, 100).label("short_text"),
             QuestionBank.created_at,
             Users.full_name,
-            Topic.topic_name,
+            func.string_agg(Topic.topic_name, ', ').label("topic_name"),
         ).join(Users, Users.user_id == QuestionBank.teacher_id).join(
-            Topic, Topic.topic_id == QuestionBank.topic_id
-        ).join(Subject, Subject.subject_id == Topic.subject_id).join(
+            QuestionTopicLink, QuestionTopicLink.question_id == QuestionBank.question_id
+        ).join(Topic, Topic.topic_id == QuestionTopicLink.topic_id).join(Subject, Subject.subject_id == Topic.subject_id).join(
             GradeConfig, GradeConfig.config_id == Subject.config_id
         ).where(
             and_(
                 GradeConfig.grade_level.in_(grade_levels),
                 QuestionBank.status == STATUS_PUBLISHED
             )
+        ).group_by(
+            QuestionBank.question_id, Users.full_name
         ).order_by(
             QuestionBank.created_at.desc(), QuestionBank.question_id.desc()
         ).limit(5)
@@ -166,14 +170,16 @@ async def get_dashboard_stats(
             func.substr(QuestionBank.question_text, 1, 100).label("short_text"),
             QuestionBank.created_at,
             Users.full_name,
-            Topic.topic_name,
+            func.string_agg(Topic.topic_name, ', ').label("topic_name"),
         ).join(Users, Users.user_id == QuestionBank.teacher_id).join(
-            Topic, Topic.topic_id == QuestionBank.topic_id
-        ).join(Subject, Subject.subject_id == Topic.subject_id).where(
+            QuestionTopicLink, QuestionTopicLink.question_id == QuestionBank.question_id
+        ).join(Topic, Topic.topic_id == QuestionTopicLink.topic_id).join(Subject, Subject.subject_id == Topic.subject_id).where(
             and_(
                 Subject.subject_name.in_(subject_names),
                 QuestionBank.status == STATUS_PUBLISHED
             )
+        ).group_by(
+            QuestionBank.question_id, Users.full_name
         ).order_by(
             QuestionBank.created_at.desc(), QuestionBank.question_id.desc()
         ).limit(5)
@@ -183,14 +189,16 @@ async def get_dashboard_stats(
             func.substr(QuestionBank.question_text, 1, 100).label("short_text"),
             QuestionBank.created_at,
             Users.full_name,
-            Topic.topic_name,
+            func.string_agg(Topic.topic_name, ', ').label("topic_name"),
         ).join(Users, Users.user_id == QuestionBank.teacher_id).join(
-            Topic, Topic.topic_id == QuestionBank.topic_id
-        ).where(
+            QuestionTopicLink, QuestionTopicLink.question_id == QuestionBank.question_id
+        ).join(Topic, Topic.topic_id == QuestionTopicLink.topic_id).where(
             and_(
                 QuestionBank.teacher_id == current_user.user_id,
                 QuestionBank.status == STATUS_PUBLISHED
             )
+        ).group_by(
+            QuestionBank.question_id, Users.full_name
         ).order_by(
             QuestionBank.created_at.desc(), QuestionBank.question_id.desc()
         ).limit(5)
@@ -202,8 +210,10 @@ async def get_dashboard_stats(
         coverage_stmt = select(Topic.topic_id, Topic.topic_name, Subject.subject_name).join(
             Subject
         ).outerjoin(
+            QuestionTopicLink, QuestionTopicLink.topic_id == Topic.topic_id
+        ).outerjoin(
             QuestionBank, and_(
-                QuestionBank.topic_id == Topic.topic_id,
+                QuestionBank.question_id == QuestionTopicLink.question_id,
                 QuestionBank.status == STATUS_PUBLISHED
             )
         ).where(
@@ -214,8 +224,10 @@ async def get_dashboard_stats(
         coverage_stmt = select(Topic.topic_id, Topic.topic_name, Subject.subject_name).join(
             Subject
         ).join(GradeConfig).outerjoin(
+            QuestionTopicLink, QuestionTopicLink.topic_id == Topic.topic_id
+        ).outerjoin(
             QuestionBank, and_(
-                QuestionBank.topic_id == Topic.topic_id,
+                QuestionBank.question_id == QuestionTopicLink.question_id,
                 QuestionBank.status == STATUS_PUBLISHED
             )
         ).where(
@@ -229,8 +241,10 @@ async def get_dashboard_stats(
         coverage_stmt = select(Topic.topic_id, Topic.topic_name, Subject.subject_name).join(
             Subject
         ).outerjoin(
+            QuestionTopicLink, QuestionTopicLink.topic_id == Topic.topic_id
+        ).outerjoin(
             QuestionBank, and_(
-                QuestionBank.topic_id == Topic.topic_id,
+                QuestionBank.question_id == QuestionTopicLink.question_id,
                 QuestionBank.status == STATUS_PUBLISHED
             )
         ).where(
@@ -243,8 +257,10 @@ async def get_dashboard_stats(
         coverage_stmt = select(Topic.topic_id, Topic.topic_name, Subject.subject_name).join(
             Subject
         ).outerjoin(
+            QuestionTopicLink, QuestionTopicLink.topic_id == Topic.topic_id
+        ).outerjoin(
             QuestionBank, and_(
-                QuestionBank.topic_id == Topic.topic_id,
+                QuestionBank.question_id == QuestionTopicLink.question_id,
                 QuestionBank.status == STATUS_PUBLISHED
             )
         ).where(
@@ -272,8 +288,8 @@ async def get_dashboard_stats(
             Users.full_name,
             func.count(QuestionBank.question_id).label("count")
         ).join(QuestionBank).join(
-            Topic
-        ).join(Subject).join(GradeConfig).where(
+            QuestionTopicLink, QuestionTopicLink.question_id == QuestionBank.question_id
+        ).join(Topic, Topic.topic_id == QuestionTopicLink.topic_id).join(Subject).join(GradeConfig).where(
             and_(
                 GradeConfig.grade_level.in_(grade_levels),
                 QuestionBank.status == STATUS_PUBLISHED
@@ -287,8 +303,8 @@ async def get_dashboard_stats(
             Users.full_name,
             func.count(QuestionBank.question_id).label("count")
         ).join(QuestionBank).join(
-            Topic
-        ).join(Subject).where(
+            QuestionTopicLink, QuestionTopicLink.question_id == QuestionBank.question_id
+        ).join(Topic, Topic.topic_id == QuestionTopicLink.topic_id).join(Subject).where(
             and_(
                 Subject.subject_name.in_(subject_names),
                 QuestionBank.status == STATUS_PUBLISHED

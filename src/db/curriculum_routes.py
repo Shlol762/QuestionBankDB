@@ -57,6 +57,10 @@ class SyllabusUpdate(BaseCurriculumModel):
     academic_year: Optional[str] = Field(default=None, min_length=1)
     pdf_url: Optional[str] = None
 
+class SyllabusDuplicate(BaseCurriculumModel):
+    new_syllabus_name: str = Field(min_length=1)
+    new_academic_year: str = Field(min_length=1)
+
 class GradeUpdate(BaseCurriculumModel):
     grade_level: Optional[int] = None
     pdf_url: Optional[str] = None
@@ -176,6 +180,76 @@ async def create_syllabus(data: SyllabusCreate, session: AsyncSession = Depends(
     await session.commit()
     await session.refresh(new_item)
     return new_item
+
+@router.post("/syllabuses/{id}/duplicate", response_model=SyllabusRead, status_code=status.HTTP_201_CREATED)
+async def duplicate_syllabus(
+    id: int, 
+    data: SyllabusDuplicate, 
+    session: AsyncSession = Depends(get_session), 
+    current_user: Users = Depends(get_current_user)
+):
+    """Duplicates an entire syllabus hierarchy, linking existing questions to the new topics."""
+    if not current_user.is_admin: 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can duplicate syllabuses")
+
+    statement = select(SyllabusMaster).where(
+        func.lower(SyllabusMaster.syllabus_name) == data.new_syllabus_name.lower(),
+        SyllabusMaster.academic_year == data.new_academic_year
+    )
+    if (await session.exec(statement)).first():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Syllabus '{data.new_syllabus_name}' already exists for {data.new_academic_year}")
+
+    from sqlalchemy.orm import selectinload
+    stmt = select(SyllabusMaster).where(SyllabusMaster.syllabus_id == id).options(
+        selectinload(SyllabusMaster.grades)
+        .selectinload(GradeConfig.subjects)
+        .selectinload(Subject.topics)
+        .selectinload(Topic.questions)
+    )
+    source = (await session.exec(stmt)).first()
+    if not source:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Source syllabus not found")
+
+    new_syllabus = SyllabusMaster(
+        syllabus_name=data.new_syllabus_name,
+        academic_year=data.new_academic_year,
+        pdf_url=source.pdf_url
+    )
+    session.add(new_syllabus)
+    await session.flush()
+
+    for s_grade in source.grades:
+        new_grade = GradeConfig(
+            syllabus_id=new_syllabus.syllabus_id,
+            grade_level=s_grade.grade_level,
+            pdf_url=s_grade.pdf_url
+        )
+        session.add(new_grade)
+        await session.flush()
+
+        for s_sub in s_grade.subjects:
+            new_sub = Subject(
+                subject_name=s_sub.subject_name,
+                allowed_subject_id=s_sub.allowed_subject_id,
+                config_id=new_grade.config_id
+            )
+            session.add(new_sub)
+            await session.flush()
+
+            for s_topic in s_sub.topics:
+                new_topic = Topic(
+                    topic_name=s_topic.topic_name,
+                    subject_id=new_sub.subject_id
+                )
+                session.add(new_topic)
+                await session.flush()
+
+                for q in s_topic.questions:
+                    new_topic.questions.append(q)
+
+    await session.commit()
+    await session.refresh(new_syllabus)
+    return new_syllabus
 
 @router.get("/hierarchy", response_model=List[SyllabusHierarchyRead])
 async def get_full_hierarchy(
