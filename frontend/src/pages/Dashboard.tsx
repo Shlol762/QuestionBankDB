@@ -68,12 +68,13 @@ interface QuestionRow {
   options?: Record<string, unknown> | null;
   teacher?: { user_id: number; full_name: string };
   image_url?: string | null;
-  topic?: TopicSummary;
+  topics?: TopicSummary[];
 }
 
 interface DeleteTarget {
   question_id: number;
   question_text: string;
+  topic_count: number;
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -234,7 +235,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
 
   // Delete Mutation
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => client.delete(`/questions/${id}`),
+    mutationFn: (id: number) => client.delete(`/questions/${id}?delete_mode=everywhere`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['questions'] });
       setDeleteTarget(null);
@@ -382,8 +383,9 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
           const formInitialData = editingQuestion
             ? {
                 question_id: editingQuestion.question_id,
-                topic_id: editingQuestion.topic?.topic_id,
-                topic: editingQuestion.topic ? { subject_id: editingQuestion.topic.subject_id } : undefined,
+                topic_ids: editingQuestion.topics?.map(t => t.topic_id) || [],
+                topic_id: editingQuestion.topics?.[0]?.topic_id,
+                topic: editingQuestion.topics?.[0] ? { subject_id: editingQuestion.topics[0].subject_id } : undefined,
                 question_text: editingQuestion.question_text,
                 answer_text: editingQuestion.answer_text,
                 image_url: editingQuestion.image_url ?? undefined,
@@ -394,7 +396,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                 options: editingQuestion.options,
               }
             : preselectedTopic
-              ? { topic_id: preselectedTopic.topic_id, topic: { subject_id: preselectedTopic.subject_id } }
+              ? { topic_ids: [preselectedTopic.topic_id], topic_id: preselectedTopic.topic_id, topic: { subject_id: preselectedTopic.subject_id } }
               : undefined;
 
           return (
@@ -572,7 +574,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                                             <div className="flex justify-end gap-2 transition-all">
                                               <button aria-label="Preview question" onClick={(e) => { e.stopPropagation(); setPreviewQuestion(q); }} className="p-2.5 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Eye className="w-4 h-4" /></button>
                                               <button aria-label="Edit question" onClick={(e) => { e.stopPropagation(); setEditingQuestion(q); }} className="p-2.5 hover:bg-academy-50 dark:hover:bg-academy-900/30 text-gray-400 hover:text-academy-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Pencil className="w-4 h-4" /></button>
-                                              <button aria-label="Delete question" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ question_id: q.question_id, question_text: q.question_text }); }} className="p-2.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Trash2 className="w-4 h-4" /></button>
+                                              <button aria-label="Delete question" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ question_id: q.question_id, question_text: q.question_text, topic_count: q.topics?.length || 0 }); }} className="p-2.5 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-xl transition-colors shadow-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700"><Trash2 className="w-4 h-4" /></button>
                                             </div>
                                           </td>
                                         </tr>
@@ -595,7 +597,11 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, setIsDarkMode }) => {
                 </div>
                 <div className="space-y-3">
                   <h4 className="text-2xl font-black text-gray-900 dark:text-white">Purge Question?</h4>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 px-6 leading-relaxed font-medium">This question will be permanently removed from the repository. All associated data will be lost.</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 px-6 leading-relaxed font-medium">
+                    {deleteTarget?.topic_count && deleteTarget.topic_count > 1 
+                      ? `This question is linked to ${deleteTarget.topic_count} topics. Deleting it will permanently remove it from ALL associated curricula.` 
+                      : 'This question will be permanently removed from the repository. All associated data will be lost.'}
+                  </p>
                 </div>
                 <div className="flex gap-4 px-2">
                   <button onClick={() => setDeleteTarget(null)} className="flex-1 py-4 text-gray-400 font-black text-[10px] uppercase tracking-widest">Retain Question</button>

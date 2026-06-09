@@ -14,7 +14,8 @@ import {
   Trash2,
   FileText,
   Upload,
-  FileX
+  FileX,
+  Copy
 } from 'lucide-react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -116,7 +117,7 @@ const SubjectNode = ({ subject, grade, isAdmin, hodSubjects, assignedSubjectIds,
   );
 };
 
-const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openSubjectModal, openTopicModal }: { grade: Grade; isAdmin: boolean; gradeLevels: number[]; hodSubjects: string[]; assignedSubjectIds: number[]; expanded: string[]; toggleExpand: any; openEdit: any; setDeleteTarget: any; onAddQuestion: any; triggerUpload: any; uploadingGradeId: any; removePdfMutation: any; openSubjectModal: any; openTopicModal: any }) => {
+const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openSubjectModal, openTopicModal, getGradeName }: { grade: Grade; isAdmin: boolean; gradeLevels: number[]; hodSubjects: string[]; assignedSubjectIds: number[]; expanded: string[]; toggleExpand: any; openEdit: any; setDeleteTarget: any; onAddQuestion: any; triggerUpload: any; uploadingGradeId: any; removePdfMutation: any; openSubjectModal: any; openTopicModal: any; getGradeName: (id: number) => string }) => {
   const isExpanded = expanded.includes(`g-${grade.config_id}`);
   const isCoordinator = gradeLevels.includes(grade.grade_level);
   const enrichedGrade = { ...grade, isCoordinator };
@@ -210,7 +211,7 @@ const GradeNode = ({ grade, isAdmin, gradeLevels, hodSubjects, assignedSubjectId
   );
 };
 
-const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openGradeModal, openSubjectModal, openTopicModal }: { syllabus: Syllabus; isAdmin: boolean; gradeLevels: number[]; hodSubjects: string[]; assignedSubjectIds: number[]; expanded: string[]; toggleExpand: any; openEdit: any; setDeleteTarget: any; onAddQuestion: any; triggerUpload: any; uploadingGradeId: any; removePdfMutation: any; openGradeModal: any; openSubjectModal: any; openTopicModal: any }) => {
+const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSubjectIds, expanded, toggleExpand, openEdit, setDeleteTarget, onAddQuestion, triggerUpload, uploadingGradeId, removePdfMutation, openGradeModal, openSubjectModal, openTopicModal, openDuplicateModal, getGradeName }: { syllabus: Syllabus; isAdmin: boolean; gradeLevels: number[]; hodSubjects: string[]; assignedSubjectIds: number[]; expanded: string[]; toggleExpand: any; openEdit: any; setDeleteTarget: any; onAddQuestion: any; triggerUpload: any; uploadingGradeId: any; removePdfMutation: any; openGradeModal: any; openSubjectModal: any; openTopicModal: any; openDuplicateModal: any; getGradeName: (id: number) => string }) => {
   const isExpanded = expanded.includes(`s-${syllabus.syllabus_id}`);
 
   // Lazy load grades
@@ -250,6 +251,7 @@ const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSub
               <>
                 <button onClick={(e) => { e.stopPropagation(); openEdit('syllabus', syllabus); }} className="p-2 hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-academy-600 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button>
                 <button onClick={(e) => { e.stopPropagation(); setDeleteTarget({type:'syllabus', id: syllabus.syllabus_id, name: syllabus.syllabus_name}); }} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={(e) => { e.stopPropagation(); openDuplicateModal(syllabus); }} className="p-2 hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-academy-600 rounded-lg transition-colors" title="Duplicate Syllabus"><Copy className="w-4 h-4" /></button>
                 <button onClick={(e) => { e.stopPropagation(); openGradeModal(syllabus.syllabus_id); }} className="ml-2 bg-academy-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">Add Grade</button>
               </>
             )}
@@ -282,6 +284,7 @@ const SyllabusNode = ({ syllabus, isAdmin, gradeLevels, hodSubjects, assignedSub
                   removePdfMutation={removePdfMutation}
                   openSubjectModal={openSubjectModal}
                   openTopicModal={openTopicModal}
+                  getGradeName={getGradeName}
                 />
               ))}
               {grades.length === 0 && (
@@ -342,7 +345,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
   };
 
   // Modal State
-  const [modalType, setModalType] = useState<'syllabus' | 'grade' | 'subject' | 'topic' | null>(null);
+  const [modalType, setModalType] = useState<'syllabus' | 'grade' | 'subject' | 'topic' | 'duplicate' | null>(null);
   const [modalData, setModalData] = useState<Record<string, any>>({});
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState('');
@@ -389,7 +392,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
       return res.data;
     },
     onSuccess: () => {
-      if (modalType === 'syllabus') {
+      if (modalType === 'syllabus' || modalType === 'duplicate') {
         queryClient.invalidateQueries({ queryKey: ['syllabuses'] });
       } else if (modalType === 'grade') {
         queryClient.invalidateQueries({ queryKey: ['grades', modalData.parentId] });
@@ -505,6 +508,10 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
         endpoint = `/curriculum/topics${isEditing ? `/${modalData.id}` : ''}`;
         payload = { subject_id: modalData.parentId, topic_name: modalData.name };
         break;
+      case 'duplicate':
+        endpoint = `/curriculum/syllabuses/${modalData.id}/duplicate`;
+        payload = { new_syllabus_name: modalData.name, new_academic_year: modalData.year };
+        break;
     }
 
     mutation.mutate({ method, endpoint, payload });
@@ -533,6 +540,7 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
   const openGradeModal = (parentId: number) => { setModalType('grade'); setModalData({ parentId }); setIsEditing(false); };
   const openSubjectModal = (parentId: number) => { setModalType('subject'); setModalData({ parentId }); setIsEditing(false); };
   const openTopicModal = (parentId: number) => { setModalType('topic'); setModalData({ parentId }); setIsEditing(false); };
+  const openDuplicateModal = (item: Record<string, any>) => { setModalType('duplicate'); setModalData({ id: item.syllabus_id, name: `${item.syllabus_name} (Copy)`, year: item.academic_year }); setIsEditing(false); setError(''); };
 
   if (isLoading) {
     return (
@@ -600,6 +608,8 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
                 openGradeModal={openGradeModal}
                 openSubjectModal={openSubjectModal}
                 openTopicModal={openTopicModal}
+                openDuplicateModal={openDuplicateModal}
+                getGradeName={getGradeName}
               />
             ))
           )}
@@ -625,6 +635,18 @@ const CurriculumManager: React.FC<CurriculumManagerProps> = ({ onAddQuestion }) 
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Academic Year</label>
                   <input required className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 font-bold dark:text-white transition-all" placeholder="e.g. 2025-26" value={modalData.year || ''} onChange={e => setModalData({...modalData, year: e.target.value})} maxLength={15} />
+                </div>
+              </>
+            )}
+            {modalType === 'duplicate' && (
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">New Syllabus Name</label>
+                  <input required autoFocus className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 font-bold dark:text-white transition-all" placeholder="e.g. CBSE Primary (Copy)" value={modalData.name || ''} onChange={e => setModalData({...modalData, name: e.target.value})} maxLength={50} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">New Academic Year</label>
+                  <input required className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl outline-none focus:ring-4 focus:ring-academy-500/10 font-bold dark:text-white transition-all" placeholder="e.g. 2026-27" value={modalData.year || ''} onChange={e => setModalData({...modalData, year: e.target.value})} maxLength={15} />
                 </div>
               </>
             )}

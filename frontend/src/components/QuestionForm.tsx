@@ -24,6 +24,7 @@ import toast from 'react-hot-toast';
 import client from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { useSettingsStore } from '../store/settingsStore';
+import Modal from './Modal';
 
 const QUESTION_TYPES = [
   'MCQ',
@@ -65,6 +66,7 @@ const defaultLabels = ['Label A', 'Label B'];
 interface QuestionFormProps {
   initialData?: {
     question_id?: number;
+    topic_ids?: number[];
     topic_id?: number;
     topic?: { subject_id: number; [key: string]: unknown };
     question_text?: string;
@@ -121,7 +123,7 @@ interface AllowedSubject {
 
 // --- VALIDATION SCHEMA ---
 const questionSchema = z.object({
-  topic_id: z.string().min(1, "Topic selection is required"),
+  topic_ids: z.array(z.number()).min(1, "At least one topic must be selected"),
   question_text: z.string().min(1, "Question text cannot be empty").max(1000, "Max 1000 characters"),
   answer_text: z.string().min(1, "Answer/solution is required"),
   image_url: z.string().optional(),
@@ -256,7 +258,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   const { register, handleSubmit, watch, setValue, formState: { errors, isDirty } } = useForm<QuestionFormData>({
     resolver: zodResolver(questionSchema),
     defaultValues: {
-      topic_id: initialData?.topic_id?.toString() || '',
+      topic_ids: initialData?.topic_ids || (initialData?.topic_id ? [initialData.topic_id] : []),
       question_text: initialData?.question_text || '',
       answer_text: initialData?.answer_text || '',
       image_url: initialData?.image_url || '',
@@ -272,7 +274,8 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   const currentOptions = watch('options');
   const currentAnswer = watch('answer_text');
   const currentImageUrl = watch('image_url');
-  const currentTopicId = Number(watch('topic_id'));
+  const currentTopicIds = watch('topic_ids') || [];
+  const [cowData, setCowData] = useState<QuestionFormData | null>(null);
 
   const asMCQOptions = (options: QuestionOptions | undefined): MCQOptions => {
     if (options && typeof options === 'object' && 'A' in options && 'B' in options && 'C' in options && 'D' in options) {
@@ -372,10 +375,9 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   }, [scopedHierarchy]);
 
   const selectedTopicMeta = useMemo(() => {
-    const topicId = currentTopicId;
-    if (!Number.isFinite(topicId)) return undefined;
-    return topicIndex.get(topicId);
-  }, [topicIndex, currentTopicId]);
+    if (!currentTopicIds.length) return undefined;
+    return topicIndex.get(currentTopicIds[0]);
+  }, [topicIndex, currentTopicIds]);
 
   const filteredTopicEntries = useMemo(() => {
     const q = topicSearch.trim().toLowerCase();
@@ -407,12 +409,12 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
 
   // Mutations
   const mutation = useMutation({
-    mutationFn: async (data: QuestionFormData) => {
+    mutationFn: async ({ data, update_mode, context_topic_id }: { data: QuestionFormData, update_mode?: string, context_topic_id?: number }) => {
       const payload = {
         ...data,
-        topic_id: parseInt(data.topic_id),
-        // For match the following, the answer text is static
         answer_text: data.q_type === 'Match the Following' ? "Pairs matched" : data.answer_text,
+        update_mode,
+        context_topic_id
       };
 
       if (isEditing) {
@@ -421,6 +423,7 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
       return client.post('/questions/', payload);
     },
     onSuccess: () => {
+      setCowData(null);
       queryClient.invalidateQueries({ queryKey: ['questions'] });
       toast.success(isEditing ? 'Question updated!' : 'Question created!');
       onSuccess();
@@ -487,7 +490,11 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
   };
 
   const onSubmit: SubmitHandler<QuestionFormData> = (data) => {
-    mutation.mutate({ ...data, status: submitMode });
+    if (isEditing && (initialData?.topic_ids?.length || 0) > 1) {
+      setCowData({ ...data, status: submitMode });
+    } else {
+      mutation.mutate({ data: { ...data, status: submitMode } });
+    }
   };
 
   const updateObjectOption = (key: string, value: unknown) => {
@@ -880,8 +887,15 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                       <button
                         key={`search-${entry.topic.topic_id}`}
                         type="button"
-                        onClick={() => setValue('topic_id', String(entry.topic.topic_id), { shouldValidate: true, shouldDirty: true })}
-                        className={`w-full text-left px-3 py-2 rounded-xl border transition-all ${currentTopicId === entry.topic.topic_id ? 'border-academy-500 bg-academy-50 dark:bg-academy-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-academy-300'}`}
+                        onClick={() => {
+                          const ids = currentTopicIds;
+                          if (ids.includes(entry.topic.topic_id)) {
+                            setValue('topic_ids', ids.filter(id => id !== entry.topic.topic_id), { shouldValidate: true, shouldDirty: true });
+                          } else {
+                            setValue('topic_ids', [...ids, entry.topic.topic_id], { shouldValidate: true, shouldDirty: true });
+                          }
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-xl border transition-all ${currentTopicIds.includes(entry.topic.topic_id) ? 'border-academy-500 bg-academy-50 dark:bg-academy-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-academy-300'}`}
                       >
                         <p className="text-xs font-black text-gray-900 dark:text-white">{entry.topic.topic_name}</p>
                         <p className="text-[10px] font-bold text-gray-500">{entry.syllabus.syllabus_name} • {getGradeName(entry.grade.grade_level)} • {entry.subject.subject_name}</p>
@@ -945,8 +959,15 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                                             <button
                                               key={topic.topic_id}
                                               type="button"
-                                              onClick={() => setValue('topic_id', String(topic.topic_id), { shouldValidate: true, shouldDirty: true })}
-                                              className={`w-full text-left px-3 py-2 rounded-lg border text-[11px] font-bold transition-all ${currentTopicId === topic.topic_id ? 'bg-academy-600 border-academy-600 text-white' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-academy-300'}`}
+                                              onClick={() => {
+                                                const ids = currentTopicIds;
+                                                if (ids.includes(topic.topic_id)) {
+                                                  setValue('topic_ids', ids.filter(id => id !== topic.topic_id), { shouldValidate: true, shouldDirty: true });
+                                                } else {
+                                                  setValue('topic_ids', [...ids, topic.topic_id], { shouldValidate: true, shouldDirty: true });
+                                                }
+                                              }}
+                                              className={`w-full text-left px-3 py-2 rounded-lg border text-[11px] font-bold transition-all ${currentTopicIds.includes(topic.topic_id) ? 'bg-academy-600 border-academy-600 text-white' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-academy-300'}`}
                                             >
                                               {topic.topic_name}
                                             </button>
@@ -966,11 +987,18 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                   ))}
                 </div>
 
-                {selectedTopicMeta && (
-                  <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/30 bg-emerald-50/60 dark:bg-emerald-900/10 px-3 py-2">
-                    <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Selected Topic</p>
-                    <p className="text-xs font-black text-gray-800 dark:text-gray-200 mt-1">{selectedTopicMeta.topic.topic_name}</p>
-                    <p className="text-[10px] font-bold text-gray-500 mt-0.5">{selectedTopicMeta.syllabus.syllabus_name} • {getGradeName(selectedTopicMeta.grade.grade_level)} • {selectedTopicMeta.subject.subject_name}</p>
+                {currentTopicIds.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700">
+                    {currentTopicIds.map(tid => {
+                      const meta = topicIndex.get(tid);
+                      if (!meta) return null;
+                      return (
+                        <div key={tid} className="flex items-center gap-1.5 px-3 py-1.5 bg-academy-100 dark:bg-academy-900/30 text-academy-800 dark:text-academy-300 rounded-lg text-[10px] font-black uppercase shadow-sm border border-academy-200 dark:border-academy-800">
+                          <span>{meta.topic.topic_name}</span>
+                          <button type="button" onClick={() => setValue('topic_ids', currentTopicIds.filter(id => id !== tid), { shouldValidate: true, shouldDirty: true })} className="hover:text-red-500 transition-colors p-0.5 rounded-full"><X className="w-3 h-3" /></button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -982,8 +1010,8 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
                 {selectedTopicMeta && isRecommendedSubject && recommendation && (
                   <p className="text-emerald-600 text-[10px] font-bold mt-1">Recommendation: {recommendation}</p>
                 )}
-                <input type="hidden" {...register("topic_id")} />
-                {errors.topic_id && <p className="text-red-500 text-[10px] font-bold">{errors.topic_id.message as string}</p>}
+                <input type="hidden" {...register("topic_ids")} />
+                {errors.topic_ids && <p className="text-red-500 text-[10px] font-bold">{errors.topic_ids.message as string}</p>}
               </div>
 
               <div className="space-y-1.5">
@@ -1116,6 +1144,50 @@ const QuestionForm: React.FC<QuestionFormProps> = ({ initialData, onSuccess, onC
           </div>
         </form>
       </div>
+
+      <Modal isOpen={cowData !== null} onClose={() => setCowData(null)} title="Update Shared Question">
+        <div className="space-y-6 pt-4 text-center">
+          <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-3xl flex items-center justify-center mx-auto shadow-inner">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h4 className="text-xl font-black text-gray-900 dark:text-white">Heads Up!</h4>
+            <p className="text-sm text-gray-500 dark:text-gray-400 px-4 leading-relaxed font-medium">
+              This question is currently linked to <strong>{initialData?.topic_ids?.length} topics</strong>. Modifying it will alter the question across all associated curricula.
+            </p>
+          </div>
+          
+          <div className="flex flex-col gap-3 px-4 pt-4">
+            <button
+              onClick={() => {
+                if (cowData) mutation.mutate({ data: cowData, update_mode: 'everywhere' });
+              }}
+              disabled={mutation.isPending}
+              className="w-full py-4 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-2xl shadow-xl shadow-amber-600/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+            >
+              {mutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <SaveIcon className="w-5 h-5" />}
+              Update Everywhere
+            </button>
+            <button
+              onClick={() => {
+                if (cowData) mutation.mutate({ data: cowData, update_mode: 'copy', context_topic_id: initialData?.topic_id });
+              }}
+              disabled={mutation.isPending}
+              className="w-full py-4 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-black rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2"
+            >
+              {mutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+              Save as New Copy (Just for this Topic)
+            </button>
+            <button
+              onClick={() => setCowData(null)}
+              className="w-full py-3 text-gray-400 font-bold text-xs uppercase tracking-widest mt-2 hover:text-gray-600 transition-colors"
+            >
+              Cancel Edit
+            </button>
+          </div>
+        </div>
+      </Modal>
+
     </div>
   );
 };
