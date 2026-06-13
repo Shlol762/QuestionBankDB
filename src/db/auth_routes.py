@@ -89,9 +89,14 @@ def validate_password_strength(password: str, is_admin: bool):
             detail=[{"loc": ["body", "password"], "msg": f"Password must be at least {min_len} characters"}]
         )
 
-async def validate_assignments(session: AsyncSession, grade_levels: List[int] = None, hod_allowed_subject_ids: List[int] = None):
+async def validate_assignments(
+    session: AsyncSession, 
+    grade_levels: List[int] = None, 
+    hod_allowed_subject_ids: List[int] = None,
+    subject_ids: List[int] = None
+):
     """
-    Ensures assigned grades and allowed subjects exist.
+    Ensures assigned grades, allowed subjects, and teaching subjects exist.
     """
     if grade_levels:
         grade_stmt = select(func.count(GradeConfig.config_id)).where(
@@ -113,6 +118,17 @@ async def validate_assignments(session: AsyncSession, grade_levels: List[int] = 
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
                 "One or more assigned HOD subjects are not in the allowed subjects list",
+            )
+
+    if subject_ids:
+        subject_stmt = select(func.count(Subject.subject_id)).where(
+            Subject.subject_id.in_(subject_ids)
+        )
+        found = (await session.exec(subject_stmt)).one()
+        if found < len(set(subject_ids)):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "One or more teaching subject assignments do not exist in the curriculum",
             )
 
 def map_user_to_read(user: Users) -> dict:
@@ -191,6 +207,7 @@ async def update_my_password(
 async def list_users(
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user),
+    role: Optional[str] = Query(None, description="Filter by role: admin, coordinator, hod, faculty"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0)
 ):
@@ -201,11 +218,35 @@ async def list_users(
     data_stmt = select(
         Users,
         func.count(Users.user_id).over().label("total_count")
-    ).options(
+    )
+
+    if role == "admin":
+        data_stmt = data_stmt.where(Users.is_admin == True)
+    elif role == "coordinator":
+        data_stmt = data_stmt.where(
+            select(GradeCoordinatorLink.user_id)
+            .where(GradeCoordinatorLink.user_id == Users.user_id)
+            .exists()
+        )
+    elif role == "hod":
+        data_stmt = data_stmt.where(
+            select(HODLink.user_id)
+            .where(HODLink.user_id == Users.user_id)
+            .exists()
+        )
+    elif role == "faculty":
+        data_stmt = data_stmt.where(
+            select(UserSubjectLink.user_id)
+            .where(UserSubjectLink.user_id == Users.user_id)
+            .exists()
+        )
+
+    data_stmt = data_stmt.options(
         selectinload(Users.subjects),
         selectinload(Users.grade_coordinating),
         selectinload(Users.hod_assignments).selectinload(HODLink.allowed_subject)
     ).order_by(Users.full_name).offset(offset).limit(limit)
+    
     rows = (await session.exec(data_stmt)).all()
     total = rows[0][1] if rows else 0
     items = [map_user_to_read(row[0]) for row in rows]
@@ -228,7 +269,12 @@ async def register_user(
     if (await session.exec(statement)).first():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "User already registered")
     
-    await validate_assignments(session, user_data.grade_levels, user_data.hod_allowed_subject_ids)
+    await validate_assignments(
+        session, 
+        user_data.grade_levels, 
+        user_data.hod_allowed_subject_ids, 
+        user_data.subject_ids
+    )
 
     validate_password_strength(user_data.password, user_data.is_admin)
 
@@ -270,7 +316,12 @@ async def update_user(
     if not user: 
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
     
-    await validate_assignments(session, data.grade_levels, data.hod_allowed_subject_ids)
+    await validate_assignments(
+        session, 
+        data.grade_levels, 
+        data.hod_allowed_subject_ids, 
+        data.subject_ids
+    )
 
     update_data = data.model_dump(exclude_unset=True)
     is_admin_check = update_data.get("is_admin", user.is_admin)

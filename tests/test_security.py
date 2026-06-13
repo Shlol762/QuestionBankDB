@@ -163,3 +163,56 @@ async def test_unauthorized_data_modification(client: AsyncClient):
     
     assert response.status_code == 403 # Forbidden
     assert "permission" in response.json()["detail"] or "authorized" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_invalid_subject_assignments(client: AsyncClient):
+    """Scenario: Trying to register or update a user with non-existent subject_ids."""
+    # Authenticate as Admin first
+    try:
+        await client.post("/auth/initial-setup", json={
+            "full_name": "Admin", "email": "admin@test.com", "password": STRONG_PASSWORD, "department": "IT"
+        })
+    except Exception:
+        pass
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": STRONG_PASSWORD})
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Register with a non-existent subject ID (e.g. 99999)
+    bad_register_data = {
+        "full_name": "Bad Subject Teacher",
+        "email": "badsubject@test.com",
+        "password": STRONG_PASSWORD,
+        "department": "Science",
+        "subject_ids": [99999]
+    }
+    response = await client.post("/auth/register", json=bad_register_data, headers=headers)
+    assert response.status_code == 400
+    assert "teaching subject assignments do not exist" in response.json()["detail"]
+
+    # Register successfully with no subject IDs
+    good_register_data = {
+        "full_name": "Good Teacher",
+        "email": "goodteacher@test.com",
+        "password": STRONG_PASSWORD,
+        "department": "Science",
+        "subject_ids": []
+    }
+    res = await client.post("/auth/register", json=good_register_data, headers=headers)
+    assert res.status_code == 201
+
+    # Find the user's ID
+    users_res = await client.get("/auth/users", headers=headers)
+    users = users_res.json()["items"]
+    user = next(u for u in users if u["email"] == "goodteacher@test.com")
+    user_id = user["user_id"]
+
+    # Try to update the user with a non-existent subject ID
+    update_data = {
+        "subject_ids": [99999]
+    }
+    response = await client.patch(f"/auth/users/{user_id}", json=update_data, headers=headers)
+    assert response.status_code == 400
+    assert "teaching subject assignments do not exist" in response.json()["detail"]
+
