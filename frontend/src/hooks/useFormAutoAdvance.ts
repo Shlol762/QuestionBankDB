@@ -11,7 +11,8 @@ import type { RefObject } from 'react';
  */
 export function useFormAutoAdvance(
   containerRef: RefObject<HTMLElement | null>,
-  triggerDependency: any
+  triggerDependency: unknown,
+  isHighRisk: boolean = false
 ) {
   useEffect(() => {
     if (!containerRef.current) return;
@@ -57,24 +58,56 @@ export function useFormAutoAdvance(
         // Prevent default form submission or newline
         e.preventDefault();
 
-        // Get all interactable form elements in order
-        const focusable = Array.from(
+        // Separate inputs/selects/textareas from submit/next buttons
+        const inputs = Array.from(
           container.querySelectorAll(
-            'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button[type="submit"]:not([disabled]), button.next-step-btn:not([disabled])'
+            'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])'
           )
         ) as HTMLElement[];
 
-        const index = focusable.indexOf(target);
-        if (index > -1 && index < focusable.length - 1) {
-          focusable[index + 1].focus();
-        } else if (index === focusable.length - 1) {
-          // If we reached the final submit button or complete button, trigger click/submit
-          const submitBtn = focusable[index];
-          if (submitBtn.tagName.toLowerCase() === 'button') {
-            submitBtn.click();
+        const buttons = Array.from(
+          container.querySelectorAll(
+            'button[type="submit"]:not([disabled]), button.next-step-btn:not([disabled])'
+          )
+        ) as HTMLElement[];
+
+        const allFocusable = [...inputs, ...buttons];
+        const indexInInputs = inputs.indexOf(target);
+
+        if (indexInInputs > -1) {
+          if (indexInInputs < inputs.length - 1) {
+            // Move to next input field
+            inputs[indexInInputs + 1].focus();
           } else {
-            const form = container.querySelector('form');
-            if (form) form.requestSubmit();
+            // We are at the last input field!
+            if (isHighRisk) {
+              // High risk: focus the submit/confirm button first
+              if (buttons.length > 0) {
+                buttons[0].focus();
+              }
+            } else {
+              // Low risk: submit immediately!
+              const form = container.querySelector('form');
+              if (form) {
+                form.requestSubmit();
+              } else if (buttons.length > 0) {
+                buttons[0].click();
+              }
+            }
+          }
+        } else {
+          // If the focus is already on a button, navigate or submit
+          const indexInAll = allFocusable.indexOf(target);
+          if (indexInAll > -1 && indexInAll < allFocusable.length - 1) {
+            allFocusable[indexInAll + 1].focus();
+          } else if (indexInAll === allFocusable.length - 1) {
+            const submitBtn = allFocusable[indexInAll];
+            if (submitBtn.tagName.toLowerCase() === 'button') {
+              submitBtn.click();
+            } else {
+              const form = container.querySelector('form');
+              if (form) form.requestSubmit();
+            }
           }
         }
       }
@@ -107,5 +140,5 @@ export function useFormAutoAdvance(
       container.removeEventListener('keydown', handleKeyDown);
       container.removeEventListener('change', handleChange);
     };
-  }, [triggerDependency, containerRef]);
+  }, [triggerDependency, containerRef, isHighRisk]);
 }
