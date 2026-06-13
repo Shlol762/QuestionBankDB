@@ -11,7 +11,10 @@ import {
   useDeleteSubject,
   useCreateTopic, 
   useUpdateTopic, 
-  useDeleteTopic
+  useDeleteTopic,
+  useDuplicateSyllabus,
+  useUpdateGrade,
+  useUploadPdf
 } from '../../hooks/useCurriculum';
 import { 
   useAllowedSubjects,
@@ -22,17 +25,22 @@ import {
   useUpdateAllowedGrade
 } from '../../hooks/useSystemConfig';
 import { useDeleteUser } from '../../hooks/useStaff';
+import { useExplorerUrlState } from '../../hooks/useExplorerUrlState';
 
 export const Modal: React.FC = () => {
   const { dialogType, dialogPayload, closeDialog } = useUIStore();
+  const { selectSyllabus, selectGrade, selectSubject, selectTopic } = useExplorerUrlState();
   const dialogRef = useRef<HTMLDivElement>(null);
 
   // --- MUTATION HOOKS ---
   const createSyllabusMutation = useCreateSyllabus();
   const updateSyllabusMutation = useUpdateSyllabus();
   const deleteSyllabusMutation = useDeleteSyllabus();
+  const duplicateSyllabusMutation = useDuplicateSyllabus();
   const createGradeMutation = useCreateGrade();
+  const updateGradeMutation = useUpdateGrade();
   const deleteGradeMutation = useDeleteGrade();
+  const uploadPdfMutation = useUploadPdf();
   const createSubjectMutation = useCreateSubject();
   const updateSubjectMutation = useUpdateSubject();
   const deleteSubjectMutation = useDeleteSubject();
@@ -59,6 +67,8 @@ export const Modal: React.FC = () => {
   const [isActive, setIsActive] = useState(true);
   const [confirmInput, setConfirmInput] = useState('');
   const [allowedSubjectId, setAllowedSubjectId] = useState<number | ''>('');
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [currentPdfUrl, setCurrentPdfUrl] = useState<string | null>(null);
 
   // Close on Escape key
   useEffect(() => {
@@ -93,15 +103,24 @@ export const Modal: React.FC = () => {
     setIsActive(true);
     setConfirmInput('');
     setAllowedSubjectId('');
+    setPdfFile(null);
+    setCurrentPdfUrl(null);
 
     if (dialogPayload) {
       const payload = dialogPayload as any;
-      if (payload.currentName !== undefined) setName(payload.currentName);
+      if (payload.currentName !== undefined) {
+        if (dialogType === 'DUPLICATE_SYLLABUS') {
+          setName(`${payload.currentName} (Copy)`);
+        } else {
+          setName(payload.currentName);
+        }
+      }
       if (payload.currentYear !== undefined) setYear(payload.currentYear);
       if (payload.currentLevel !== undefined) setLevel(String(payload.currentLevel));
       if (payload.gradeLevel !== undefined) setLevel(String(payload.gradeLevel));
       if (payload.currentNote !== undefined) setNote(payload.currentNote || '');
       if (payload.isActive !== undefined) setIsActive(payload.isActive);
+      if (payload.currentPdfUrl !== undefined) setCurrentPdfUrl(payload.currentPdfUrl);
     }
   }, [dialogType, dialogPayload]);
 
@@ -115,6 +134,27 @@ export const Modal: React.FC = () => {
   if (!dialogType) return null;
 
   const isDestructive = dialogType.startsWith('DELETE_');
+
+  const isPending = 
+    createSyllabusMutation.isPending ||
+    updateSyllabusMutation.isPending ||
+    deleteSyllabusMutation.isPending ||
+    duplicateSyllabusMutation.isPending ||
+    createGradeMutation.isPending ||
+    updateGradeMutation.isPending ||
+    deleteGradeMutation.isPending ||
+    uploadPdfMutation.isPending ||
+    createSubjectMutation.isPending ||
+    updateSubjectMutation.isPending ||
+    deleteSubjectMutation.isPending ||
+    createTopicMutation.isPending ||
+    updateTopicMutation.isPending ||
+    deleteTopicMutation.isPending ||
+    createAllowedSubjectMutation.isPending ||
+    updateAllowedSubjectMutation.isPending ||
+    createAllowedGradeMutation.isPending ||
+    updateAllowedGradeMutation.isPending ||
+    deleteUserMutation.isPending;
 
   // Resolve what item name is needed to confirm the deletion
   let targetName = 'DELETE';
@@ -145,38 +185,75 @@ export const Modal: React.FC = () => {
 
     try {
       switch (dialogType) {
-        case 'ADD_SYLLABUS':
-          await createSyllabusMutation.mutateAsync({ syllabus_name: name, academic_year: year });
+        case 'ADD_SYLLABUS': {
+          const res = await createSyllabusMutation.mutateAsync({ syllabus_name: name, academic_year: year });
+          if (res?.syllabus_id) {
+            selectSyllabus(res.syllabus_id);
+          }
           break;
+        }
         case 'EDIT_SYLLABUS':
           await updateSyllabusMutation.mutateAsync({ id: payload.syllabusId, payload: { syllabus_name: name, academic_year: year } });
           break;
         case 'DELETE_SYLLABUS':
           await deleteSyllabusMutation.mutateAsync(payload.syllabusId);
           break;
-        case 'ADD_GRADE':
-          await createGradeMutation.mutateAsync({ syllabus_id: payload.syllabusId, grade_level: parseInt(level, 10) });
+        case 'DUPLICATE_SYLLABUS': {
+          const res = await duplicateSyllabusMutation.mutateAsync({ 
+            id: payload.syllabusId, 
+            payload: { new_syllabus_name: name, new_academic_year: year } 
+          });
+          if (res?.syllabus_id) {
+            selectSyllabus(res.syllabus_id);
+          }
+          break;
+        }
+        case 'ADD_GRADE': {
+          const res = await createGradeMutation.mutateAsync({ syllabus_id: payload.syllabusId, grade_level: parseInt(level, 10) });
+          if (res?.config_id) {
+            selectGrade(res.config_id);
+          }
+          break;
+        }
+        case 'MANAGE_GRADE_PDF':
+          let finalPdfUrl = currentPdfUrl;
+          if (pdfFile) {
+            const uploadRes = await uploadPdfMutation.mutateAsync(pdfFile);
+            finalPdfUrl = uploadRes.pdf_url;
+          }
+          await updateGradeMutation.mutateAsync({
+            id: payload.gradeId,
+            payload: { pdf_url: finalPdfUrl }
+          });
           break;
         case 'DELETE_GRADE':
           await deleteGradeMutation.mutateAsync(payload.configId);
           break;
-        case 'ADD_SUBJECT':
+        case 'ADD_SUBJECT': {
           if (!allowedSubjectId) return;
-          await createSubjectMutation.mutateAsync({ 
+          const res = await createSubjectMutation.mutateAsync({ 
             config_id: payload.configId, 
             allowed_subject_id: allowedSubjectId as number, 
             subject_name: name 
           });
+          if (res?.subject_id) {
+            selectSubject(res.subject_id);
+          }
           break;
+        }
         case 'EDIT_SUBJECT':
           await updateSubjectMutation.mutateAsync({ id: payload.subjectId, payload: { subject_name: name } });
           break;
         case 'DELETE_SUBJECT':
           await deleteSubjectMutation.mutateAsync(payload.subjectId);
           break;
-        case 'ADD_TOPIC':
-          await createTopicMutation.mutateAsync({ subject_id: payload.subjectId, topic_name: name });
+        case 'ADD_TOPIC': {
+          const res = await createTopicMutation.mutateAsync({ subject_id: payload.subjectId, topic_name: name });
+          if (res?.topic_id) {
+            selectTopic(res.topic_id);
+          }
           break;
+        }
         case 'EDIT_TOPIC':
           await updateTopicMutation.mutateAsync({ id: payload.topicId, payload: { topic_name: name } });
           break;
@@ -212,6 +289,7 @@ export const Modal: React.FC = () => {
     switch (dialogType) {
       case 'ADD_SYLLABUS':
       case 'EDIT_SYLLABUS':
+      case 'DUPLICATE_SYLLABUS':
         return (
           <div className="space-y-4">
             <div>
@@ -405,6 +483,79 @@ export const Modal: React.FC = () => {
           </div>
         );
 
+      case 'MANAGE_GRADE_PDF':
+        return (
+          <div className="space-y-4">
+            <div className="text-xs text-gray-400">
+              Syllabus: <span className="font-semibold text-white">{(dialogPayload as any)?.syllabusName || 'N/A'}</span>
+            </div>
+            <div className="text-xs text-gray-400">
+              Grade Level: <span className="font-semibold text-white">Grade {(dialogPayload as any)?.gradeLevel || 'N/A'}</span>
+            </div>
+
+            {/* Current PDF display */}
+            <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-2">
+              <span className="block text-xs font-semibold uppercase tracking-wider text-gray-400">Current PDF Status</span>
+              {currentPdfUrl ? (
+                <div className="flex items-center justify-between">
+                  <a 
+                    href={`${import.meta.env.VITE_API_BASE_URL || ''}${currentPdfUrl}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-xs text-neon-blue-400 hover:underline flex items-center gap-1.5 truncate max-w-[200px]"
+                  >
+                    <svg className="w-4 h-4 shrink-0 text-neon-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                    View Current PDF
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => { setCurrentPdfUrl(null); setPdfFile(null); }}
+                    className="text-xs text-red-400 hover:text-red-300 hover:underline font-medium"
+                  >
+                    Remove PDF
+                  </button>
+                </div>
+              ) : pdfFile ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-neon-emerald-400 truncate max-w-[200px] font-medium">
+                    Selected: {pdfFile.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPdfFile(null)}
+                    className="text-xs text-gray-400 hover:text-white hover:underline font-medium"
+                  >
+                    Clear
+                  </button>
+                </div>
+              ) : (
+                <div className="text-xs text-amber-400 flex items-center gap-1.5 font-medium">
+                  <svg className="w-4 h-4 shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                  No PDF uploaded
+                </div>
+              )}
+            </div>
+
+            {/* File Input */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Upload/Replace PDF</label>
+              <input
+                type="file"
+                accept=".pdf,application/pdf"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setPdfFile(file);
+                    setCurrentPdfUrl(null);
+                  }
+                }}
+                className="w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-white/5 file:text-white hover:file:bg-white/10 cursor-pointer"
+              />
+              <span className="block text-[10px] text-gray-500 mt-1.5">Only PDF documents up to 50MB are allowed</span>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -502,20 +653,21 @@ export const Modal: React.FC = () => {
             <button 
               type="button"
               onClick={closeDialog}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-200"
+              disabled={isPending}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button 
               type="submit"
-              disabled={!isConfirmed}
+              disabled={!isConfirmed || isPending}
               className={`px-5 py-2 rounded-lg text-sm font-medium text-white transition-all duration-200 ${
                 isDestructive 
                   ? 'bg-neon-red-600 hover:bg-neon-red-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(239,68,68,0.4)]' 
-                  : 'bg-neon-blue-600 hover:bg-neon-blue-500 shadow-[0_0_15px_rgba(14,165,233,0.4)]'
+                  : 'bg-neon-blue-600 hover:bg-neon-blue-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(14,165,233,0.4)]'
               }`}
             >
-              {isDestructive ? 'Delete Permanently' : 'Confirm'}
+              {isPending ? 'Processing...' : (isDestructive ? 'Delete Permanently' : 'Confirm')}
             </button>
           </div>
         </form>
