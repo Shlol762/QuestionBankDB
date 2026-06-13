@@ -96,13 +96,11 @@ export const QuestionGridPanel: React.FC = () => {
                 <div className="flex flex-col items-end gap-3 min-w-[120px]">
                   {/* Status Badge */}
                   <div className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                    !q.is_active 
+                    !q.is_active || q.status === 'archived'
                       ? 'bg-surface-700/50 text-gray-400 border-white/10' 
-                      : q.status === 'published' 
-                        ? 'bg-neon-emerald-500/10 text-neon-emerald-400 border-neon-emerald-500/30' 
-                        : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                      : 'bg-neon-emerald-500/10 text-neon-emerald-400 border-neon-emerald-500/30'
                   }`}>
-                    {!q.is_active ? 'Archived' : q.status}
+                    {!q.is_active || q.status === 'archived' ? 'Archived' : q.status}
                   </div>
                   
                   {/* Inline Action */}

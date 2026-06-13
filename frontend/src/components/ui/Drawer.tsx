@@ -188,7 +188,7 @@ export const Drawer: React.FC = () => {
         marks: parseInt(questionMarks, 10),
         difficulty: questionDifficulty.toUpperCase(),
         q_type: 'MCQ',
-        status: questionDetails?.status || 'DRAFT'
+        status: questionDetails?.status || 'published'
       }
     });
 
@@ -233,7 +233,7 @@ export const Drawer: React.FC = () => {
         marks: parseInt(questionMarks, 10),
         difficulty: questionDifficulty.toUpperCase(),
         q_type: 'MCQ',
-        status: 'DRAFT'
+        status: 'published'
       });
       
       closeDrawer();
@@ -560,7 +560,7 @@ export const Drawer: React.FC = () => {
             { id: 'admin', title: 'System Administrator', desc: 'Full control of syllabus, users, settings, and question database.' },
             { id: 'coordinator', title: 'Grade Coordinator', desc: 'Manages subjects, topics, and quality reviews for assigned grades.' },
             { id: 'hod', title: 'Department Head (HOD)', desc: 'Controls subject curriculum guidelines and approves questions.' },
-            { id: 'faculty', title: 'Faculty User', desc: 'Auths questions, builds assessments, and manages personal drafts.' }
+            { id: 'faculty', title: 'Faculty User', desc: 'Auths questions, builds assessments, and manages personal questions.' }
           ].map((roleOption) => {
             const isSelected = staffRole === roleOption.id;
             return (
