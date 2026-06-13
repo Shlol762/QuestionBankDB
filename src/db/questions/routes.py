@@ -81,6 +81,7 @@ class QuestionUpdate(BaseModel):
     context_topic_id: Optional[int] = None # Which topic the user is editing from
     
     topic_id: Optional[int] = None
+    topic_ids: Optional[List[int]] = None
     question_text: Optional[str] = None
     answer_text: Optional[str] = None
     options: Optional[dict] = None
@@ -376,7 +377,7 @@ async def update_question(
     if question.teacher_id != current_user.user_id and not can_manage:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to update this question")
     
-    update_data = data.model_dump(exclude_unset=True, exclude={"update_mode", "context_topic_id", "topic_id"})
+    update_data = data.model_dump(exclude_unset=True, exclude={"update_mode", "context_topic_id", "topic_id", "topic_ids"})
     
     if data.update_mode == "copy" and len(question.topics) > 1 and data.context_topic_id:
         new_q_data = {
@@ -406,6 +407,19 @@ async def update_question(
     else:
         for key, value in update_data.items():
             setattr(question, key, value)
+            
+        if data.topic_ids is not None:
+            stmt = select(Topic).where(Topic.topic_id.in_(data.topic_ids)).options(
+                selectinload(Topic.subject).selectinload(Subject.grade)
+            )
+            result = await session.exec(stmt)
+            topics = result.all()
+            if len(topics) != len(set(data.topic_ids)):
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "One or more target topics not found")
+            for topic in topics:
+                if not current_user.can_modify_topic(topic.subject_id, topic.subject.allowed_subject_id, topic.subject.grade.grade_level):
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, f"You do not have permission to add questions to topic '{topic.topic_name}'")
+            question.topics = topics
         
         question.updated_at = datetime.now(timezone.utc)
         validate_question_logic(question)
