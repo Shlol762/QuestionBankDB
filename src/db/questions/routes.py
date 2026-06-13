@@ -10,7 +10,7 @@ from src.db.main import get_session
 from src.db.models import QuestionBank, Users, Topic, DifficultyLevel, QuestionType, QuestionStatus, Subject, Page
 from src.db.auth_utils import get_current_user
 from src.limiter import limiter
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/questions", tags=["Question Management"])
@@ -38,6 +38,26 @@ class QuestionCreate(BaseModel):
     difficulty: DifficultyLevel = DifficultyLevel.MEDIUM
     q_type: QuestionType = QuestionType.MCQ
     status: QuestionStatus = QuestionStatus.PUBLISHED
+
+    @field_validator('difficulty', mode='before')
+    @classmethod
+    def normalize_difficulty(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            val = v.strip().capitalize()
+            for member in DifficultyLevel:
+                if member.value == val or member.name.capitalize() == val:
+                    return member
+        return v
+
+    @field_validator('status', mode='before')
+    @classmethod
+    def normalize_status(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            val = v.strip().lower()
+            for member in QuestionStatus:
+                if member.value == val or member.name.lower() == val:
+                    return member
+        return v
 
     @model_validator(mode='after')
     def verify_mcq_integrity(self) -> 'QuestionCreate':
@@ -91,6 +111,26 @@ class QuestionUpdate(BaseModel):
     q_type: Optional[QuestionType] = None
     is_active: Optional[bool] = None
     status: Optional[QuestionStatus] = None
+
+    @field_validator('difficulty', mode='before')
+    @classmethod
+    def normalize_difficulty(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            val = v.strip().capitalize()
+            for member in DifficultyLevel:
+                if member.value == val or member.name.capitalize() == val:
+                    return member
+        return v
+
+    @field_validator('status', mode='before')
+    @classmethod
+    def normalize_status(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            val = v.strip().lower()
+            for member in QuestionStatus:
+                if member.value == val or member.name.lower() == val:
+                    return member
+        return v
 
 # --- CONSTANTS ---
 UPLOAD_DIR = "uploads"
