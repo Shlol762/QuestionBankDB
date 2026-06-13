@@ -98,6 +98,10 @@ class GradeConfig(BaseSQLModel, table=True):
     grade_level: int = Field(foreign_key="allowed_grades.allowed_grade_id", ondelete="RESTRICT")
     allowed_grade: Optional["AllowedGrade"] = Relationship()
     pdf_url: Optional[str] = None
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
     
     # Cascade: If Grade is deleted, delete all Subjects
     subjects: List["Subject"] = Relationship(back_populates="grade", cascade_delete=True)

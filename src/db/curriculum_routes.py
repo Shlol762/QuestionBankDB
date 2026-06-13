@@ -282,6 +282,7 @@ async def get_full_hierarchy(
                         config_id=g.config_id,
                         syllabus_id=g.syllabus_id,
                         grade_level=g.grade_level,
+                        pdf_url=g.pdf_url,
                         subjects=[
                             SubjectHierarchy(
                                 subject_id=sub.subject_id,
@@ -299,7 +300,7 @@ async def get_full_hierarchy(
                             for sub in g.subjects
                         ],
                     )
-                    for g in s.grades
+                    for g in sorted(s.grades, key=lambda x: x.created_at)
                 ],
             )
             for s in syllabuses
@@ -313,7 +314,8 @@ async def get_full_hierarchy(
 
     for syllabus in syllabuses:
         filtered_grades: List[GradeHierarchy] = []
-        for grade in syllabus.grades:
+        sorted_grades = sorted(syllabus.grades, key=lambda x: x.created_at)
+        for grade in sorted_grades:
             is_coordinator = grade.grade_level in coord_grade_levels
 
             if is_coordinator:
@@ -322,6 +324,7 @@ async def get_full_hierarchy(
                         config_id=grade.config_id,
                         syllabus_id=grade.syllabus_id,
                         grade_level=grade.grade_level,
+                        pdf_url=grade.pdf_url,
                         subjects=[
                             SubjectHierarchy(
                                 subject_id=sub.subject_id,
@@ -353,6 +356,7 @@ async def get_full_hierarchy(
                         config_id=grade.config_id,
                         syllabus_id=grade.syllabus_id,
                         grade_level=grade.grade_level,
+                        pdf_url=grade.pdf_url,
                         subjects=[
                             SubjectHierarchy(
                                 subject_id=sub.subject_id,
@@ -450,7 +454,7 @@ async def get_grades_by_syllabus(
     offset: int = Query(default=0, ge=0)
 ):
     """Lists all grades within a specific syllabus with pagination."""
-    base_stmt = select(GradeConfig).where(GradeConfig.syllabus_id == syllabus_id)
+    base_stmt = select(GradeConfig).where(GradeConfig.syllabus_id == syllabus_id).order_by(GradeConfig.created_at)
     
     count_stmt = select(func.count()).select_from(base_stmt.subquery())
     total = (await session.exec(count_stmt)).one()

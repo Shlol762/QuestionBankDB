@@ -106,3 +106,32 @@ export const deleteTopic = async (id: number): Promise<void> => {
   await apiClient.delete(`/curriculum/topics/${id}`);
 };
 
+export const duplicateSyllabus = async (
+  id: number,
+  payload: { new_syllabus_name: string; new_academic_year: string }
+): Promise<SyllabusRead> => {
+  const response = await apiClient.post(`/curriculum/syllabuses/${id}/duplicate`, payload);
+  return response.data;
+};
+
+export const updateGrade = async (
+  id: number,
+  payload: { grade_level?: number; pdf_url?: string | null }
+): Promise<GradeRead> => {
+  const response = await apiClient.patch(`/curriculum/grades/${id}`, payload);
+  return response.data;
+};
+
+export const uploadPdf = async (file: File): Promise<{ pdf_url: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await apiClient.post('/curriculum/upload-pdf', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+};
+
+
+
