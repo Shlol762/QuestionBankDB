@@ -4,12 +4,12 @@ import { useUIStore } from '../../store/uiStore';
 import { useQuestions } from '../../hooks/useQuestions';
 
 export const QuestionGridPanel: React.FC = () => {
-  const { topic, selectionLevel } = useResolvedCurriculumSelection();
+  const { topic } = useResolvedCurriculumSelection();
   const { openDrawer } = useUIStore();
   const [searchQuery, setSearchQuery] = useState('');
 
   const { data: questionsData, isLoading } = useQuestions({
-    topic_id: selectionLevel === 'topic' ? topic?.id : undefined,
+    topic_id: topic?.id || undefined,
     search: searchQuery || undefined,
   });
 
@@ -26,10 +26,10 @@ export const QuestionGridPanel: React.FC = () => {
       <div className="p-6 border-b border-white/5 bg-white/[0.01] flex items-center justify-between z-10">
         <div>
           <h2 className="text-xl font-bold text-white tracking-wide">
-            {selectionLevel === 'topic' && topic ? topic.name : 'Question Repository'}
+            {topic ? topic.name : 'Question Repository'}
           </h2>
           <p className="text-sm text-gray-400 mt-1">
-            {selectionLevel === 'topic' ? `Showing questions for this topic` : 'Select a topic to view specific questions'}
+            {topic ? `Showing questions for this topic` : 'Select a topic to view specific questions'}
           </p>
         </div>
 
@@ -58,7 +58,7 @@ export const QuestionGridPanel: React.FC = () => {
 
       {/* Main Grid Area */}
       <div className="flex-1 overflow-y-auto bg-surface-900/40 p-6">
-        {selectionLevel !== 'topic' ? (
+        {!topic ? (
           // Empty State
           <div className="h-full flex flex-col items-center justify-center text-center">
             <div className="w-20 h-20 rounded-full glass bg-white/5 flex items-center justify-center mb-4 border border-white/10">
