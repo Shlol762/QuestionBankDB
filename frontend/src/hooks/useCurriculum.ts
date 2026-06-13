@@ -11,7 +11,10 @@ import {
   deleteSubject,
   createTopic,
   updateTopic,
-  deleteTopic
+  deleteTopic,
+  duplicateSyllabus,
+  updateGrade,
+  uploadPdf
 } from '../api/curriculumApi';
 import { toast } from 'react-hot-toast';
 
@@ -179,4 +182,45 @@ export const useDeleteTopic = () => {
     }
   });
 };
+
+export const useDuplicateSyllabus = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: { new_syllabus_name: string; new_academic_year: string } }) => 
+      duplicateSyllabus(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['curriculum_hierarchy'] });
+      toast.success('Syllabus duplicated successfully!');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.detail || 'Failed to duplicate syllabus');
+    }
+  });
+};
+
+export const useUpdateGrade = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: { grade_level?: number; pdf_url?: string | null } }) => 
+      updateGrade(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['curriculum_hierarchy'] });
+      toast.success('Grade updated successfully!');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.detail || 'Failed to update grade');
+    }
+  });
+};
+
+export const useUploadPdf = () => {
+  return useMutation({
+    mutationFn: uploadPdf,
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.detail || 'Failed to upload PDF');
+    }
+  });
+};
+
+
 

@@ -1,8 +1,8 @@
 export type ThemeMode = 'dark' | 'light';
 export type DrawerType = 'CREATE_QUESTION' | 'EDIT_QUESTION' | 'CREATE_STAFF' | 'EDIT_STAFF';
 export type DialogType =
-  | 'ADD_SYLLABUS' | 'EDIT_SYLLABUS' | 'DELETE_SYLLABUS'
-  | 'ADD_GRADE'    | 'EDIT_GRADE'    | 'DELETE_GRADE'
+  | 'ADD_SYLLABUS' | 'EDIT_SYLLABUS' | 'DELETE_SYLLABUS' | 'DUPLICATE_SYLLABUS'
+  | 'ADD_GRADE'    | 'EDIT_GRADE'    | 'DELETE_GRADE' | 'MANAGE_GRADE_PDF'
   | 'ADD_SUBJECT'  | 'EDIT_SUBJECT'  | 'DELETE_SUBJECT'
   | 'ADD_TOPIC'    | 'EDIT_TOPIC'    | 'DELETE_TOPIC'
   | 'DELETE_QUESTION' | 'DELETE_USER'
@@ -19,10 +19,12 @@ export interface EditStaffDrawerPayload { userId: number; }
 export type AddSyllabusDialogPayload = Record<string, never>;
 export interface EditSyllabusDialogPayload { syllabusId: number; currentName: string; currentYear: string; }
 export interface DeleteSyllabusDialogPayload { syllabusId: number; syllabusName: string; }
+export interface DuplicateSyllabusDialogPayload { syllabusId: number; currentName: string; currentYear: string; }
 
 export interface AddGradeDialogPayload { syllabusId: number; }
 export interface EditGradeDialogPayload { configId: number; currentLevel: number; }
 export interface DeleteGradeDialogPayload { configId: number; gradeLevel: number; }
+export interface ManageGradePdfDialogPayload { gradeId: number; gradeLevel: number; currentPdfUrl?: string; syllabusName?: string; }
 
 export interface AddSubjectDialogPayload { configId: number; gradeLevel: number; }
 export interface EditSubjectDialogPayload { subjectId: number; currentName: string; }
