@@ -37,7 +37,7 @@ class QuestionCreate(BaseModel):
     marks: int = Field(ge=0)  # ge=0 allows grace marks (0)
     difficulty: DifficultyLevel = DifficultyLevel.MEDIUM
     q_type: QuestionType = QuestionType.MCQ
-    status: QuestionStatus = QuestionStatus.DRAFT
+    status: QuestionStatus = QuestionStatus.PUBLISHED
 
     @model_validator(mode='after')
     def verify_mcq_integrity(self) -> 'QuestionCreate':
@@ -224,13 +224,12 @@ async def list_questions(
     q_type: Optional[QuestionType] = None,
     status_filter: Optional[QuestionStatus] = Query(None, alias="status"),
     search: Optional[str] = None,
-    include_drafts: bool = Query(default=False),
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0)
 ):
-    """Lists questions with pagination. Admins see all, others see based on permissions. Drafts only visible to author."""
+    """Lists questions with pagination. Admins see all, others see based on permissions."""
     
     from src.db.models import GradeConfig
     from sqlalchemy import or_, func
@@ -263,15 +262,6 @@ async def list_questions(
         else:
             # If a user has no roles, only show their own questions
             base_stmt = base_stmt.where(QuestionBank.teacher_id == current_user.user_id)
-    
-    # Draft visibility: non-admins only see their own drafts
-    if not current_user.is_admin:
-        base_stmt = base_stmt.where(
-            or_(
-                QuestionBank.status != QuestionStatus.DRAFT,
-                QuestionBank.teacher_id == current_user.user_id
-            )
-        )
     
     # Filter by status if specified
     if status_filter:

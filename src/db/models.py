@@ -26,7 +26,6 @@ class QuestionType(str, Enum):
     COMPREHENSION_PASSAGE = "Comprehension Passage"
 
 class QuestionStatus(str, Enum):
-    DRAFT = "draft"
     PUBLISHED = "published"
     ARCHIVED = "archived"
 
@@ -269,7 +268,7 @@ class QuestionBank(BaseSQLModel, table=True):
     q_type: QuestionType = Field(default=QuestionType.MCQ)
     is_active: bool = Field(default=True)
     status: QuestionStatus = Field(
-        default=QuestionStatus.DRAFT,
+        default=QuestionStatus.PUBLISHED,
         sa_column=Column(
             String(20),
             nullable=False,
