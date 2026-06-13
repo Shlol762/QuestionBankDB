@@ -3,10 +3,12 @@ import { useSearchParams } from 'react-router-dom';
 export interface ExplorerUrlState {
   topicId: number | null;
   subjectId: number | null;
+  gradeId: number | null;
   syllabusId: number | null;
-  selectionLevel: 'none' | 'syllabus' | 'subject' | 'topic';
+  selectionLevel: 'none' | 'syllabus' | 'grade' | 'subject' | 'topic';
   selectTopic: (topicId: number) => void;
   selectSubject: (subjectId: number) => void;
+  selectGrade: (gradeId: number) => void;
   selectSyllabus: (syllabusId: number) => void;
   clearSelection: () => void;
 }
@@ -22,15 +24,18 @@ export function useExplorerUrlState(): ExplorerUrlState {
 
   const topicId = parseIntOrNull(searchParams.get('topic'));
   const subjectId = parseIntOrNull(searchParams.get('subject'));
+  const gradeId = parseIntOrNull(searchParams.get('grade'));
   const syllabusId = parseIntOrNull(searchParams.get('syllabus'));
 
   const selectionLevel = topicId !== null 
-    ? 'topic' 
+    ? 'subject' 
     : subjectId !== null 
       ? 'subject' 
-      : syllabusId !== null 
-        ? 'syllabus' 
-        : 'none';
+      : gradeId !== null
+        ? 'grade'
+        : syllabusId !== null 
+          ? 'syllabus' 
+          : 'none';
 
   // We explicitly clear the other parameters to ensure only one level is selected.
   // This maintains the single source of truth and prevents overlapping state issues.
@@ -40,6 +45,10 @@ export function useExplorerUrlState(): ExplorerUrlState {
 
   const selectSubject = (id: number) => {
     setSearchParams({ subject: String(id) }, { replace: false });
+  };
+
+  const selectGrade = (id: number) => {
+    setSearchParams({ grade: String(id) }, { replace: false });
   };
 
   const selectSyllabus = (id: number) => {
@@ -53,10 +62,12 @@ export function useExplorerUrlState(): ExplorerUrlState {
   return {
     topicId,
     subjectId,
+    gradeId,
     syllabusId,
     selectionLevel,
     selectTopic,
     selectSubject,
+    selectGrade,
     selectSyllabus,
     clearSelection,
   };

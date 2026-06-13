@@ -4,7 +4,7 @@ import { useCurriculumHierarchy } from './useCurriculum';
 
 export interface TopicNode { id: number; name: string; questionCount: number; }
 export interface SubjectNode { id: number; name: string; topics: TopicNode[]; }
-export interface GradeNode { id: number; level: number; name: string; subjects: SubjectNode[]; }
+export interface GradeNode { id: number; level: number; name: string; pdfUrl?: string; subjects: SubjectNode[]; }
 export interface SyllabusNode { id: number; name: string; year: string; grades: GradeNode[]; }
 
 export interface ResolvedCurriculumSelection {
@@ -31,6 +31,7 @@ export function useResolvedCurriculumSelection(): ResolvedCurriculumSelection {
         id: g.config_id,
         level: g.grade_level,
         name: `Grade ${g.grade_level}`,
+        pdfUrl: g.pdf_url,
         subjects: (g.subjects || []).map(sub => ({
           id: sub.subject_id,
           name: sub.subject_name,
@@ -45,14 +46,14 @@ export function useResolvedCurriculumSelection(): ResolvedCurriculumSelection {
   }, [rawHierarchy]);
 
   return useMemo(() => {
-    const { topicId, subjectId, syllabusId } = urlState;
+    const { topicId, subjectId, gradeId, syllabusId } = urlState;
     
     if (topicId !== null) {
       for (const s of hierarchy) {
         for (const g of s.grades) {
           for (const sub of g.subjects) {
             const t = sub.topics.find(t => t.id === topicId) ?? null;
-            if (t) return { syllabus: s, grade: g, subject: sub, topic: t, selectionLevel: 'topic', hierarchy, isLoading };
+            if (t) return { syllabus: s, grade: g, subject: sub, topic: t, selectionLevel: 'subject', hierarchy, isLoading };
           }
         }
       }
@@ -64,6 +65,13 @@ export function useResolvedCurriculumSelection(): ResolvedCurriculumSelection {
           const sub = g.subjects.find(sub => sub.id === subjectId) ?? null;
           if (sub) return { syllabus: s, grade: g, subject: sub, topic: null, selectionLevel: 'subject', hierarchy, isLoading };
         }
+      }
+    }
+
+    if (gradeId !== null) {
+      for (const s of hierarchy) {
+        const g = s.grades.find(g => g.id === gradeId) ?? null;
+        if (g) return { syllabus: s, grade: g, subject: null, topic: null, selectionLevel: 'grade', hierarchy, isLoading };
       }
     }
 
