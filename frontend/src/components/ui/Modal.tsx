@@ -33,7 +33,7 @@ export const Modal: React.FC = () => {
   const { selectSyllabus, selectGrade, selectSubject, selectTopic } = useExplorerUrlState();
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  useFormAutoAdvance(dialogRef, dialogType);
+  useFormAutoAdvance(dialogRef, dialogType, dialogType?.startsWith('DELETE_'));
 
   // --- MUTATION HOOKS ---
   const createSyllabusMutation = useCreateSyllabus();
