@@ -25,8 +25,10 @@ import {
   useUpdateAllowedGrade
 } from '../../hooks/useSystemConfig';
 import { useDeleteUser } from '../../hooks/useStaff';
+import { useDeleteQuestion } from '../../hooks/useQuestions';
 import { useExplorerUrlState } from '../../hooks/useExplorerUrlState';
 import { useFormAutoAdvance } from '../../hooks/useFormAutoAdvance';
+import type { DeleteQuestionDialogPayload } from '../../types/ui.types';
 
 export const Modal: React.FC = () => {
   const { dialogType, dialogPayload, closeDialog } = useUIStore();
@@ -57,6 +59,7 @@ export const Modal: React.FC = () => {
   const updateAllowedGradeMutation = useUpdateAllowedGrade();
 
   const deleteUserMutation = useDeleteUser();
+  const deleteQuestionMutation = useDeleteQuestion();
 
   // --- QUERY HOOKS FOR SELECT DROPDOWNS ---
   const { data: allowedSubjectsPage } = useAllowedSubjects(true);
@@ -157,7 +160,8 @@ export const Modal: React.FC = () => {
     updateAllowedSubjectMutation.isPending ||
     createAllowedGradeMutation.isPending ||
     updateAllowedGradeMutation.isPending ||
-    deleteUserMutation.isPending;
+    deleteUserMutation.isPending ||
+    deleteQuestionMutation.isPending;
 
   // Resolve what item name is needed to confirm the deletion
   let targetName = 'DELETE';
@@ -281,6 +285,35 @@ export const Modal: React.FC = () => {
         default:
           console.warn('Unknown dialog type:', dialogType);
       }
+      closeDialog();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleUnlinkQuestion = async () => {
+    if (!isConfirmed) return;
+    const payload = dialogPayload as DeleteQuestionDialogPayload;
+    try {
+      await deleteQuestionMutation.mutateAsync({
+        id: payload.questionId,
+        deleteMode: 'unlink',
+        topicId: payload.contextTopicId
+      });
+      closeDialog();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDestroyQuestion = async () => {
+    if (!isConfirmed) return;
+    const payload = dialogPayload as DeleteQuestionDialogPayload;
+    try {
+      await deleteQuestionMutation.mutateAsync({
+        id: payload.questionId,
+        deleteMode: 'delete'
+      });
       closeDialog();
     } catch (err) {
       console.error(err);
@@ -618,7 +651,30 @@ export const Modal: React.FC = () => {
 
           {/* Body */}
           <div className="p-6 space-y-4">
-            {isDestructive ? (
+            {dialogType === 'DELETE_QUESTION' ? (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-300 leading-relaxed">
+                  Are you sure you want to remove this question? You can choose to unlink it from this topic, or delete it permanently from all associated topics.
+                </p>
+                
+                <div className="rounded-xl bg-red-500/5 p-4 border border-red-500/10 space-y-3">
+                  <label className="block text-xs font-semibold text-red-400 uppercase tracking-wider">
+                    To confirm, type the exact name below:
+                  </label>
+                  <div className="text-xs text-gray-400 select-all font-mono py-1.5 px-3 bg-black/30 rounded border border-white/5 font-semibold text-center text-red-300">
+                    {targetName}
+                  </div>
+                  <input
+                    type="text"
+                    value={confirmInput}
+                    onChange={(e) => setConfirmInput(e.target.value)}
+                    placeholder="Type the confirmation name..."
+                    className="w-full glass-input px-3 py-2 text-sm border-red-500/20 focus:border-red-500 focus:ring-red-500/20"
+                    required
+                  />
+                </div>
+              </div>
+            ) : isDestructive ? (
               <div className="space-y-4">
                 <p className="text-sm text-gray-300 leading-relaxed">
                   Are you absolutely sure you want to delete <span className="font-semibold text-white">{targetName}</span>? 
@@ -661,17 +717,38 @@ export const Modal: React.FC = () => {
             >
               Cancel
             </button>
-            <button 
-              type="submit"
-              disabled={!isConfirmed || isPending}
-              className={`px-5 py-2 rounded-lg text-sm font-medium text-white transition-all duration-200 ${
-                isDestructive 
-                  ? 'bg-neon-red-600 hover:bg-neon-red-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(239,68,68,0.4)]' 
-                  : 'bg-neon-blue-600 hover:bg-neon-blue-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(14,165,233,0.4)]'
-              }`}
-            >
-              {isPending ? 'Processing...' : (isDestructive ? 'Delete Permanently' : 'Confirm')}
-            </button>
+            {dialogType === 'DELETE_QUESTION' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleUnlinkQuestion}
+                  disabled={!isConfirmed || isPending}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(217,119,6,0.3)] transition-all duration-200"
+                >
+                  Unlink Topic
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDestroyQuestion}
+                  disabled={!isConfirmed || isPending}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-neon-red-600 hover:bg-neon-red-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(239,68,68,0.4)] transition-all duration-200"
+                >
+                  Delete Everywhere
+                </button>
+              </>
+            ) : (
+              <button 
+                type="submit"
+                disabled={!isConfirmed || isPending}
+                className={`px-5 py-2 rounded-lg text-sm font-medium text-white transition-all duration-200 ${
+                  isDestructive 
+                    ? 'bg-neon-red-600 hover:bg-neon-red-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(239,68,68,0.4)]' 
+                    : 'bg-neon-blue-600 hover:bg-neon-blue-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(14,165,233,0.4)]'
+                }`}
+              >
+                {isPending ? 'Processing...' : (isDestructive ? 'Delete Permanently' : 'Confirm')}
+              </button>
+            )}
           </div>
         </form>
       </div>
