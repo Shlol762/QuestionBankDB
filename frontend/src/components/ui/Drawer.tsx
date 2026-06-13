@@ -3,6 +3,7 @@ import { useUIStore } from '../../store/uiStore';
 import { Accordion } from './Accordion';
 import { StepWizard } from './StepWizard';
 import { useCreateQuestion } from '../../hooks/useQuestions';
+import { useFormAutoAdvance } from '../../hooks/useFormAutoAdvance';
 import { useRegisterStaff } from '../../hooks/useStaff';
 import { useCurriculumHierarchy } from '../../hooks/useCurriculum';
 import { toast } from 'react-hot-toast';
@@ -154,6 +155,8 @@ export const Drawer: React.FC = () => {
   const [staffPassword, setStaffPassword] = useState('');
   const [staffRole, setStaffRole] = useState('faculty');
   const [selectedSubjects, setSelectedSubjects] = useState<number[]>([]);
+
+  useFormAutoAdvance(drawerRef, `${drawerType}-${staffCurrentStep}`);
 
   const toggleSubject = (subjId: number) => {
     setSelectedSubjects(prev =>

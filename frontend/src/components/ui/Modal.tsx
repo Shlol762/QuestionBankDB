@@ -26,11 +26,14 @@ import {
 } from '../../hooks/useSystemConfig';
 import { useDeleteUser } from '../../hooks/useStaff';
 import { useExplorerUrlState } from '../../hooks/useExplorerUrlState';
+import { useFormAutoAdvance } from '../../hooks/useFormAutoAdvance';
 
 export const Modal: React.FC = () => {
   const { dialogType, dialogPayload, closeDialog } = useUIStore();
   const { selectSyllabus, selectGrade, selectSubject, selectTopic } = useExplorerUrlState();
   const dialogRef = useRef<HTMLDivElement>(null);
+
+  useFormAutoAdvance(dialogRef, dialogType);
 
   // --- MUTATION HOOKS ---
   const createSyllabusMutation = useCreateSyllabus();

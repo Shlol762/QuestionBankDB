@@ -125,7 +125,7 @@ export const StepWizard: React.FC<StepWizardProps> = ({
           <button
             onClick={handleNext}
             disabled={isSubmitting}
-            className={`px-6 py-2.5 rounded-lg text-sm font-medium text-white transition-all duration-200 flex items-center gap-2 ${
+            className={`next-step-btn px-6 py-2.5 rounded-lg text-sm font-medium text-white transition-all duration-200 flex items-center gap-2 ${
               isLastStep
                 ? 'bg-neon-emerald-600 hover:bg-neon-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
                 : 'bg-neon-blue-600 hover:bg-neon-blue-500 shadow-[0_0_15px_rgba(14,165,233,0.4)]'
