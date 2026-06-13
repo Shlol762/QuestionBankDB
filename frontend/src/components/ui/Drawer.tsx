@@ -186,7 +186,7 @@ export const Drawer: React.FC = () => {
         answer_text: correctOption ? correctOption.id : 'A',
         options: optionsDict,
         marks: parseInt(questionMarks, 10),
-        difficulty: questionDifficulty.toUpperCase(),
+        difficulty: questionDifficulty.charAt(0).toUpperCase() + questionDifficulty.slice(1),
         q_type: 'MCQ',
         status: questionDetails?.status || 'published'
       }
@@ -231,7 +231,7 @@ export const Drawer: React.FC = () => {
         answer_text: correctOption ? correctOption.id : 'A',
         options: optionsDict,
         marks: parseInt(questionMarks, 10),
-        difficulty: questionDifficulty.toUpperCase(),
+        difficulty: questionDifficulty.charAt(0).toUpperCase() + questionDifficulty.slice(1),
         q_type: 'MCQ',
         status: 'published'
       });
