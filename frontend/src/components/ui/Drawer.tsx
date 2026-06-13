@@ -2,14 +2,15 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useUIStore } from '../../store/uiStore';
 import { Accordion } from './Accordion';
 import { StepWizard } from './StepWizard';
-import { useCreateQuestion } from '../../hooks/useQuestions';
+import { useCreateQuestion, useQuestionDetails, useUpdateQuestion } from '../../hooks/useQuestions';
 import { useFormAutoAdvance } from '../../hooks/useFormAutoAdvance';
 import { useRegisterStaff } from '../../hooks/useStaff';
 import { useCurriculumHierarchy } from '../../hooks/useCurriculum';
+import { useResolvedCurriculumSelection } from '../../hooks/useResolvedCurriculumSelection';
 import { toast } from 'react-hot-toast';
 
 export const Drawer: React.FC = () => {
-  const { drawerType, drawerPayload, closeDrawer } = useUIStore();
+  const { drawerType, drawerPayload, closeDrawer, openDialog } = useUIStore();
   const drawerRef = useRef<HTMLDivElement>(null);
 
   const createQuestionMutation = useCreateQuestion();
@@ -81,10 +82,13 @@ export const Drawer: React.FC = () => {
     }
   };
 
+  const { topic: currentContextTopic } = useResolvedCurriculumSelection();
+
   // --- LOCAL STATE FOR QUESTION FORM ---
   const [questionAccordionId, setQuestionAccordionId] = useState('classification');
   const [questionDifficulty, setQuestionDifficulty] = useState('medium');
-  const [questionTopic, setQuestionTopic] = useState('');
+  const [selectedQuestionTopics, setSelectedQuestionTopics] = useState<number[]>([]);
+  const [topicSearchQuery, setTopicSearchQuery] = useState('');
   const [questionMarks, setQuestionMarks] = useState('5');
   const [questionText, setQuestionText] = useState('');
   const [mcqOptions, setMcqOptions] = useState([
@@ -93,13 +97,28 @@ export const Drawer: React.FC = () => {
     { id: 'C', text: '', isCorrect: false },
     { id: 'D', text: '', isCorrect: false }
   ]);
+  const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
+
+  const filteredTopics = useMemo(() => {
+    if (!topicSearchQuery.trim()) return [];
+    const query = topicSearchQuery.toLowerCase();
+    return allTopics.filter(t => 
+      t.name.toLowerCase().includes(query) || 
+      t.info.toLowerCase().includes(query)
+    ).filter(t => !selectedQuestionTopics.includes(t.id));
+  }, [allTopics, topicSearchQuery, selectedQuestionTopics]);
+
+  const questionId = drawerType === 'EDIT_QUESTION' ? (drawerPayload as { questionId?: number })?.questionId : null;
+  const { data: questionDetails, isLoading: isQuestionLoading } = useQuestionDetails(questionId);
+  const updateQuestionMutation = useUpdateQuestion();
 
   // Reset form state and set preselected topic when drawer is opened
   useEffect(() => {
     if (drawerType === 'CREATE_QUESTION') {
       const payload = drawerPayload as { preselectedTopicId?: number | null } | undefined;
       const preselectedId = payload?.preselectedTopicId;
-      setQuestionTopic(preselectedId ? String(preselectedId) : '');
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
+      setSelectedQuestionTopics(preselectedId ? [preselectedId] : []);
       setQuestionDifficulty('medium');
       setQuestionMarks('5');
       setQuestionText('');
@@ -110,8 +129,35 @@ export const Drawer: React.FC = () => {
         { id: 'D', text: '', isCorrect: false }
       ]);
       setQuestionAccordionId('classification');
+      setTopicSearchQuery('');
     }
   }, [drawerType, drawerPayload]);
+
+  // Load existing question details when editing
+  useEffect(() => {
+    if (drawerType === 'EDIT_QUESTION' && questionDetails) {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
+      setQuestionDifficulty(questionDetails.difficulty.toLowerCase());
+      setQuestionMarks(String(questionDetails.marks));
+      setQuestionText(questionDetails.question_text);
+      
+      const selectedIds = questionDetails.topics.map(t => t.topic_id);
+      setSelectedQuestionTopics(selectedIds);
+      
+      if (questionDetails.options) {
+        const opts = Object.entries(questionDetails.options).map(([key, value]) => ({
+          id: key,
+          text: value as string,
+          isCorrect: questionDetails.answer_text === key
+        }));
+        opts.sort((a, b) => a.id.localeCompare(b.id));
+        setMcqOptions(opts);
+      }
+      
+      setQuestionAccordionId('classification');
+      setTopicSearchQuery('');
+    }
+  }, [drawerType, questionDetails]);
 
   const handleOptionTextChange = (id: string, text: string) => {
     setMcqOptions(prev => prev.map(opt => opt.id === id ? { ...opt, text } : opt));
@@ -121,31 +167,77 @@ export const Drawer: React.FC = () => {
     setMcqOptions(prev => prev.map(opt => ({ ...opt, isCorrect: opt.id === id })));
   };
 
-  const handleSaveQuestion = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!questionTopic) {
-      toast.error('Please select a topic');
-      return;
-    }
-    
+  const handleSaveQuestionConfirm = async (updateMode: "everywhere" | "copy") => {
+    if (!questionId) return;
+
     const correctOption = mcqOptions.find(o => o.isCorrect);
     const optionsDict = mcqOptions.reduce((acc, opt) => {
       acc[opt.id] = opt.text;
       return acc;
     }, {} as Record<string, string>);
 
-    await createQuestionMutation.mutateAsync({
-      topic_ids: [parseInt(questionTopic, 10)],
-      question_text: questionText,
-      answer_text: correctOption ? correctOption.id : 'A',
-      options: optionsDict,
-      marks: parseInt(questionMarks, 10),
-      difficulty: questionDifficulty.toUpperCase(), // backend expects UPPERCASE
-      q_type: 'MCQ',
-      status: 'DRAFT'
+    await updateQuestionMutation.mutateAsync({
+      id: questionId,
+      payload: {
+        update_mode: updateMode,
+        context_topic_id: updateMode === 'copy' ? currentContextTopic?.id || undefined : undefined,
+        topic_ids: selectedQuestionTopics,
+        question_text: questionText,
+        answer_text: correctOption ? correctOption.id : 'A',
+        options: optionsDict,
+        marks: parseInt(questionMarks, 10),
+        difficulty: questionDifficulty.toUpperCase(),
+        q_type: 'MCQ',
+        status: questionDetails?.status || 'DRAFT'
+      }
     });
-    
+
+    setShowUpdateConfirm(false);
     closeDrawer();
+  };
+
+  const handleDeleteQuestionClick = () => {
+    if (!questionId) return;
+    openDialog('DELETE_QUESTION', {
+      questionId,
+      questionText: questionText,
+      contextTopicId: currentContextTopic?.id || 0
+    });
+  };
+
+  const handleSaveQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedQuestionTopics.length === 0) {
+      toast.error('Please select at least one topic');
+      return;
+    }
+
+    if (isEditing) {
+      if (selectedQuestionTopics.length > 1) {
+        setShowUpdateConfirm(true);
+      } else {
+        await handleSaveQuestionConfirm('everywhere');
+      }
+    } else {
+      const correctOption = mcqOptions.find(o => o.isCorrect);
+      const optionsDict = mcqOptions.reduce((acc, opt) => {
+        acc[opt.id] = opt.text;
+        return acc;
+      }, {} as Record<string, string>);
+
+      await createQuestionMutation.mutateAsync({
+        topic_ids: selectedQuestionTopics,
+        question_text: questionText,
+        answer_text: correctOption ? correctOption.id : 'A',
+        options: optionsDict,
+        marks: parseInt(questionMarks, 10),
+        difficulty: questionDifficulty.toUpperCase(),
+        q_type: 'MCQ',
+        status: 'DRAFT'
+      });
+      
+      closeDrawer();
+    }
   };
 
   // --- LOCAL STATE FOR STAFF WIZARD ---
@@ -198,20 +290,69 @@ export const Drawer: React.FC = () => {
       content: (
         <div className="space-y-5">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Topic Selector</label>
-            <select
-              value={questionTopic}
-              onChange={(e) => setQuestionTopic(e.target.value)}
-              className="w-full glass-input px-4 py-2.5 text-sm"
-              required
-            >
-              <option value="" className="bg-surface-800 text-gray-400">Select a topic...</option>
-              {allTopics.map(t => (
-                <option key={t.id} value={String(t.id)} className="bg-surface-800 text-white">
-                  {t.name} ({t.info})
-                </option>
-              ))}
-            </select>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Associated Topics</label>
+            
+            {/* Tag Pills list */}
+            {selectedQuestionTopics.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {selectedQuestionTopics.map(id => {
+                  const topicObj = allTopics.find(t => t.id === id);
+                  if (!topicObj) return null;
+                  return (
+                    <span 
+                      key={id} 
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-white/5 border border-white/10 text-gray-200"
+                    >
+                      {topicObj.name}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedQuestionTopics(prev => prev.filter(tId => tId !== id))}
+                        className="text-gray-400 hover:text-white transition-colors cursor-pointer text-sm font-bold"
+                        aria-label="Remove topic"
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Search Input for adding topics */}
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+              <input
+                type="text"
+                value={topicSearchQuery}
+                onChange={(e) => setTopicSearchQuery(e.target.value)}
+                placeholder="Search and associate topics..."
+                className="w-full glass-input pl-9 pr-4 py-2.5 text-sm"
+              />
+              
+              {/* Filtered Topics Dropdown */}
+              {topicSearchQuery.trim().length > 0 && (
+                <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto glass-heavy bg-surface-800 border border-white/10 rounded-xl shadow-2xl z-50 divide-y divide-white/5">
+                  {filteredTopics.length > 0 ? (
+                    filteredTopics.map(t => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedQuestionTopics(prev => [...prev, t.id]);
+                          setTopicSearchQuery('');
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-xs text-gray-300 hover:text-white hover:bg-white/5 transition-colors flex items-center justify-between cursor-pointer"
+                      >
+                        <span className="font-medium">{t.name}</span>
+                        <span className="text-[10px] text-gray-500 font-semibold">{t.info}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-4 py-3 text-xs text-gray-500 text-center">No matching topics found</div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -340,10 +481,19 @@ export const Drawer: React.FC = () => {
             ))}
           </div>
 
-          <div className="pt-4 border-t border-white/5 flex justify-end">
+          <div className="pt-4 border-t border-white/5 flex justify-between items-center">
+            {isEditing && (
+              <button
+                type="button"
+                onClick={handleDeleteQuestionClick}
+                className="px-5 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/20 transition-all duration-200 cursor-pointer"
+              >
+                Delete Question
+              </button>
+            )}
             <button
               type="submit"
-              className="px-6 py-2.5 rounded-lg text-sm font-medium text-white bg-neon-blue-600 hover:bg-neon-blue-500 shadow-[0_0_15px_rgba(14,165,233,0.4)] transition-all duration-200"
+              className="px-6 py-2.5 rounded-lg text-sm font-medium text-white bg-neon-blue-600 hover:bg-neon-blue-500 shadow-[0_0_15px_rgba(14,165,233,0.4)] transition-all duration-200 ml-auto cursor-pointer"
             >
               {isEditing ? 'Update Question' : 'Save Question'}
             </button>
@@ -524,25 +674,73 @@ export const Drawer: React.FC = () => {
         </div>
 
         {/* Drawer Body */}
-        <div className="flex-1 overflow-y-auto p-6 bg-surface-900/10">
-          {isQuestionDrawer && (
-            <form onSubmit={handleSaveQuestion}>
-              <Accordion 
-                items={questionAccordionItems} 
-                activeId={questionAccordionId} 
-                onChange={setQuestionAccordionId} 
-              />
-            </form>
+        <div className="flex-1 overflow-y-auto p-6 bg-surface-900/10 relative">
+          {showUpdateConfirm && (
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col justify-center p-6 animate-fade-in text-center">
+              <div className="max-w-md mx-auto space-y-6">
+                <div className="w-16 h-16 rounded-full glass bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto animate-pulse">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-bold text-white">Multi-Topic Edit</h3>
+                  <p className="text-sm text-gray-300 leading-relaxed">
+                    This question is associated with {selectedQuestionTopics.length} topics. Would you like to update it everywhere, or copy it to edit for this topic only?
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSaveQuestionConfirm('everywhere')}
+                    className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-neon-blue-600 hover:bg-neon-blue-500 transition-all duration-200 cursor-pointer"
+                  >
+                    Apply Everywhere (All Topics)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveQuestionConfirm('copy')}
+                    className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-white/5 border border-white/10 hover:bg-white/10 transition-all duration-200 cursor-pointer"
+                  >
+                    Edit this Topic Only (Creates Copy)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowUpdateConfirm(false)}
+                    className="w-full py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white transition-all duration-200 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
-          {isStaffDrawer && (
-            <StepWizard
-              steps={staffWizardSteps}
-              currentStep={staffCurrentStep}
-              onStepChange={setStaffCurrentStep}
-              onComplete={handleStaffComplete}
-              onCancel={closeDrawer}
-            />
+          {isQuestionLoading ? (
+            <div className="h-full flex flex-col items-center justify-center">
+              <div className="w-8 h-8 border-4 border-neon-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+              <p className="text-gray-400 text-sm">Loading question details...</p>
+            </div>
+          ) : (
+            <>
+              {isQuestionDrawer && (
+                <form onSubmit={handleSaveQuestion}>
+                  <Accordion 
+                    items={questionAccordionItems} 
+                    activeId={questionAccordionId} 
+                    onChange={setQuestionAccordionId} 
+                  />
+                </form>
+              )}
+
+              {isStaffDrawer && (
+                <StepWizard
+                  steps={staffWizardSteps}
+                  currentStep={staffCurrentStep}
+                  onStepChange={setStaffCurrentStep}
+                  onComplete={handleStaffComplete}
+                  onCancel={closeDrawer}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
