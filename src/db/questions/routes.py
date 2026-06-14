@@ -264,6 +264,8 @@ async def list_questions(
     q_type: Optional[QuestionType] = None,
     status_filter: Optional[QuestionStatus] = Query(None, alias="status"),
     search: Optional[str] = None,
+    marks: Optional[int] = None,
+    teacher_id: Optional[int] = None,
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user),
     limit: int = Query(default=20, ge=1, le=100),
@@ -319,6 +321,10 @@ async def list_questions(
         base_stmt = base_stmt.where(QuestionBank.q_type == q_type)
     if search:
         base_stmt = base_stmt.where(func.lower(QuestionBank.question_text).contains(search.lower()))
+    if marks is not None:
+        base_stmt = base_stmt.where(QuestionBank.marks == marks)
+    if teacher_id is not None:
+        base_stmt = base_stmt.where(QuestionBank.teacher_id == teacher_id)
 
     # Keep is_active for backward compatibility, but it's now supplemented by status
     base_stmt = base_stmt.where(QuestionBank.is_active == True)

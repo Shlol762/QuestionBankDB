@@ -7,7 +7,8 @@ export type DialogType =
   | 'ADD_TOPIC'    | 'EDIT_TOPIC'    | 'DELETE_TOPIC'
   | 'DELETE_QUESTION' | 'DELETE_USER'
   | 'ADD_ALLOWED_SUBJECT' | 'EDIT_ALLOWED_SUBJECT'
-  | 'ADD_ALLOWED_GRADE'   | 'EDIT_ALLOWED_GRADE';
+  | 'ADD_ALLOWED_GRADE'   | 'EDIT_ALLOWED_GRADE'
+  | 'PREVIEW_QUESTION';
 
 // Drawer Payloads
 export interface CreateQuestionDrawerPayload { preselectedTopicId: number | null; }

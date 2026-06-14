@@ -4,7 +4,7 @@ export interface QuestionRead {
   question_id: number;
   question_text: string;
   answer_text: string;
-  options?: Record<string, string>;
+  options?: Record<string, string> | null;
   image_url?: string;
   marks: number;
   difficulty: string;
@@ -32,7 +32,7 @@ export interface QuestionCreatePayload {
   topic_ids: number[];
   question_text: string;
   answer_text: string;
-  options?: Record<string, string>;
+  options?: Record<string, string> | null;
   marks: number;
   difficulty: string;
   q_type: string;
@@ -45,7 +45,7 @@ export interface QuestionUpdatePayload {
   topic_ids?: number[];
   question_text?: string;
   answer_text?: string;
-  options?: Record<string, string>;
+  options?: Record<string, string> | null;
   marks?: number;
   difficulty?: string;
   q_type?: string;

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useUIStore } from '../../store/uiStore';
 import { 
   useCreateSyllabus, 
@@ -14,7 +14,8 @@ import {
   useDeleteTopic,
   useDuplicateSyllabus,
   useUpdateGrade,
-  useUploadPdf
+  useUploadPdf,
+  useCurriculumHierarchy
 } from '../../hooks/useCurriculum';
 import { 
   useAllowedSubjects,
@@ -31,8 +32,24 @@ import { useFormAutoAdvance } from '../../hooks/useFormAutoAdvance';
 import type { DeleteQuestionDialogPayload } from '../../types/ui.types';
 
 export const Modal: React.FC = () => {
-  const { dialogType, dialogPayload, closeDialog } = useUIStore();
+  const { dialogType, dialogPayload, closeDialog, openDrawer } = useUIStore();
   const { selectSyllabus, selectGrade, selectSubject, selectTopic } = useExplorerUrlState();
+  const { data: rawHierarchy } = useCurriculumHierarchy();
+
+  const topicPaths = useMemo(() => {
+    const paths: Record<number, string> = {};
+    if (!rawHierarchy) return paths;
+    rawHierarchy.forEach(s => {
+      (s.grades || []).forEach(g => {
+        (g.subjects || []).forEach(sub => {
+          (sub.topics || []).forEach(t => {
+            paths[t.topic_id] = `${s.syllabus_name} (${s.academic_year}) ➔ Grade ${g.grade_level} ➔ ${sub.subject_name} ➔ ${t.topic_name}`;
+          });
+        });
+      });
+    });
+    return paths;
+  }, [rawHierarchy]);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useFormAutoAdvance(dialogRef, dialogType, dialogType?.startsWith('DELETE_'));
@@ -365,7 +382,7 @@ export const Modal: React.FC = () => {
               <select
                 value={level}
                 onChange={(e) => setLevel(e.target.value)}
-                className="w-full glass-input px-4 py-2.5 text-sm"
+                className="w-full glass-input glass-select px-4 py-2.5 text-sm"
                 required
               >
                 <option value="" className="bg-surface-800 text-gray-400">Select a Grade Level...</option>
@@ -413,7 +430,7 @@ export const Modal: React.FC = () => {
                     const sub = allowedSubjectsPage?.items.find(s => s.allowed_subject_id === id);
                     if (sub) setName(sub.subject_name);
                   }}
-                  className="w-full glass-input px-4 py-2.5 text-sm"
+                  className="w-full glass-input glass-select px-4 py-2.5 text-sm"
                   required
                 >
                   <option value="" className="bg-surface-800 text-gray-400">Select a Subject...</option>
@@ -592,6 +609,144 @@ export const Modal: React.FC = () => {
           </div>
         );
 
+      case 'PREVIEW_QUESTION': {
+        const question = dialogPayload as any;
+        if (!question) return <p className="text-gray-400 text-sm">No question loaded.</p>;
+
+        const difficultyColor = {
+          easy: 'bg-emerald-500/10 text-emerald-400',
+          medium: 'bg-amber-500/10 text-amber-400',
+          hard: 'bg-red-500/10 text-red-400'
+        }[((question.difficulty || 'medium') as string).toLowerCase()] || 'bg-white/10 text-gray-300';
+
+        return (
+          <div className="space-y-3">
+            {/* 1. Question Prompt with header and top badges sharing the line */}
+            <div className="space-y-2 !mt-1">
+              <div className="flex justify-between items-center w-full">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Question</span>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 rounded-md text-xs font-semibold bg-white/5 text-gray-300 tracking-wide">
+                    {question.q_type}
+                  </span>
+                  <span className={`px-3 py-1 rounded-md text-xs font-semibold uppercase tracking-wider ${
+                    question.status === 'archived'
+                      ? 'bg-surface-700/50 text-gray-400' 
+                      : 'bg-neon-emerald-500/10 text-neon-emerald-400'
+                  }`}>
+                    {question.status}
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-white leading-relaxed select-text font-semibold whitespace-pre-wrap">
+                {question.question_text}
+              </p>
+            </div>
+
+            {/* Divider Line 1 */}
+            <div className="border-t border-white/5 !mt-3" />
+
+            {/* 2. MCQ Options or Correct Answer directly below the question */}
+            {question.q_type === 'MCQ' && question.options ? (
+              <div className="space-y-2 !mt-3">
+                <span className="block text-[8px] font-bold uppercase tracking-widest text-gray-500">Options</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {Object.entries(question.options).map(([key, value]) => {
+                    const isCorrect = question.answer_text === key;
+                    return (
+                      <div 
+                        key={key} 
+                        className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all duration-200 ${
+                          isCorrect 
+                            ? 'bg-neon-emerald-500/10 border-neon-emerald-500/35 shadow-[0_0_15px_rgba(16,185,129,0.08)]' 
+                            : 'bg-white/[0.01] border-white/5'
+                        }`}
+                      >
+                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                          isCorrect ? 'bg-neon-emerald-500 text-white' : 'bg-white/5 text-gray-400'
+                        }`}>
+                          {key}
+                        </span>
+                        <span className={`text-sm leading-normal ${isCorrect ? 'text-neon-emerald-400 font-semibold' : 'text-gray-300'}`}>
+                          {value as string}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : question.q_type === 'Match the Following' && question.options && Array.isArray(question.options.pairs) ? (
+              <div className="space-y-2 !mt-3">
+                <span className="block text-[8px] font-bold uppercase tracking-widest text-gray-500">Matching Pairs</span>
+                <div className="grid grid-cols-1 gap-2 max-w-lg">
+                  {(question.options.pairs as { left: string; right: string }[]).map((pair, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.01] border border-white/5 text-xs text-gray-300">
+                      <div className="font-semibold text-white truncate max-w-[45%]">{pair.left}</div>
+                      <div className="text-neon-blue-400 font-bold shrink-0">➔</div>
+                      <div className="text-gray-300 truncate max-w-[45%]">{pair.right}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              question.answer_text && (
+                <div className="rounded-xl bg-neon-emerald-500/10 border border-neon-emerald-500/30 p-4 !mt-3">
+                  <span className="block text-[8px] font-bold uppercase tracking-widest text-neon-emerald-400 mb-1">Correct Answer</span>
+                  <p className="text-sm text-white font-medium leading-relaxed select-text font-semibold">
+                    {question.answer_text}
+                  </p>
+                </div>
+              )
+            )}
+
+            {/* Divider Line 2 */}
+            <div className="border-t border-white/5 !mt-3" />
+
+            {/* 3. Metadata/Associated Topics and Academic tags below the question sharing a line */}
+            <div className="flex flex-wrap items-center justify-between gap-3 py-1 !mt-3 w-full">
+              {/* Academic Tags (Difficulty & Marks) */}
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                <span className={`px-3 py-1 rounded-md text-xs font-semibold capitalize tracking-wide ${difficultyColor}`}>
+                  {question.difficulty}
+                </span>
+                <span className="px-3 py-1 rounded-md text-xs font-semibold bg-neon-blue-500/10 text-neon-blue-400 tracking-wide">
+                  {question.marks} Marks
+                </span>
+              </div>
+
+              {/* Divider bar centered */}
+              {question.topics && question.topics.length > 0 && (
+                <div className="h-4 w-px bg-white/20 shrink-0 self-center" />
+              )}
+
+              {/* Associated Topics & Academic Labels (No headers, side-by-side, right-aligned) */}
+              {question.topics && question.topics.length > 0 && (
+                <div className="flex flex-wrap gap-2 justify-end items-center text-right">
+                  {question.topics.map((t: any) => (
+                    <span 
+                      key={t.topic_id} 
+                      title={topicPaths[t.topic_id] || `${t.topic_name}`}
+                      className="px-3 py-1 rounded-md bg-white/5 text-xs text-gray-300 font-medium hover:bg-white/10 transition-all cursor-help"
+                    >
+                      {t.topic_name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Divider Line 3 */}
+            <div className="border-t border-white/5 !mt-3" />
+
+            {/* Audit Info Footer */}
+            <div className="flex justify-between items-center text-xs text-gray-500 pt-1 !mt-3">
+              <span>Authored by: <span className="text-gray-300 font-medium">{question.teacher?.full_name || `Teacher #${question.teacher_id}`}</span></span>
+              <span>Created: <span className="text-gray-300 font-medium">{new Date(question.created_at).toLocaleDateString()}</span></span>
+              <span>Last Updated: <span className="text-gray-300 font-medium">{new Date(question.updated_at).toLocaleDateString()}</span></span>
+            </div>
+          </div>
+        );
+      }
       default:
         return null;
     }
@@ -614,7 +769,7 @@ export const Modal: React.FC = () => {
     >
       <div 
         ref={dialogRef}
-        className={`w-full max-w-md rounded-2xl flex flex-col overflow-hidden animate-fade-in transition-all duration-300 border ${
+        className={`w-full ${dialogType === 'PREVIEW_QUESTION' ? 'max-w-xl' : 'max-w-md'} rounded-2xl flex flex-col overflow-hidden animate-fade-in transition-all duration-300 border ${
           isDestructive
             ? 'glass-danger neon-glow-red'
             : 'glass bg-surface-800/95 shadow-2xl border-white/10'
@@ -650,7 +805,7 @@ export const Modal: React.FC = () => {
           </div>
 
           {/* Body */}
-          <div className="p-6 space-y-4">
+          <div className={`p-6 ${dialogType === 'PREVIEW_QUESTION' ? 'pt-3' : 'space-y-4'}`}>
             {dialogType === 'DELETE_QUESTION' ? (
               <div className="space-y-4">
                 <p className="text-sm text-gray-300 leading-relaxed">
@@ -709,15 +864,31 @@ export const Modal: React.FC = () => {
           <div className={`flex items-center justify-end gap-3 p-6 pt-4 border-t ${
             isDestructive ? 'border-red-500/10 bg-red-500/[0.01]' : 'border-white/5 bg-white/[0.01]'
           }`}>
-            <button 
-              type="button"
-              onClick={closeDialog}
-              disabled={isPending}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Cancel
-            </button>
-            {dialogType === 'DELETE_QUESTION' ? (
+            {dialogType !== 'PREVIEW_QUESTION' && (
+              <button 
+                type="button"
+                onClick={closeDialog}
+                disabled={isPending}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+            )}
+            {dialogType === 'PREVIEW_QUESTION' ? (
+              <div className="flex w-full justify-end items-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeDialog();
+                    openDrawer('EDIT_QUESTION', { questionId: (dialogPayload as any).question_id });
+                  }}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold text-neon-blue-400 hover:text-neon-blue-300 hover:bg-neon-blue-500/10 border border-neon-blue-500/20 transition-all duration-200 cursor-pointer flex items-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                  Edit Question
+                </button>
+              </div>
+            ) : dialogType === 'DELETE_QUESTION' ? (
               <>
                 <button
                   type="button"
