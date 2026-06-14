@@ -570,3 +570,59 @@ async def test_mcq_patch_rejects_invalid_answer(client: AsyncClient):
         headers=headers,
     )
     assert bad_patch.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_stats_roles_coverage(client: AsyncClient):
+    # Setup / Login as Admin
+    login_admin = await client.post("/auth/login", data={"username": "admin@test.com", "password": "Password123!"})
+    if login_admin.status_code != 200:
+        login_admin = await client.post("/auth/login", data={"username": "admin@test.com", "password": "NewSecure@Pass1"})
+    token_admin = login_admin.json()["access_token"]
+    admin_headers = {"Authorization": f"Bearer {token_admin}"}
+
+    # Register a Coordinator
+    await client.post("/auth/register", json={
+        "full_name": "Coord User",
+        "email": "coord@test.com",
+        "password": "Password123!",
+        "department": "Admin",
+        "grade_levels": [10]
+    }, headers=admin_headers)
+
+    # Register HOD
+    await client.post("/auth/register", json={
+        "full_name": "HOD User",
+        "email": "hod_user@test.com",
+        "password": "Password123!",
+        "department": "Science",
+        "hod_allowed_subject_ids": [1]
+    }, headers=admin_headers)
+
+    # Register Faculty / simple Teacher
+    await client.post("/auth/register", json={
+        "full_name": "Teacher User",
+        "email": "teacher@test.com",
+        "password": "Password123!",
+        "department": "English",
+        "subject_ids": []
+    }, headers=admin_headers)
+
+    # Test coordinator stats
+    login_coord = await client.post("/auth/login", data={"username": "coord@test.com", "password": "Password123!"})
+    token_coord = login_coord.json()["access_token"]
+    res_coord = await client.get("/stats/", headers={"Authorization": f"Bearer {token_coord}"})
+    assert res_coord.status_code == 200
+
+    # Test HOD stats
+    login_hod = await client.post("/auth/login", data={"username": "hod_user@test.com", "password": "Password123!"})
+    token_hod = login_hod.json()["access_token"]
+    res_hod = await client.get("/stats/", headers={"Authorization": f"Bearer {token_hod}"})
+    assert res_hod.status_code == 200
+
+    # Test simple teacher stats (empty subjects)
+    login_teacher = await client.post("/auth/login", data={"username": "teacher@test.com", "password": "Password123!"})
+    token_teacher = login_teacher.json()["access_token"]
+    res_teacher = await client.get("/stats/", headers={"Authorization": f"Bearer {token_teacher}"})
+    assert res_teacher.status_code == 200
+

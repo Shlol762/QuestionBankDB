@@ -243,7 +243,7 @@ async def generate_data():
                     marks=random.choice([2, 5, 10]),
                     difficulty=difficulty,
                     q_type=q_type,
-                    status=random.choice([QuestionStatus.DRAFT, QuestionStatus.PUBLISHED, QuestionStatus.ARCHIVED]),
+                    status=random.choice([QuestionStatus.PUBLISHED, QuestionStatus.ARCHIVED]),
                     created_at=created_at,
                     updated_at=updated_at,
                 )

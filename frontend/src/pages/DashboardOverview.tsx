@@ -84,7 +84,7 @@ export const DashboardOverview: React.FC = () => {
             {getRoles().map((role, idx) => (
               <span 
                 key={idx} 
-                className="px-3 py-1 rounded-full text-xs font-semibold bg-white/5 border border-white/10 text-gray-300 flex items-center gap-1.5"
+                className="px-3 py-1 rounded-md text-xs font-semibold bg-white/5 text-gray-300 flex items-center gap-1.5"
               >
                 <Shield className="w-3 h-3 text-neon-blue-400" />
                 {role}
@@ -170,7 +170,7 @@ export const DashboardOverview: React.FC = () => {
                 <BookOpen className="w-4 h-4 text-neon-blue-400" />
                 <h2 className="text-base font-bold text-white">Recent Activity</h2>
               </div>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-neon-blue-500/10 text-neon-blue-400">
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-neon-blue-500/10 text-neon-blue-400">
                 Latest Published
               </span>
             </div>
@@ -229,7 +229,7 @@ export const DashboardOverview: React.FC = () => {
                 <AlertCircle className="w-4 h-4 text-neon-fuchsia-400" />
                 <h2 className="text-base font-bold text-white">Curriculum Coverage Gaps</h2>
               </div>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-neon-fuchsia-500/10 text-neon-fuchsia-400">
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-neon-fuchsia-500/10 text-neon-fuchsia-400">
                 Action Required
               </span>
             </div>
@@ -253,7 +253,7 @@ export const DashboardOverview: React.FC = () => {
                         <div className="text-xs font-bold text-white truncate">{gap.topic_name}</div>
                         <div className="text-[10px] text-gray-500 truncate mt-0.5">{gap.subject_name}</div>
                       </div>
-                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-red-500/10 text-neon-red-400 border border-red-500/20 whitespace-nowrap">
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-red-500/10 text-neon-red-400 whitespace-nowrap">
                         0 Questions
                       </span>
                     </div>
@@ -338,7 +338,7 @@ export const DashboardOverview: React.FC = () => {
                         </span>
                         <span className="text-xs font-bold text-white truncate">{user.name}</span>
                       </div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-neon-blue-500/10 text-neon-blue-400">
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-neon-blue-500/10 text-neon-blue-400">
                         {user.count} items
                       </span>
                     </div>

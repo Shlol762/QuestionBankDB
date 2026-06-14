@@ -76,12 +76,18 @@ async def get_dashboard_stats(
             )
         )
         user_count_stmt = None
-        subject_count_stmt = select(func.count(Subject.subject_id)).join(Users.subjects).where(
-            Users.user_id == current_user.user_id
+        subject_ids = [s.subject_id for s in current_user.subjects]
+        subject_count_stmt = (
+            select(func.count(Subject.subject_id)).where(Subject.subject_id.in_(subject_ids))
+            if subject_ids
+            else select(func.count(Subject.subject_id)).where(False)
         )
-        topic_count_stmt = select(func.count(Topic.topic_id)).join(Subject).join(Users.subjects).where(
-            Users.user_id == current_user.user_id
+        topic_count_stmt = (
+            select(func.count(Topic.topic_id)).where(Topic.subject_id.in_(subject_ids))
+            if subject_ids
+            else select(func.count(Topic.topic_id)).where(False)
         )
+
 
     q_count = (await session.exec(q_count_stmt)).first() or 0
     sub_count = (await session.exec(subject_count_stmt)).first() or 0
@@ -268,7 +274,7 @@ async def get_dashboard_stats(
                 Subject.subject_id.in_([s.subject_id for s in current_user.subjects]) if current_user.subjects else False,
                 QuestionBank.question_id.is_(None)
             )
-        ).limit(10) if current_user.subjects else select(Topic)
+        ).limit(10) if current_user.subjects else select(Topic.topic_id, Topic.topic_name, Subject.subject_name).join(Subject).where(False)
     
     coverage_gaps = (await session.exec(coverage_stmt)).all()
 
