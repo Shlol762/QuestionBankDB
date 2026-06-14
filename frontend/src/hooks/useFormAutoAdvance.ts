@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 
 /**
@@ -14,6 +14,11 @@ export function useFormAutoAdvance(
   triggerDependency: unknown,
   isHighRisk: boolean = false
 ) {
+  const lastTriggerTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    lastTriggerTimeRef.current = Date.now();
+  }, [triggerDependency]);
   useEffect(() => {
     if (!containerRef.current) return;
     
@@ -115,6 +120,10 @@ export function useFormAutoAdvance(
 
     // Intercept dropdown onChange to auto-advance focus
     const handleChange = (e: Event) => {
+      // Ignore programmatic (non-user-triggered) events and events fired too quickly after initialization/render
+      if (!e.isTrusted) return;
+      if (Date.now() - lastTriggerTimeRef.current < 500) return;
+
       const target = e.target as HTMLElement;
       if (target.tagName.toLowerCase() === 'select') {
         const focusable = Array.from(

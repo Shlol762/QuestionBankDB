@@ -29,10 +29,13 @@ import { useDeleteUser } from '../../hooks/useStaff';
 import { useDeleteQuestion } from '../../hooks/useQuestions';
 import { useExplorerUrlState } from '../../hooks/useExplorerUrlState';
 import { useFormAutoAdvance } from '../../hooks/useFormAutoAdvance';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import type { DeleteQuestionDialogPayload } from '../../types/ui.types';
 
 export const Modal: React.FC = () => {
   const { dialogType, dialogPayload, closeDialog, openDrawer } = useUIStore();
+  const navigate = useNavigate();
   const { selectSyllabus, selectGrade, selectSubject, selectTopic } = useExplorerUrlState();
   const { data: rawHierarchy } = useCurriculumHierarchy();
 
@@ -198,7 +201,11 @@ export const Modal: React.FC = () => {
     }
   }
 
-  const isConfirmed = !isDestructive || confirmInput === targetName;
+  const hasNoTemplates = 
+    (dialogType === 'ADD_GRADE' && (!allowedGradesPage?.items || allowedGradesPage.items.length === 0)) ||
+    (dialogType === 'ADD_SUBJECT' && (!allowedSubjectsPage?.items || allowedSubjectsPage.items.length === 0));
+
+  const isConfirmed = (!isDestructive || confirmInput === targetName) && !hasNoTemplates;
 
   // Handle confirm click
   const handleConfirm = async (e: React.FormEvent) => {
@@ -233,13 +240,18 @@ export const Modal: React.FC = () => {
           break;
         }
         case 'ADD_GRADE': {
-          const res = await createGradeMutation.mutateAsync({ syllabus_id: payload.syllabusId, grade_level: parseInt(level, 10) });
+          const gradeLevelParsed = parseInt(level, 10);
+          if (isNaN(gradeLevelParsed)) {
+            toast.error("Please select a valid grade level.");
+            return;
+          }
+          const res = await createGradeMutation.mutateAsync({ syllabus_id: payload.syllabusId, grade_level: gradeLevelParsed });
           if (res?.config_id) {
             selectGrade(res.config_id);
           }
           break;
         }
-        case 'MANAGE_GRADE_PDF':
+        case 'MANAGE_GRADE_PDF': {
           let finalPdfUrl = currentPdfUrl;
           if (pdfFile) {
             const uploadRes = await uploadPdfMutation.mutateAsync(pdfFile);
@@ -250,14 +262,19 @@ export const Modal: React.FC = () => {
             payload: { pdf_url: finalPdfUrl }
           });
           break;
+        }
         case 'DELETE_GRADE':
           await deleteGradeMutation.mutateAsync(payload.configId);
           break;
         case 'ADD_SUBJECT': {
-          if (!allowedSubjectId) return;
+          const allowedSubIdParsed = parseInt(String(allowedSubjectId), 10);
+          if (isNaN(allowedSubIdParsed) || !name.trim()) {
+            toast.error("Please select a subject template and enter a display name.");
+            return;
+          }
           const res = await createSubjectMutation.mutateAsync({ 
             config_id: payload.configId, 
-            allowed_subject_id: allowedSubjectId as number, 
+            allowed_subject_id: allowedSubIdParsed, 
             subject_name: name 
           });
           if (res?.subject_id) {
@@ -374,9 +391,19 @@ export const Modal: React.FC = () => {
         return (
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Grade Level</label>
-            {allowedGradesPage?.items.length === 0 ? (
-              <div className="text-xs text-amber-400 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                No configured grade levels found. Please add allowed grades under Platform Configuration first.
+            {!allowedGradesPage?.items || allowedGradesPage.items.length === 0 ? (
+              <div className="text-xs text-amber-400 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 space-y-2">
+                <p>No configured grade levels found. Please add allowed grades under Platform Configuration first.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeDialog();
+                    navigate('/dashboard/platform');
+                  }}
+                  className="text-xs font-semibold text-neon-blue-400 hover:text-neon-blue-300 hover:underline transition-colors cursor-pointer block"
+                >
+                  Go to Platform Configuration ➔
+                </button>
               </div>
             ) : (
               <select
@@ -417,9 +444,19 @@ export const Modal: React.FC = () => {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Subject Template</label>
-              {allowedSubjectsPage?.items.length === 0 ? (
-                <div className="text-xs text-amber-400 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                  No configured subjects found. Please add allowed subjects under Platform Configuration first.
+              {!allowedSubjectsPage?.items || allowedSubjectsPage.items.length === 0 ? (
+                <div className="text-xs text-amber-400 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 space-y-2">
+                  <p>No configured subjects found. Please add allowed subjects under Platform Configuration first.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeDialog();
+                      navigate('/dashboard/platform');
+                    }}
+                    className="text-xs font-semibold text-neon-blue-400 hover:text-neon-blue-300 hover:underline transition-colors cursor-pointer block"
+                  >
+                    Go to Platform Configuration ➔
+                  </button>
                 </div>
               ) : (
                 <select
