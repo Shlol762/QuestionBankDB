@@ -4,7 +4,8 @@ import { Accordion } from './Accordion';
 import { StepWizard } from './StepWizard';
 import { useCreateQuestion, useQuestionDetails, useUpdateQuestion } from '../../hooks/useQuestions';
 import { useFormAutoAdvance } from '../../hooks/useFormAutoAdvance';
-import { useRegisterStaff } from '../../hooks/useStaff';
+import { useRegisterStaff, useUpdateUser, useUsers } from '../../hooks/useStaff';
+import { useAllowedSubjects, useAllowedGrades } from '../../hooks/useSystemConfig';
 import { useCurriculumHierarchy } from '../../hooks/useCurriculum';
 import { useResolvedCurriculumSelection } from '../../hooks/useResolvedCurriculumSelection';
 import { toast } from 'react-hot-toast';
@@ -28,7 +29,7 @@ export const Drawer: React.FC = () => {
             list.push({
               id: t.topic_id,
               name: t.topic_name,
-              info: `Grade ${g.grade_level} • ${sub.subject_name}`
+              info: `Grade ${g.grade_level} • ${sub.subject_name} • ${s.syllabus_name} (${s.academic_year})`
             });
           });
         });
@@ -85,12 +86,18 @@ export const Drawer: React.FC = () => {
   const { topic: currentContextTopic } = useResolvedCurriculumSelection();
 
   // --- LOCAL STATE FOR QUESTION FORM ---
-  const [questionAccordionId, setQuestionAccordionId] = useState('classification');
+  const [questionAccordionId, setQuestionAccordionId] = useState('content');
   const [questionDifficulty, setQuestionDifficulty] = useState('medium');
+  const [questionStatus, setQuestionStatus] = useState<'published' | 'archived'>('published');
   const [selectedQuestionTopics, setSelectedQuestionTopics] = useState<number[]>([]);
   const [topicSearchQuery, setTopicSearchQuery] = useState('');
   const [questionMarks, setQuestionMarks] = useState('5');
   const [questionText, setQuestionText] = useState('');
+  const [questionType, setQuestionType] = useState<string>('MCQ');
+  const [freeFormAnswer, setFreeFormAnswer] = useState('');
+  const [matchPairs, setMatchPairs] = useState<{ id: number; left: string; right: string }[]>([
+    { id: 1, left: '', right: '' }
+  ]);
   const [mcqOptions, setMcqOptions] = useState([
     { id: 'A', text: '', isCorrect: true },
     { id: 'B', text: '', isCorrect: false },
@@ -98,6 +105,18 @@ export const Drawer: React.FC = () => {
     { id: 'D', text: '', isCorrect: false }
   ]);
   const [showUpdateConfirm, setShowUpdateConfirm] = useState(false);
+
+  const handleAddMatchPair = () => {
+    setMatchPairs(prev => [...prev, { id: Date.now(), left: '', right: '' }]);
+  };
+
+  const handleRemoveMatchPair = (id: number) => {
+    setMatchPairs(prev => prev.length > 1 ? prev.filter(p => p.id !== id) : prev);
+  };
+
+  const handleMatchPairChange = (id: number, field: 'left' | 'right', value: string) => {
+    setMatchPairs(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
 
   const filteredTopics = useMemo(() => {
     if (!topicSearchQuery.trim()) return [];
@@ -112,6 +131,22 @@ export const Drawer: React.FC = () => {
   const { data: questionDetails, isLoading: isQuestionLoading } = useQuestionDetails(questionId);
   const updateQuestionMutation = useUpdateQuestion();
 
+  // Staff Management Queries & Mutations
+  const { data: usersData } = useUsers('all', { enabled: drawerType === 'EDIT_STAFF' });
+  const updateUserMutation = useUpdateUser();
+  const { data: allowedSubjectsPage } = useAllowedSubjects(true);
+  const { data: allowedGradesPage } = useAllowedGrades(true);
+  const allowedSubjectsList = useMemo(() => allowedSubjectsPage?.items || [], [allowedSubjectsPage]);
+  const allowedGradesList = useMemo(() => allowedGradesPage?.items || [], [allowedGradesPage]);
+
+  const editingUserId = (drawerType === 'EDIT_STAFF' && drawerPayload) ? (drawerPayload as { userId?: number })?.userId : null;
+  const editingUser = useMemo(() => {
+    if (!editingUserId || !usersData?.items) return null;
+    return usersData.items.find(u => u.user_id === editingUserId);
+  }, [editingUserId, usersData]);
+
+  const isStaffLoading = drawerType === 'EDIT_STAFF' && !editingUser;
+
   // Reset form state and set preselected topic when drawer is opened
   useEffect(() => {
     if (drawerType === 'CREATE_QUESTION') {
@@ -120,15 +155,19 @@ export const Drawer: React.FC = () => {
       /* eslint-disable-next-line react-hooks/set-state-in-effect */
       setSelectedQuestionTopics(preselectedId ? [preselectedId] : []);
       setQuestionDifficulty('medium');
+      setQuestionStatus('published');
       setQuestionMarks('5');
       setQuestionText('');
+      setQuestionType('MCQ');
+      setFreeFormAnswer('');
+      setMatchPairs([{ id: 1, left: '', right: '' }]);
       setMcqOptions([
         { id: 'A', text: '', isCorrect: true },
         { id: 'B', text: '', isCorrect: false },
         { id: 'C', text: '', isCorrect: false },
         { id: 'D', text: '', isCorrect: false }
       ]);
-      setQuestionAccordionId('classification');
+      setQuestionAccordionId('content');
       setTopicSearchQuery('');
     }
   }, [drawerType, drawerPayload]);
@@ -138,13 +177,15 @@ export const Drawer: React.FC = () => {
     if (drawerType === 'EDIT_QUESTION' && questionDetails) {
       /* eslint-disable-next-line react-hooks/set-state-in-effect */
       setQuestionDifficulty(questionDetails.difficulty.toLowerCase());
+      setQuestionStatus((questionDetails.status as 'published' | 'archived') || 'published');
       setQuestionMarks(String(questionDetails.marks));
       setQuestionText(questionDetails.question_text);
+      setQuestionType(questionDetails.q_type || 'MCQ');
       
       const selectedIds = questionDetails.topics.map(t => t.topic_id);
       setSelectedQuestionTopics(selectedIds);
       
-      if (questionDetails.options) {
+      if ((questionDetails.q_type === 'MCQ' || !questionDetails.q_type) && questionDetails.options) {
         const opts = Object.entries(questionDetails.options).map(([key, value]) => ({
           id: key,
           text: value as string,
@@ -152,9 +193,21 @@ export const Drawer: React.FC = () => {
         }));
         opts.sort((a, b) => a.id.localeCompare(b.id));
         setMcqOptions(opts);
+        setFreeFormAnswer('');
+      } else if (questionDetails.q_type === 'Match the Following' && questionDetails.options && Array.isArray(questionDetails.options.pairs)) {
+        const pairs = questionDetails.options.pairs.map((p: any, idx: number) => ({
+          id: idx + 1,
+          left: p.left || '',
+          right: p.right || ''
+        }));
+        setMatchPairs(pairs.length > 0 ? pairs : [{ id: 1, left: '', right: '' }]);
+        setFreeFormAnswer('Pairs matched');
+      } else {
+        setFreeFormAnswer(questionDetails.answer_text || '');
+        setMatchPairs([{ id: 1, left: '', right: '' }]);
       }
       
-      setQuestionAccordionId('classification');
+      setQuestionAccordionId('content');
       setTopicSearchQuery('');
     }
   }, [drawerType, questionDetails]);
@@ -170,11 +223,28 @@ export const Drawer: React.FC = () => {
   const handleSaveQuestionConfirm = async (updateMode: "everywhere" | "copy") => {
     if (!questionId) return;
 
-    const correctOption = mcqOptions.find(o => o.isCorrect);
-    const optionsDict = mcqOptions.reduce((acc, opt) => {
-      acc[opt.id] = opt.text;
-      return acc;
-    }, {} as Record<string, string>);
+    let answerTextVal = '';
+    let optionsVal: Record<string, any> | null = null;
+
+    if (questionType === 'MCQ') {
+      const correctOption = mcqOptions.find(o => o.isCorrect);
+      answerTextVal = correctOption ? correctOption.id : 'A';
+      optionsVal = mcqOptions.reduce((acc, opt) => {
+        acc[opt.id] = opt.text;
+        return acc;
+      }, {} as Record<string, string>);
+    } else if (questionType === 'True/False') {
+      answerTextVal = freeFormAnswer === 'True' || freeFormAnswer === 'False' ? freeFormAnswer : 'True';
+      optionsVal = null;
+    } else if (questionType === 'Match the Following') {
+      answerTextVal = 'Pairs matched';
+      optionsVal = {
+        pairs: matchPairs.map(p => ({ left: p.left, right: p.right }))
+      };
+    } else {
+      answerTextVal = freeFormAnswer || 'Standard Solution provided in marking scheme.';
+      optionsVal = null;
+    }
 
     await updateQuestionMutation.mutateAsync({
       id: questionId,
@@ -183,12 +253,12 @@ export const Drawer: React.FC = () => {
         context_topic_id: updateMode === 'copy' ? currentContextTopic?.id || undefined : undefined,
         topic_ids: selectedQuestionTopics,
         question_text: questionText,
-        answer_text: correctOption ? correctOption.id : 'A',
-        options: optionsDict,
+        answer_text: answerTextVal,
+        options: optionsVal,
         marks: parseInt(questionMarks, 10),
         difficulty: questionDifficulty.charAt(0).toUpperCase() + questionDifficulty.slice(1),
-        q_type: 'MCQ',
-        status: questionDetails?.status || 'published'
+        q_type: questionType,
+        status: questionStatus
       }
     });
 
@@ -219,21 +289,38 @@ export const Drawer: React.FC = () => {
         await handleSaveQuestionConfirm('everywhere');
       }
     } else {
-      const correctOption = mcqOptions.find(o => o.isCorrect);
-      const optionsDict = mcqOptions.reduce((acc, opt) => {
-        acc[opt.id] = opt.text;
-        return acc;
-      }, {} as Record<string, string>);
+      let answerTextVal = '';
+      let optionsVal: Record<string, any> | null = null;
+
+      if (questionType === 'MCQ') {
+        const correctOption = mcqOptions.find(o => o.isCorrect);
+        answerTextVal = correctOption ? correctOption.id : 'A';
+        optionsVal = mcqOptions.reduce((acc, opt) => {
+          acc[opt.id] = opt.text;
+          return acc;
+        }, {} as Record<string, string>);
+      } else if (questionType === 'True/False') {
+        answerTextVal = freeFormAnswer === 'True' || freeFormAnswer === 'False' ? freeFormAnswer : 'True';
+        optionsVal = null;
+      } else if (questionType === 'Match the Following') {
+        answerTextVal = 'Pairs matched';
+        optionsVal = {
+          pairs: matchPairs.map(p => ({ left: p.left, right: p.right }))
+        };
+      } else {
+        answerTextVal = freeFormAnswer || 'Standard Solution provided in marking scheme.';
+        optionsVal = null;
+      }
 
       await createQuestionMutation.mutateAsync({
         topic_ids: selectedQuestionTopics,
         question_text: questionText,
-        answer_text: correctOption ? correctOption.id : 'A',
-        options: optionsDict,
+        answer_text: answerTextVal,
+        options: optionsVal,
         marks: parseInt(questionMarks, 10),
         difficulty: questionDifficulty.charAt(0).toUpperCase() + questionDifficulty.slice(1),
-        q_type: 'MCQ',
-        status: 'published'
+        q_type: questionType,
+        status: questionStatus
       });
       
       closeDrawer();
@@ -245,8 +332,17 @@ export const Drawer: React.FC = () => {
   const [staffName, setStaffName] = useState('');
   const [staffEmail, setStaffEmail] = useState('');
   const [staffPassword, setStaffPassword] = useState('');
-  const [staffRole, setStaffRole] = useState('faculty');
+  const [staffDepartment, setStaffDepartment] = useState('');
+  const [isSystemAdmin, setIsSystemAdmin] = useState(false);
+  const [selectedGradeLevels, setSelectedGradeLevels] = useState<number[]>([]);
+  const [selectedHODSubjectIds, setSelectedHODSubjectIds] = useState<number[]>([]);
   const [selectedSubjects, setSelectedSubjects] = useState<number[]>([]);
+  const [isHOD, setIsHOD] = useState(false);
+  const [isCoordinator, setIsCoordinator] = useState(false);
+  const [hodSearch, setHodSearch] = useState('');
+  const [gradeSearch, setGradeSearch] = useState('');
+  const [hodDropdownOpen, setHodDropdownOpen] = useState(false);
+  const [gradeDropdownOpen, setGradeDropdownOpen] = useState(false);
 
   useFormAutoAdvance(drawerRef, `${drawerType}-${staffCurrentStep}`);
 
@@ -256,31 +352,337 @@ export const Drawer: React.FC = () => {
     );
   };
 
+  const toggleGradeLevel = (gradeId: number) => {
+    setSelectedGradeLevels(prev =>
+      prev.includes(gradeId) ? prev.filter(g => g !== gradeId) : [...prev, gradeId]
+    );
+  };
+
+  const toggleHODSubject = (subjId: number) => {
+    setSelectedHODSubjectIds(prev =>
+      prev.includes(subjId) ? prev.filter(s => s !== subjId) : [...prev, subjId]
+    );
+  };
+
+  const filteredGradeOptions = useMemo(() => {
+    const list = allowedGradesList;
+    if (!gradeSearch) return list;
+    return list.filter(g => g.grade_name.toLowerCase().includes(gradeSearch.toLowerCase()));
+  }, [allowedGradesList, gradeSearch]);
+
+  const filteredHODOptions = useMemo(() => {
+    const list = allowedSubjectsList;
+    if (!hodSearch) return list;
+    return list.filter(s => s.subject_name.toLowerCase().includes(hodSearch.toLowerCase()));
+  }, [allowedSubjectsList, hodSearch]);
+
+  // Load existing staff details when editing or reset when creating
+  useEffect(() => {
+    if (drawerType === 'EDIT_STAFF' && editingUser) {
+      setStaffName(editingUser.full_name);
+      setStaffEmail(editingUser.email);
+      setStaffPassword('');
+      setStaffDepartment(editingUser.department || '');
+      setIsSystemAdmin(editingUser.is_admin);
+      
+      const grades = editingUser.grade_levels || [];
+      setSelectedGradeLevels(grades);
+      setIsCoordinator(grades.length > 0);
+
+      const hodSubjs = editingUser.hod_allowed_subject_ids || [];
+      setSelectedHODSubjectIds(hodSubjs);
+      setIsHOD(hodSubjs.length > 0);
+
+      setSelectedSubjects((editingUser.subjects || []).map(s => s.subject_id));
+      setStaffCurrentStep(0);
+    } else if (drawerType === 'CREATE_STAFF') {
+      setStaffName('');
+      setStaffEmail('');
+      setStaffPassword('');
+      setStaffDepartment('');
+      setIsSystemAdmin(false);
+      setSelectedGradeLevels([]);
+      setIsCoordinator(false);
+      setSelectedHODSubjectIds([]);
+      setIsHOD(false);
+      setSelectedSubjects([]);
+      setStaffCurrentStep(0);
+    }
+  }, [drawerType, editingUser]);
+
   const handleStaffComplete = async () => {
-    await registerStaffMutation.mutateAsync({
+    const minLen = isSystemAdmin ? 12 : 8;
+    if (!isEditing && staffPassword.length < minLen) {
+      toast.error(`Password must be at least ${minLen} characters for ${isSystemAdmin ? 'Administrator' : 'Faculty/Staff'} accounts.`);
+      return;
+    }
+    if (isEditing && staffPassword && staffPassword.length < minLen) {
+      toast.error(`Password must be at least ${minLen} characters for ${isSystemAdmin ? 'Administrator' : 'Faculty/Staff'} accounts.`);
+      return;
+    }
+
+    const payload = {
       full_name: staffName,
       email: staffEmail,
-      password: staffPassword,
-      department: 'Academic Faculty',
-      is_admin: staffRole === 'admin',
-      subject_ids: staffRole === 'faculty' ? selectedSubjects : [],
-      hod_allowed_subject_ids: staffRole === 'hod' ? selectedSubjects : [],
-      grade_levels: staffRole === 'coordinator' ? [] : []
-    });
+      department: staffDepartment || 'Academic Faculty',
+      is_admin: isSystemAdmin,
+      subject_ids: selectedSubjects,
+      hod_allowed_subject_ids: isHOD ? selectedHODSubjectIds : [],
+      grade_levels: isCoordinator ? selectedGradeLevels : []
+    };
+
+    if (drawerType === 'EDIT_STAFF' && editingUserId) {
+      const updatePayload: any = { ...payload };
+      if (staffPassword) {
+        updatePayload.password = staffPassword;
+      }
+      await updateUserMutation.mutateAsync({
+        id: editingUserId,
+        payload: updatePayload
+      });
+    } else {
+      await registerStaffMutation.mutateAsync({
+        ...payload,
+        password: staffPassword
+      });
+    }
     closeDrawer();
   };
 
-  if (!drawerType) return null;
-
-  const isEditing = drawerType.startsWith('EDIT_');
-  const isQuestionDrawer = drawerType.includes('QUESTION');
-  const isStaffDrawer = drawerType.includes('STAFF');
+  const isEditing = drawerType ? drawerType.startsWith('EDIT_') : false;
+  const isQuestionDrawer = drawerType ? drawerType.includes('QUESTION') : false;
+  const isStaffDrawer = drawerType ? drawerType.includes('STAFF') : false;
 
   // Question Form Content Accordion Items
   const questionAccordionItems = [
     {
+      id: 'content',
+      title: '1. Core Content & Media',
+      icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+      ),
+      content: (
+        <div className="space-y-5">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Question Text</label>
+            <textarea
+              value={questionText}
+              onChange={(e) => setQuestionText(e.target.value)}
+              className="w-full glass-input px-4 py-3 text-sm min-h-[120px]"
+              placeholder="Type your question prompt here. LaTeX math notation is supported (e.g. $$x^2 + y^2 = r^2$$)..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Supporting Images / Reference (Optional)</label>
+            <div className="border border-dashed border-white/10 hover:border-neon-blue-500/50 transition-colors duration-300 rounded-xl p-6 flex flex-col items-center justify-center bg-white/[0.01] cursor-pointer">
+              <svg className="w-8 h-8 text-gray-400 mb-2 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span className="text-xs text-gray-300 font-medium">Click to upload or drag & drop</span>
+              <span className="text-[10px] text-gray-500 mt-1">PNG, JPG or PDF up to 5MB</span>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-white/5 flex justify-end items-center">
+            <button
+              type="button"
+              onClick={() => setQuestionAccordionId('answers')}
+              className="px-5 py-2 rounded-lg text-xs font-semibold text-neon-blue-400 hover:text-neon-blue-300 transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              Next: Option Editor →
+            </button>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'answers',
+      title: '2. Answers & Option Editor',
+      icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="9 11 12 14 22 4"></polyline>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+        </svg>
+      ),
+      content: (
+        <div className="space-y-5">
+          {/* Question Type Selection */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Question Type</label>
+            <select
+              value={questionType}
+              onChange={(e) => {
+                const newType = e.target.value;
+                setQuestionType(newType);
+                if (newType === 'True/False') {
+                  setFreeFormAnswer('True');
+                } else if (newType !== 'MCQ' && newType !== 'Match the Following') {
+                  setFreeFormAnswer('');
+                }
+              }}
+              className="w-full glass-input glass-select px-4 py-2.5 text-sm bg-surface-900 text-white rounded-xl border border-white/5 focus:border-neon-blue-500/50 outline-none"
+            >
+              <option value="MCQ">Multiple Choice (MCQ)</option>
+              <option value="True/False">True / False</option>
+              <option value="Match the Following">Match the Following</option>
+              <option value="Short Answer">Short Answer</option>
+              <option value="Long Answer">Long Answer</option>
+              <option value="Fill in the Blanks">Fill in the Blanks</option>
+              <option value="One Word Answer">One Word Answer</option>
+              <option value="Assertion/Reason">Assertion / Reason</option>
+              <option value="Case Study">Case Study</option>
+              <option value="Ordering/Sequencing">Ordering / Sequencing</option>
+              <option value="Diagram Labeling">Diagram Labeling</option>
+            </select>
+          </div>
+
+          <div className="border-t border-white/5 my-3" />
+
+          {/* Conditional Editors */}
+          {questionType === 'MCQ' ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400">Multiple Choice Options</label>
+                <span className="text-[10px] text-neon-blue-400 uppercase tracking-widest font-bold">Select one correct option</span>
+              </div>
+
+              <div className="space-y-3">
+                {mcqOptions.map((opt) => (
+                  <div key={opt.id} className="flex items-center gap-3">
+                    {/* Radio Indicator */}
+                    <button
+                      type="button"
+                      onClick={() => handleCorrectOptionChange(opt.id)}
+                      className={`w-6 h-6 rounded-full flex items-center justify-center border transition-all duration-200 ${
+                        opt.isCorrect
+                          ? 'bg-neon-blue-500/20 border-neon-blue-500 text-neon-blue-400 shadow-[0_0_10px_rgba(14,165,233,0.3)]'
+                          : 'border-white/10 text-transparent hover:border-white/30'
+                      }`}
+                    >
+                      <div className={`w-2 h-2 rounded-full ${opt.isCorrect ? 'bg-neon-blue-400' : 'bg-transparent'}`} />
+                    </button>
+
+                    <div className="text-sm font-semibold text-gray-400 w-4">{opt.id}</div>
+
+                    <input
+                      type="text"
+                      value={opt.text}
+                      onChange={(e) => handleOptionTextChange(opt.id, e.target.value)}
+                      placeholder={`Option ${opt.id} value...`}
+                      className="flex-1 glass-input px-3 py-2 text-sm"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : questionType === 'True/False' ? (
+            <div className="space-y-3">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400">Select Correct Answer</label>
+              <div className="grid grid-cols-2 gap-3 max-w-xs">
+                {['True', 'False'].map((tfValue) => {
+                  const isActive = freeFormAnswer === tfValue;
+                  return (
+                    <button
+                      key={tfValue}
+                      type="button"
+                      onClick={() => setFreeFormAnswer(tfValue)}
+                      className={`py-3 rounded-xl text-sm font-semibold border transition-all duration-200 cursor-pointer ${
+                        isActive
+                          ? 'bg-neon-blue-500/20 border-neon-blue-500 text-neon-blue-400 shadow-[0_0_15px_rgba(14,165,233,0.2)]'
+                          : 'bg-white/[0.02] border-white/5 text-gray-400 hover:bg-white/5 hover:text-white'
+                      }`}
+                    >
+                      {tfValue}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : questionType === 'Match the Following' ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400">Match Pairs</label>
+                <span className="text-[10px] text-neon-blue-400 uppercase tracking-widest font-bold">Define matching terms</span>
+              </div>
+
+              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                {matchPairs.map((pair, index) => (
+                  <div key={pair.id} className="flex items-center gap-2 bg-white/[0.01] p-3 rounded-xl border border-white/5 relative group">
+                    <div className="text-xs font-bold text-gray-500 select-none w-5">{index + 1}</div>
+                    
+                    <input
+                      type="text"
+                      value={pair.left}
+                      onChange={(e) => handleMatchPairChange(pair.id, 'left', e.target.value)}
+                      placeholder="Left side item..."
+                      className="flex-1 glass-input px-3 py-2 text-xs"
+                    />
+
+                    <span className="text-neon-blue-400 text-sm select-none">➔</span>
+
+                    <input
+                      type="text"
+                      value={pair.right}
+                      onChange={(e) => handleMatchPairChange(pair.id, 'right', e.target.value)}
+                      placeholder="Right side definition..."
+                      className="flex-1 glass-input px-3 py-2 text-xs"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveMatchPair(pair.id)}
+                      className="text-gray-500 hover:text-red-400 p-1.5 transition-colors cursor-pointer"
+                      title="Remove pair"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAddMatchPair}
+                className="w-full py-2.5 rounded-xl text-xs font-semibold bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all flex items-center justify-center gap-1 cursor-pointer"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4"></path></svg>
+                Add Pair
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400">Correct Answer / Solution Scheme</label>
+              <textarea
+                value={freeFormAnswer}
+                onChange={(e) => setFreeFormAnswer(e.target.value)}
+                className="w-full glass-input px-4 py-3 text-sm min-h-[100px]"
+                placeholder="Enter correct answer, solution steps or reference schema..."
+              />
+            </div>
+          )}
+
+          <div className="pt-4 border-t border-white/5 flex justify-end items-center">
+            <button
+              type="button"
+              onClick={() => setQuestionAccordionId('classification')}
+              className="px-5 py-2 rounded-lg text-xs font-semibold text-neon-blue-400 hover:text-neon-blue-300 transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              Next: Classification & Difficulty →
+            </button>
+          </div>
+        </div>
+      )
+    },
+    {
       id: 'classification',
-      title: '1. Classification & Difficulty',
+      title: '3. Classification & Difficulty',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
@@ -301,7 +703,7 @@ export const Drawer: React.FC = () => {
                   return (
                     <span 
                       key={id} 
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-white/5 border border-white/10 text-gray-200"
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-white/5 text-gray-200"
                     >
                       {topicObj.name}
                       <button
@@ -331,7 +733,7 @@ export const Drawer: React.FC = () => {
               
               {/* Filtered Topics Dropdown */}
               {topicSearchQuery.trim().length > 0 && (
-                <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto glass-heavy bg-surface-800 border border-white/10 rounded-xl shadow-2xl z-50 divide-y divide-white/5">
+                <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-[#0b0f19] border border-white/10 rounded-xl shadow-2xl z-50 divide-y divide-white/5">
                   {filteredTopics.length > 0 ? (
                     filteredTopics.map(t => (
                       <button
@@ -383,7 +785,7 @@ export const Drawer: React.FC = () => {
                       key={level}
                       type="button"
                       onClick={() => setQuestionDifficulty(level)}
-                      className={`py-2 rounded-lg text-xs font-semibold capitalize border transition-all duration-200 ${
+                      className={`py-2 rounded-lg text-xs font-semibold capitalize border transition-all duration-200 cursor-pointer ${
                         isActive
                           ? activeColors[level]
                           : 'bg-white/[0.02] border-white/5 text-gray-400 hover:bg-white/5 hover:text-white'
@@ -396,89 +798,32 @@ export const Drawer: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
-      )
-    },
-    {
-      id: 'content',
-      title: '2. Core Content & Media',
-      icon: (
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-          <polyline points="14 2 14 8 20 8"></polyline>
-          <line x1="16" y1="13" x2="8" y2="13"></line>
-          <line x1="16" y1="17" x2="8" y2="17"></line>
-          <polyline points="10 9 9 9 8 9"></polyline>
-        </svg>
-      ),
-      content: (
-        <div className="space-y-5">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Question Text</label>
-            <textarea
-              value={questionText}
-              onChange={(e) => setQuestionText(e.target.value)}
-              className="w-full glass-input px-4 py-3 text-sm min-h-[120px]"
-              placeholder="Type your question prompt here. LaTeX math notation is supported (e.g. $$x^2 + y^2 = r^2$$)..."
-            />
-          </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Supporting Images / Reference (Optional)</label>
-            <div className="border border-dashed border-white/10 hover:border-neon-blue-500/50 transition-colors duration-300 rounded-xl p-6 flex flex-col items-center justify-center bg-white/[0.01] cursor-pointer">
-              <svg className="w-8 h-8 text-gray-400 mb-2 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <span className="text-xs text-gray-300 font-medium">Click to upload or drag & drop</span>
-              <span className="text-[10px] text-gray-500 mt-1">PNG, JPG or PDF up to 5MB</span>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Question Status</label>
+            <div className="grid grid-cols-2 gap-3 max-w-xs">
+              {['published', 'archived'].map((statusOption) => {
+                const isActive = questionStatus === statusOption;
+                const activeColors: Record<string, string> = {
+                  published: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)]',
+                  archived: 'bg-surface-700 text-gray-300 border-white/10'
+                };
+                return (
+                  <button
+                    key={statusOption}
+                    type="button"
+                    onClick={() => setQuestionStatus(statusOption as 'published' | 'archived')}
+                    className={`py-2 rounded-lg text-xs font-semibold capitalize border transition-all duration-200 cursor-pointer ${
+                      isActive
+                        ? activeColors[statusOption]
+                        : 'bg-white/[0.02] border-white/5 text-gray-400 hover:bg-white/5 hover:text-white'
+                    }`}
+                  >
+                    {statusOption}
+                  </button>
+                );
+              })}
             </div>
-          </div>
-        </div>
-      )
-    },
-    {
-      id: 'answers',
-      title: '3. Answers & Option Editor',
-      icon: (
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="9 11 12 14 22 4"></polyline>
-          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-        </svg>
-      ),
-      content: (
-        <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400">Multiple Choice Options</label>
-            <span className="text-[10px] text-neon-blue-400 uppercase tracking-widest font-bold">Select one correct option</span>
-          </div>
-
-          <div className="space-y-3">
-            {mcqOptions.map((opt) => (
-              <div key={opt.id} className="flex items-center gap-3">
-                {/* Radio Indicator */}
-                <button
-                  type="button"
-                  onClick={() => handleCorrectOptionChange(opt.id)}
-                  className={`w-6 h-6 rounded-full flex items-center justify-center border transition-all duration-200 ${
-                    opt.isCorrect
-                      ? 'bg-neon-blue-500/20 border-neon-blue-500 text-neon-blue-400 shadow-[0_0_10px_rgba(14,165,233,0.3)]'
-                      : 'border-white/10 text-transparent hover:border-white/30'
-                  }`}
-                >
-                  <div className={`w-2 h-2 rounded-full ${opt.isCorrect ? 'bg-neon-blue-400' : 'bg-transparent'}`} />
-                </button>
-
-                <div className="text-sm font-semibold text-gray-400 w-4">{opt.id}</div>
-
-                <input
-                  type="text"
-                  value={opt.text}
-                  onChange={(e) => handleOptionTextChange(opt.id, e.target.value)}
-                  placeholder={`Option ${opt.id} value...`}
-                  className="flex-1 glass-input px-3 py-2 text-sm"
-                />
-              </div>
-            ))}
           </div>
 
           <div className="pt-4 border-t border-white/5 flex justify-between items-center">
@@ -504,15 +849,18 @@ export const Drawer: React.FC = () => {
   ];
 
   // Staff Form Steps
-  const staffWizardSteps = [
-    {
+  const staffWizardSteps = useMemo(() => {
+    const steps = [];
+
+    // Page 1: Profile
+    steps.push({
       id: 'profile',
-      title: 'Profile Info',
-      description: 'Provide basic identity details for the new staff member.',
+      title: 'Profile',
+      description: 'Provide basic identity details for the staff member.',
       content: (
-        <div className="space-y-4 pt-2">
+        <div className="space-y-5 pt-2">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Full Name</label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2 text-left">Full Name</label>
             <input
               type="text"
               value={staffName}
@@ -523,7 +871,7 @@ export const Drawer: React.FC = () => {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Email Address</label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2 text-left">Email Address</label>
             <input
               type="email"
               value={staffEmail}
@@ -534,77 +882,421 @@ export const Drawer: React.FC = () => {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Account Password</label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2 text-left">Department</label>
+            <input
+              type="text"
+              value={staffDepartment}
+              onChange={(e) => setStaffDepartment(e.target.value)}
+              className="w-full glass-input px-4 py-2.5 text-sm"
+              placeholder="e.g. Science, Mathematics, IT"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2 text-left">Account Password</label>
             <input
               type="password"
               value={staffPassword}
               onChange={(e) => setStaffPassword(e.target.value)}
               className="w-full glass-input px-4 py-2.5 text-sm"
-              placeholder="••••••••"
-              required
+              placeholder={isEditing ? "Leave blank to keep current password" : "••••••••"}
+              required={!isEditing}
             />
-            <p className="text-[10px] text-gray-400 mt-1">
-              Minimum {staffRole === 'admin' ? '12' : '8'} characters required for {staffRole === 'admin' ? 'Administrator' : 'Faculty/Staff'} accounts.
+            <p className="text-[10px] text-gray-400 mt-1 text-left">
+              Minimum {isSystemAdmin ? '12' : '8'} characters required for {isSystemAdmin ? 'Administrator' : 'Faculty/Staff'} accounts.
             </p>
           </div>
         </div>
       )
-    },
-    {
+    });
+
+    // Page 2: Management Roles (select all that apply: Grade Coordinator, Head of Department, Admin Control)
+    steps.push({
       id: 'roles',
-      title: 'Role Assignment',
-      description: 'Define authorization levels and system access for this profile.',
+      title: 'Management Roles',
+      description: 'Select all administrative or academic coordination roles that apply to this staff member.',
       content: (
-        <div className="space-y-3 pt-2">
-          {[
-            { id: 'admin', title: 'System Administrator', desc: 'Full control of syllabus, users, settings, and question database.' },
-            { id: 'coordinator', title: 'Grade Coordinator', desc: 'Manages subjects, topics, and quality reviews for assigned grades.' },
-            { id: 'hod', title: 'Department Head (HOD)', desc: 'Controls subject curriculum guidelines and approves questions.' },
-            { id: 'faculty', title: 'Faculty User', desc: 'Auths questions, builds assessments, and manages personal questions.' }
-          ].map((roleOption) => {
-            const isSelected = staffRole === roleOption.id;
-            return (
-              <button
-                key={roleOption.id}
-                type="button"
-                onClick={() => setStaffRole(roleOption.id)}
-                className={`w-full text-left p-4 rounded-xl border transition-all duration-300 flex items-center justify-between ${
-                  isSelected
-                    ? 'glass bg-white/5 border-neon-blue-500 shadow-[0_0_15px_rgba(14,165,233,0.15)]'
-                    : 'bg-white/[0.01] border-white/5 hover:bg-white/[0.04] hover:border-white/10'
-                }`}
-              >
-                <div>
-                  <h4 className={`text-sm font-semibold transition-colors duration-200 ${isSelected ? 'text-neon-blue-400' : 'text-white'}`}>
-                    {roleOption.title}
-                  </h4>
-                  <p className="text-xs text-gray-400 mt-1 max-w-[90%]">{roleOption.desc}</p>
-                </div>
-                <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-200 ${
-                  isSelected
-                    ? 'border-neon-blue-500 bg-neon-blue-500 text-white'
-                    : 'border-white/10 text-transparent'
+        <div className="space-y-4 pt-2">
+          {/* Grade Coordinator Card */}
+          <div 
+            onClick={() => {
+              setIsCoordinator(!isCoordinator);
+              if (isCoordinator) {
+                setSelectedGradeLevels([]);
+              }
+            }}
+            className={`p-5 rounded-2xl border transition-all duration-300 cursor-pointer flex items-start gap-4 select-none ${
+              isCoordinator
+                ? 'glass bg-neon-blue-500/5 border-neon-blue-500/50 shadow-[0_0_20px_rgba(14,165,233,0.15)]'
+                : 'bg-white/[0.01] border-white/5 hover:bg-white/[0.04] hover:border-white/10'
+            }`}
+          >
+            <div className={`p-3 rounded-xl shrink-0 transition-colors duration-300 ${
+              isCoordinator ? 'bg-neon-blue-500/20 text-neon-blue-400' : 'bg-white/5 text-gray-400'
+            }`}>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            </div>
+            <div className="flex-1 text-left">
+              <div className="flex items-center justify-between">
+                <h4 className={`text-base font-bold transition-colors duration-200 ${isCoordinator ? 'text-neon-blue-400 font-extrabold' : 'text-white'}`}>
+                  Grade Coordinator
+                </h4>
+                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                  isCoordinator ? 'border-neon-blue-500 bg-neon-blue-500 text-white' : 'border-white/20 bg-white/5'
                 }`}>
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
+                  {isCoordinator && (
+                    <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
                 </div>
-              </button>
-            );
-          })}
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
+                Manages syllabus structures, subject standards, and quality reviews for assigned grades. Adds a dedicated grade assignment step to the onboarding flow.
+              </p>
+            </div>
+          </div>
+
+          {/* Head of Department Card */}
+          <div 
+            onClick={() => {
+              setIsHOD(!isHOD);
+              if (isHOD) {
+                setSelectedHODSubjectIds([]);
+              }
+            }}
+            className={`p-5 rounded-2xl border transition-all duration-300 cursor-pointer flex items-start gap-4 select-none ${
+              isHOD
+                ? 'glass bg-amber-500/5 border-amber-500/50 shadow-[0_0_20px_rgba(245,158,11,0.15)]'
+                : 'bg-white/[0.01] border-white/5 hover:bg-white/[0.04] hover:border-white/10'
+            }`}
+          >
+            <div className={`p-3 rounded-xl shrink-0 transition-colors duration-300 ${
+              isHOD ? 'bg-amber-500/20 text-amber-400' : 'bg-white/5 text-gray-400'
+            }`}>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            </div>
+            <div className="flex-1 text-left">
+              <div className="flex items-center justify-between">
+                <h4 className={`text-base font-bold transition-colors duration-200 ${isHOD ? 'text-amber-400 font-extrabold' : 'text-white'}`}>
+                  Head of Department (HOD)
+                </h4>
+                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                  isHOD ? 'border-amber-500 bg-amber-500 text-white' : 'border-white/20 bg-white/5'
+                }`}>
+                  {isHOD && (
+                    <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
+                Approves new questions and designs department-wide academic guidelines. Adds a dedicated subject assignment step to the onboarding flow.
+              </p>
+            </div>
+          </div>
+
+          {/* Admin Control Card */}
+          <div 
+            onClick={() => setIsSystemAdmin(!isSystemAdmin)}
+            className={`p-5 rounded-2xl border transition-all duration-300 cursor-pointer flex items-start gap-4 select-none ${
+              isSystemAdmin
+                ? 'glass bg-purple-500/5 border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.15)]'
+                : 'bg-white/[0.01] border-white/5 hover:bg-white/[0.04] hover:border-white/10'
+            }`}
+          >
+            <div className={`p-3 rounded-xl shrink-0 transition-colors duration-300 ${
+              isSystemAdmin ? 'bg-purple-500/20 text-purple-400' : 'bg-white/5 text-gray-400'
+            }`}>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <div className="flex-1 text-left">
+              <div className="flex items-center justify-between">
+                <h4 className={`text-base font-bold transition-colors duration-200 ${isSystemAdmin ? 'text-purple-400 font-extrabold' : 'text-white'}`}>
+                  Admin Control
+                </h4>
+                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                  isSystemAdmin ? 'border-purple-500 bg-purple-500 text-white' : 'border-white/20 bg-white/5'
+                }`}>
+                  {isSystemAdmin && (
+                    <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
+                Grants absolute system access, including setting up database schemas, database resets, global platform settings, and user administration.
+              </p>
+              {isEditing && !editingUser?.is_admin && isSystemAdmin && !staffPassword && (
+                <div className="mt-3 p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 text-[11px] text-amber-400 leading-relaxed text-left flex items-start gap-2">
+                  <svg className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>
+                    <span className="font-semibold block mb-0.5">Password Security Check Required</span>
+                    Elevating this user to Admin does not automatically update their password. Admin accounts require a password of at least 12 characters. If their current password is shorter, you should specify a new 12+ character password on page 1, or instruct them to update it immediately.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )
-    },
-    {
+    });
+
+    // Page 3 (Conditional): HOD Subjects
+    if (isHOD) {
+      steps.push({
+        id: 'hod',
+        title: 'HOD Subjects',
+        description: 'Select the subjects for which this staff member acts as Head of Department.',
+        content: (
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 text-left">Managed HOD Subjects</label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHodDropdownOpen(!hodDropdownOpen);
+                    setGradeDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between cursor-pointer rounded-xl bg-gradient-to-r from-white/[0.03] to-white/[0.01] border transition-all duration-200 ${
+                    hodDropdownOpen
+                      ? 'border-amber-500 ring-2 ring-amber-500/20 text-white'
+                      : 'border-white/10 text-gray-300 hover:border-white/20 hover:from-white/[0.05]'
+                  }`}
+                >
+                  <span className="truncate flex items-center gap-2">
+                    <span>Select Subjects:</span>
+                    {selectedHODSubjectIds.length > 0 ? (
+                      <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full text-xs font-extrabold animate-fade-in">
+                        {selectedHODSubjectIds.length} selected
+                      </span>
+                    ) : (
+                      <span className="text-gray-500 italic">None selected</span>
+                    )}
+                  </span>
+                  <svg className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${hodDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {hodDropdownOpen && (
+                  <div className="absolute z-[60] w-full mt-1.5 bg-[#0c0c14] border border-white/10 rounded-xl shadow-[0_15px_35px_-5px_rgba(0,0,0,0.8)] backdrop-blur-xl p-3 space-y-2.5 max-h-60 overflow-y-auto custom-scrollbar animate-fade-in">
+                    <div className="relative">
+                      <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      <input
+                        type="text"
+                        placeholder="Search subjects..."
+                        value={hodSearch}
+                        onChange={(e) => setHodSearch(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30"
+                      />
+                    </div>
+                    <div className="space-y-0.5">
+                      {filteredHODOptions.length === 0 ? (
+                        <div className="text-xs text-gray-500 py-3 text-center">No subjects matching filter</div>
+                      ) : (
+                        filteredHODOptions.map((subj) => {
+                          const isChecked = selectedHODSubjectIds.includes(subj.allowed_subject_id);
+                          return (
+                            <button
+                              key={subj.allowed_subject_id}
+                              type="button"
+                              onClick={() => toggleHODSubject(subj.allowed_subject_id)}
+                              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-xs transition-all duration-150 ${
+                                isChecked
+                                  ? 'bg-amber-500/10 text-amber-400 font-semibold border-l-2 border-amber-500 pl-2'
+                                  : 'text-gray-300 hover:bg-white/[0.03] hover:text-white'
+                              }`}
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
+                                isChecked ? 'border-amber-500 bg-amber-500 text-white' : 'border-white/20 bg-white/5'
+                              }`}>
+                                {isChecked && (
+                                  <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </div>
+                              {subj.subject_name}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Selected HOD Subject Tags */}
+              {selectedHODSubjectIds.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {selectedHODSubjectIds.map((subId) => {
+                    const subjectObj = allowedSubjectsList.find(s => s.allowed_subject_id === subId);
+                    return (
+                      <span key={subId} className="inline-flex items-center gap-2 pl-3 pr-2 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:border-amber-500/40 hover:bg-amber-500/15 transition-all duration-150 animate-fade-in">
+                        {subjectObj?.subject_name || `Subject ${subId}`}
+                        <button
+                          type="button"
+                          onClick={() => toggleHODSubject(subId)}
+                          className="text-amber-400 hover:text-amber-300 hover:bg-white/10 rounded-full p-0.5 transition-colors focus:outline-none"
+                          aria-label="Remove subject"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      });
+    }
+
+    // Page 4 (Conditional): Coordinated Grades
+    if (isCoordinator) {
+      steps.push({
+        id: 'coordinator',
+        title: 'Coordinated Grades',
+        description: 'Select the grade levels for which this staff member acts as Grade Coordinator.',
+        content: (
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 text-left">Coordinated Grade Levels</label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGradeDropdownOpen(!gradeDropdownOpen);
+                    setHodDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-4 py-3 text-sm flex items-center justify-between cursor-pointer rounded-xl bg-gradient-to-r from-white/[0.03] to-white/[0.01] border transition-all duration-200 ${
+                    gradeDropdownOpen
+                      ? 'border-neon-blue-500 ring-2 ring-neon-blue-500/20 text-white'
+                      : 'border-white/10 text-gray-300 hover:border-white/20 hover:from-white/[0.05]'
+                  }`}
+                >
+                  <span className="truncate flex items-center gap-2">
+                    <span>Select Grades:</span>
+                    {selectedGradeLevels.length > 0 ? (
+                      <span className="bg-neon-blue-500/20 text-neon-blue-300 border border-neon-blue-500/30 px-2 py-0.5 rounded-full text-xs font-extrabold animate-fade-in">
+                        {selectedGradeLevels.length} selected
+                      </span>
+                    ) : (
+                      <span className="text-gray-500 italic">None selected</span>
+                    )}
+                  </span>
+                  <svg className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${gradeDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {gradeDropdownOpen && (
+                  <div className="absolute z-[60] w-full mt-1.5 bg-[#0c0c14] border border-white/10 rounded-xl shadow-[0_15px_35px_-5px_rgba(0,0,0,0.8)] backdrop-blur-xl p-3 space-y-2.5 max-h-60 overflow-y-auto custom-scrollbar animate-fade-in">
+                    <div className="relative">
+                      <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      <input
+                        type="text"
+                        placeholder="Search grades..."
+                        value={gradeSearch}
+                        onChange={(e) => setGradeSearch(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-neon-blue-500 focus:ring-1 focus:ring-neon-blue-500/30"
+                      />
+                    </div>
+                    <div className="space-y-0.5">
+                      {filteredGradeOptions.length === 0 ? (
+                        <div className="text-xs text-gray-500 py-3 text-center">No grades matching filter</div>
+                      ) : (
+                        filteredGradeOptions.map((grade) => {
+                          const isChecked = selectedGradeLevels.includes(grade.allowed_grade_id);
+                          return (
+                            <button
+                              key={grade.allowed_grade_id}
+                              type="button"
+                              onClick={() => toggleGradeLevel(grade.allowed_grade_id)}
+                              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-xs transition-all duration-150 ${
+                                isChecked
+                                  ? 'bg-neon-blue-500/10 text-neon-blue-400 font-semibold border-l-2 border-neon-blue-500 pl-2'
+                                  : 'text-gray-300 hover:bg-white/[0.03] hover:text-white'
+                              }`}
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
+                                isChecked ? 'border-neon-blue-500 bg-neon-blue-500 text-white' : 'border-white/20 bg-white/5'
+                              }`}>
+                                {isChecked && (
+                                  <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </div>
+                              {grade.grade_name}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Selected Grade Tags */}
+              {selectedGradeLevels.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {selectedGradeLevels.map((glId) => {
+                    const gradeObj = allowedGradesList.find(g => g.allowed_grade_id === glId);
+                    return (
+                      <span key={glId} className="inline-flex items-center gap-2 pl-3 pr-2 py-1 rounded-full text-xs font-semibold bg-neon-blue-500/10 text-neon-blue-400 border border-neon-blue-500/20 hover:border-neon-blue-500/40 hover:bg-neon-blue-500/15 transition-all duration-150 animate-fade-in">
+                        {gradeObj?.grade_name || `Grade ${glId}`}
+                        <button
+                          type="button"
+                          onClick={() => toggleGradeLevel(glId)}
+                          className="text-neon-blue-400 hover:text-neon-blue-300 hover:bg-white/10 rounded-full p-0.5 transition-colors focus:outline-none"
+                          aria-label="Remove grade"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      });
+    }
+
+    // Page 5: Teaching Subjects
+    steps.push({
       id: 'subjects',
-      title: 'Subject Hooks',
+      title: 'Teaching Subjects',
       description: 'Link this faculty member to the specific subjects they are teaching or reviewing.',
       content: (
         <div className="space-y-4 pt-2">
-          <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400">Select Active Subjects</label>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 text-left">Select Active Subjects</label>
           <div className="grid grid-cols-2 gap-3">
             {allSubjects.length === 0 ? (
-              <p className="text-xs text-gray-500 col-span-2">No curriculum subjects configured. Please configure them in Platform Configuration first.</p>
+              <p className="text-xs text-gray-500 col-span-2 text-left">No curriculum subjects configured. Please configure them in Platform Configuration first.</p>
             ) : (
               allSubjects.map((subj) => {
                 const isChecked = selectedSubjects.includes(subj.id);
@@ -636,8 +1328,25 @@ export const Drawer: React.FC = () => {
           </div>
         </div>
       )
+    });
+
+    return steps;
+  }, [
+    staffName, staffEmail, staffPassword, staffDepartment, isSystemAdmin, isHOD, isCoordinator,
+    selectedGradeLevels, selectedHODSubjectIds, selectedSubjects,
+    hodDropdownOpen, gradeDropdownOpen, hodSearch, gradeSearch,
+    filteredGradeOptions, filteredHODOptions, allowedSubjectsList, allowedGradesList,
+    allSubjects, isEditing
+  ]);
+
+  // Keep step within bounds if wizard steps count shrinks
+  useEffect(() => {
+    if (staffCurrentStep >= staffWizardSteps.length) {
+      setStaffCurrentStep(Math.max(0, staffWizardSteps.length - 1));
     }
-  ];
+  }, [staffWizardSteps.length, staffCurrentStep]);
+
+  if (!drawerType) return null;
 
   return (
     <div 
@@ -674,7 +1383,7 @@ export const Drawer: React.FC = () => {
         </div>
 
         {/* Drawer Body */}
-        <div className="flex-1 overflow-y-auto p-6 bg-surface-900/10 relative">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-surface-900/10 relative">
           {showUpdateConfirm && (
             <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col justify-center p-6 animate-fade-in text-center">
               <div className="max-w-md mx-auto space-y-6">
@@ -714,10 +1423,15 @@ export const Drawer: React.FC = () => {
             </div>
           )}
 
-          {isQuestionLoading ? (
+          {isQuestionDrawer && isQuestionLoading ? (
             <div className="h-full flex flex-col items-center justify-center">
               <div className="w-8 h-8 border-4 border-neon-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
               <p className="text-gray-400 text-sm">Loading question details...</p>
+            </div>
+          ) : isStaffDrawer && isStaffLoading ? (
+            <div className="h-full flex flex-col items-center justify-center">
+              <div className="w-8 h-8 border-4 border-neon-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+              <p className="text-gray-400 text-sm">Loading staff profile...</p>
             </div>
           ) : (
             <>

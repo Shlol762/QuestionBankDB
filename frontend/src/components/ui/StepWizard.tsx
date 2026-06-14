@@ -99,7 +99,7 @@ export const StepWizard: React.FC<StepWizardProps> = ({
       )}
 
       {/* Active Step Content */}
-      <div className="flex-1 overflow-y-auto min-h-[300px] p-2">
+      <div className="flex-1 min-h-[300px] p-2 pb-48">
         {steps[currentStep].content}
       </div>
 
