@@ -8,6 +8,8 @@ import { formatError } from '../utils/error';
 export interface SubjectSimple {
   subject_id: number;
   subject_name: string;
+  grade_name?: string;
+  syllabus_name?: string;
 }
 
 export interface UserRead {
@@ -38,7 +40,7 @@ export interface UserUpdatePayload {
   hod_allowed_subject_ids?: number[];
 }
 
-export const useUsers = (role?: string) => {
+export const useUsers = (role?: string, options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ['users', role],
     queryFn: async () => {
@@ -48,7 +50,8 @@ export const useUsers = (role?: string) => {
       }
       const res = await apiClient.get<Page<UserRead>>('/auth/users', { params });
       return res.data;
-    }
+    },
+    ...options
   });
 };
 

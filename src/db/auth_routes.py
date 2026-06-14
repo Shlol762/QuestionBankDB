@@ -24,6 +24,8 @@ class BaseAuthModel(BaseModel):
 class SubjectSimple(BaseAuthModel):
     subject_id: int
     subject_name: str
+    grade_name: Optional[str] = None
+    syllabus_name: Optional[str] = None
 
 class UserRead(BaseAuthModel):
     user_id: int
@@ -136,7 +138,24 @@ def map_user_to_read(user: Users) -> dict:
     Helper to transform a SQLModel Users object to a UserRead-compatible dictionary.
     """
     d = user.model_dump()
-    d["subjects"] = [SubjectSimple(subject_id=s.subject_id, subject_name=s.subject_name) for s in user.subjects]
+    subjects_list = []
+    for s in user.subjects:
+        grade_name = None
+        syllabus_name = None
+        if s.grade:
+            if s.grade.allowed_grade:
+                grade_name = s.grade.allowed_grade.grade_name
+            if s.grade.syllabus:
+                syllabus_name = s.grade.syllabus.syllabus_name
+        subjects_list.append(
+            SubjectSimple(
+                subject_id=s.subject_id,
+                subject_name=s.subject_name,
+                grade_name=grade_name,
+                syllabus_name=syllabus_name
+            )
+        )
+    d["subjects"] = subjects_list
     d["grade_levels"] = [g.grade_level for g in user.grade_coordinating]
     
     # Fetch names from the Master List IDs
@@ -242,7 +261,8 @@ async def list_users(
         )
 
     data_stmt = data_stmt.options(
-        selectinload(Users.subjects),
+        selectinload(Users.subjects).selectinload(Subject.grade).selectinload(GradeConfig.allowed_grade),
+        selectinload(Users.subjects).selectinload(Subject.grade).selectinload(GradeConfig.syllabus),
         selectinload(Users.grade_coordinating),
         selectinload(Users.hod_assignments).selectinload(HODLink.allowed_subject)
     ).order_by(Users.full_name).offset(offset).limit(limit)
@@ -351,7 +371,8 @@ async def update_user(
     await session.commit()
     
     statement = select(Users).options(
-        selectinload(Users.subjects),
+        selectinload(Users.subjects).selectinload(Subject.grade).selectinload(GradeConfig.allowed_grade),
+        selectinload(Users.subjects).selectinload(Subject.grade).selectinload(GradeConfig.syllabus),
         selectinload(Users.grade_coordinating),
         selectinload(Users.hod_assignments).selectinload(HODLink.allowed_subject)
     ).where(Users.user_id == id)

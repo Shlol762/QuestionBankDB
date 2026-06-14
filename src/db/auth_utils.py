@@ -7,7 +7,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.main import get_session
-from src.db.models import Users, HODLink
+from src.db.models import Users, HODLink, GradeConfig, Subject
 from src.config import settings
 
 # Password hashing configuration
@@ -62,7 +62,8 @@ async def get_current_user(
     statement = (
         select(Users)
         .options(
-            selectinload(Users.subjects),
+            selectinload(Users.subjects).selectinload(Subject.grade).selectinload(GradeConfig.allowed_grade),
+            selectinload(Users.subjects).selectinload(Subject.grade).selectinload(GradeConfig.syllabus),
             selectinload(Users.grade_coordinating),
             selectinload(Users.hod_assignments).selectinload(HODLink.allowed_subject)
         )

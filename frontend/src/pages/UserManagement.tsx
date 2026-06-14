@@ -3,19 +3,7 @@ import { useUIStore } from '../store/uiStore';
 import { UserPlus, Search, Filter, Edit2, Trash2 } from 'lucide-react';
 import { useUsers, type UserRead } from '../hooks/useStaff';
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: 'System Administrator',
-  coordinator: 'Grade Coordinator',
-  hod: 'Department Head (HOD)',
-  faculty: 'Faculty User',
-};
 
-const ROLE_COLORS: Record<string, string> = {
-  admin: 'bg-neon-blue-500/10 text-neon-blue-400 border-neon-blue-500/30',
-  coordinator: 'bg-neon-fuchsia-500/10 text-neon-fuchsia-400 border-neon-fuchsia-500/30',
-  hod: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
-  faculty: 'bg-neon-emerald-500/10 text-neon-emerald-400 border-neon-emerald-500/30',
-};
 
 export const UserManagement: React.FC = () => {
   const { openDrawer, openDialog } = useUIStore();
@@ -37,29 +25,7 @@ export const UserManagement: React.FC = () => {
     openDialog('DELETE_USER', { userId: user.user_id, userName: user.full_name });
   };
 
-  // Helper helper to compute UI role
-  const getRole = (user: UserRead): 'admin' | 'coordinator' | 'hod' | 'faculty' => {
-    if (user.is_admin) return 'admin';
-    if (user.grade_levels && user.grade_levels.length > 0) return 'coordinator';
-    if (user.hod_allowed_subject_ids && user.hod_allowed_subject_ids.length > 0) return 'hod';
-    return 'faculty';
-  };
 
-  // Helper to compute UI subjects list
-  const getSubjectsList = (user: UserRead): string[] => {
-    if (user.is_admin) return ['All Curriculum'];
-    const list: string[] = [];
-    if (user.grade_levels && user.grade_levels.length > 0) {
-      user.grade_levels.forEach((gl) => list.push(`Grade ${gl} (Coord)`));
-    }
-    if (user.hod_subject_names && user.hod_subject_names.length > 0) {
-      user.hod_subject_names.forEach((name) => list.push(`${name} (HOD)`));
-    }
-    if (user.subjects && user.subjects.length > 0) {
-      user.subjects.forEach((s) => list.push(s.subject_name));
-    }
-    return list;
-  };
 
   const filteredStaff = staff.filter((user) => {
     const matchesSearch =
@@ -118,7 +84,7 @@ export const UserManagement: React.FC = () => {
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="glass-input px-4 py-2.5 text-sm w-full md:w-56"
+            className="glass-input glass-select px-4 py-2.5 text-sm w-full md:w-56"
           >
             <option value="all" className="bg-surface-800 text-white">All Roles</option>
             <option value="admin" className="bg-surface-800 text-white">System Administrator</option>
@@ -137,16 +103,14 @@ export const UserManagement: React.FC = () => {
               <tr>
                 <th className="px-6 py-4">Staff Member</th>
                 <th className="px-6 py-4">Email</th>
-                <th className="px-6 py-4">Role Badge</th>
-                <th className="px-6 py-4">Assigned Curriculum/Subjects</th>
-                <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Management Roles</th>
+                <th className="px-6 py-4">Teaching Roles</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
               {filteredStaff.length > 0 ? (
                 filteredStaff.map((user) => {
-                  const userRole = getRole(user);
                   return (
                     <tr key={user.user_id} className="hover:bg-white/[0.01] transition-colors duration-150">
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -160,25 +124,59 @@ export const UserManagement: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-gray-300 font-mono text-xs">
                         {user.email}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${ROLE_COLORS[userRole]}`}>
-                          {ROLE_LABELS[userRole]}
-                        </span>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-wrap gap-1.5 max-w-xs">
+                          {user.is_admin && (
+                            <span className="px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wider bg-amber-500/10 text-amber-400">
+                              System Admin
+                            </span>
+                          )}
+                          {user.hod_subject_names && user.hod_subject_names.map((name) => (
+                            <span key={name} className="px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wider bg-purple-500/10 text-purple-400">
+                              HOD: {name}
+                            </span>
+                          ))}
+                          {user.grade_levels && user.grade_levels.map((gl) => (
+                            <span key={gl} className="px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wider bg-neon-blue-500/10 text-neon-blue-400">
+                              Grade {gl} Coord
+                            </span>
+                          ))}
+                          {!user.is_admin && (!user.hod_subject_names || user.hod_subject_names.length === 0) && (!user.grade_levels || user.grade_levels.length === 0) && (
+                            <span className="text-gray-500 text-xs italic">None</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-wrap gap-1.5 max-w-xs">
-                          {getSubjectsList(user).map((s, idx) => (
-                            <span key={idx} className="bg-white/5 border border-white/10 text-gray-300 text-[10px] px-2 py-0.5 rounded">
-                              {s}
-                            </span>
-                          ))}
+                          {user.subjects && user.subjects.length > 0 ? (
+                            Array.from(
+                              new Set(
+                                user.subjects.map((s) => {
+                                  const cleanSyllabus = s.syllabus_name
+                                    ? s.syllabus_name
+                                      .replace(/\s*\(\d{4}\)/g, '')
+                                      .replace(/\s*\d{4}-\d{4}/g, '')
+                                      .replace(/\b\d{4}\b/g, '')
+                                      .trim()
+                                    : '';
+                                  const details = [];
+                                  if (s.grade_name) details.push(s.grade_name);
+                                  if (cleanSyllabus) details.push(cleanSyllabus);
+
+                                  return details.length > 0
+                                    ? `${s.subject_name} (${details.join('-')})`
+                                    : s.subject_name;
+                                })
+                              )
+                            ).map((sText, idx) => (
+                              <span key={idx} className="px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wider bg-neon-emerald-500/10 text-neon-emerald-400">
+                                {sText}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-gray-500 text-xs italic">None Assigned</span>
+                          )}
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neon-emerald-400">
-                          <span className="w-1.5 h-1.5 rounded-full bg-neon-emerald-500 animate-ping" />
-                          Active
-                        </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -203,7 +201,7 @@ export const UserManagement: React.FC = () => {
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={5} className="px-6 py-12 text-center text-gray-400">
                     No staff profiles match the selected filters.
                   </td>
                 </tr>

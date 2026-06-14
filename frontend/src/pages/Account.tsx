@@ -6,7 +6,6 @@ import * as zod from 'zod';
 import { toast } from 'react-hot-toast';
 import { 
   Mail, 
-  Briefcase, 
   Shield, 
   Lock, 
   LogOut, 
@@ -142,13 +141,6 @@ export const AccountPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 text-sm">
-                <Briefcase className="w-4 h-4 text-gray-500 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Department</p>
-                  <p className="text-white truncate mt-0.5">{me?.department || 'N/A'}</p>
-                </div>
-              </div>
 
               <div className="flex items-center gap-3 text-sm">
                 <Shield className="w-4 h-4 text-gray-500 shrink-0" />
@@ -158,7 +150,7 @@ export const AccountPage: React.FC = () => {
                     {getRoles().map((role, idx) => (
                       <span 
                         key={idx} 
-                        className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-gray-300 text-[10px] font-medium"
+                        className="px-2 py-0.5 rounded-md bg-white/5 text-gray-300 text-[10px] font-medium"
                       >
                         {role}
                       </span>
@@ -188,7 +180,7 @@ export const AccountPage: React.FC = () => {
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Grade Coordinator Levels</p>
                   <div className="flex flex-wrap gap-1">
                     {me.grade_levels.map((g: number) => (
-                      <span key={g} className="px-2 py-0.5 rounded bg-neon-fuchsia-500/10 border border-neon-fuchsia-500/20 text-neon-fuchsia-300 text-[10px] font-semibold">
+                      <span key={g} className="px-2 py-0.5 rounded-md bg-neon-fuchsia-500/10 text-neon-fuchsia-300 text-[10px] font-semibold">
                         Grade {g}
                       </span>
                     ))}
@@ -201,7 +193,7 @@ export const AccountPage: React.FC = () => {
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Department HOD Subjects</p>
                   <div className="flex flex-wrap gap-1">
                     {me.hod_subject_names.map((sub: string) => (
-                      <span key={sub} className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] font-semibold">
+                      <span key={sub} className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 text-[10px] font-semibold">
                         {sub}
                       </span>
                     ))}
@@ -214,7 +206,7 @@ export const AccountPage: React.FC = () => {
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Teaching Subjects (Faculty)</p>
                   <div className="flex flex-wrap gap-1">
                     {me.subjects.map((sub: { subject_id: number; subject_name: string }) => (
-                      <span key={sub.subject_id} className="px-2 py-0.5 rounded bg-neon-blue-500/10 border border-neon-blue-500/20 text-neon-blue-300 text-[10px] font-semibold">
+                      <span key={sub.subject_id} className="px-2 py-0.5 rounded-md bg-neon-blue-500/10 text-neon-blue-300 text-[10px] font-semibold">
                         {sub.subject_name}
                       </span>
                     ))}
