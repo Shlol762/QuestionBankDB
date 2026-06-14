@@ -29,11 +29,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Unauthorized: Clear token and redirect to login
-      setAuthToken(null);
-      if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
-        window.location.href = '/login';
-      }
+      setAuthToken(null);   
     }
     return Promise.reject(error);
   }
