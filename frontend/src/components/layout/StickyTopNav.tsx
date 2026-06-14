@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink as RouterNavLink } from 'react-router-dom';
+import { useMe } from '../../hooks/useAuth';
 
 const NavLink = ({ to, children }: { to: string; children: React.ReactNode }) => (
   <RouterNavLink 
@@ -17,6 +18,9 @@ const NavLink = ({ to, children }: { to: string; children: React.ReactNode }) =>
 );
 
 export const StickyTopNav: React.FC = () => {
+  const { data: me } = useMe();
+  const isAdmin = me?.is_admin === true;
+
   return (
     <header className="sticky top-0 z-50 w-full glass-heavy border-b border-white/10">
       <div className="flex items-center h-16 px-6 mx-auto">
@@ -35,15 +39,17 @@ export const StickyTopNav: React.FC = () => {
         <nav className="flex items-center gap-2 flex-1">
           <NavLink to="/dashboard/overview">Overview</NavLink>
           <NavLink to="/dashboard/explorer">Explorer</NavLink>
-          <NavLink to="/dashboard/platform">Platform</NavLink>
-          <NavLink to="/dashboard/staff">Staff</NavLink>
+          {isAdmin && <NavLink to="/dashboard/platform">Platform</NavLink>}
+          {isAdmin && <NavLink to="/dashboard/staff">Staff</NavLink>}
         </nav>
 
         {/* Right Actions / Account */}
         <div className="flex items-center gap-4">
           <NavLink to="/dashboard/account">Account</NavLink>
           <button className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors border border-white/10">
-            <span className="text-sm font-semibold text-white">A</span>
+            <span className="text-sm font-semibold text-white">
+              {me?.full_name ? me.full_name[0].toUpperCase() : 'A'}
+            </span>
           </button>
         </div>
       </div>

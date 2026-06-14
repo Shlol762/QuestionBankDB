@@ -9,7 +9,7 @@ import SystemConfigManager from './pages/SystemConfigManager';
 import DashboardOverview from './pages/DashboardOverview';
 import AccountPage from './pages/Account';
 import { Toaster } from 'react-hot-toast';
-import { AuthGuard, SetupGuard } from './components/AuthGuard';
+import { AuthGuard, SetupGuard, AdminGuard } from './components/AuthGuard';
 
 export const App: React.FC = () => {
   return (
@@ -28,8 +28,12 @@ export const App: React.FC = () => {
             <Route index element={<Navigate to="overview" replace />} />
             <Route path="overview" element={<DashboardOverview />} />
             <Route path="explorer" element={<ExplorerPage />} />
-            <Route path="staff" element={<UserManagement />} />
-            <Route path="platform" element={<SystemConfigManager />} />
+            
+            <Route element={<AdminGuard />}>
+              <Route path="staff" element={<UserManagement />} />
+              <Route path="platform" element={<SystemConfigManager />} />
+            </Route>
+
             <Route path="account" element={<AccountPage />} />
             <Route path="*" element={<Navigate to="/dashboard/overview" replace />} />
           </Route>

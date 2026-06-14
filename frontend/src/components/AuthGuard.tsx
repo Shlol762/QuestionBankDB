@@ -39,3 +39,21 @@ export const SetupGuard: React.FC = () => {
 
   return <Outlet />;
 };
+
+export const AdminGuard: React.FC = () => {
+  const { data: meData, isLoading } = useMe();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-900">
+        <div className="w-8 h-8 border-4 border-neon-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (!meData || !meData.is_admin) {
+    return <Navigate to="/dashboard/overview" replace />;
+  }
+
+  return <Outlet />;
+};
