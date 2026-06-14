@@ -6,7 +6,7 @@ import os
 import uuid
 import puremagic
 from src.db.main import get_session
-from src.db.models import SyllabusMaster, GradeConfig, Subject, Topic, Users, Page
+from src.db.models import SyllabusMaster, GradeConfig, Subject, Topic, Users, Page, QuestionTopicLink
 from src.db.auth_utils import get_current_user
 from src.limiter import limiter
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,6 +27,7 @@ class SubjectRead(BaseCurriculumModel):
     subject_id: int
     subject_name: str
     config_id: int
+    allowed_subject_id: Optional[int] = None
 
 class GradeRead(BaseCurriculumModel):
     config_id: int
@@ -245,7 +246,8 @@ async def duplicate_syllabus(
                 await session.flush()
 
                 for q in s_topic.questions:
-                    new_topic.questions.append(q)
+                    link = QuestionTopicLink(question_id=q.question_id, topic_id=new_topic.topic_id)
+                    session.add(link)
 
     await session.commit()
     await session.refresh(new_syllabus)
@@ -288,6 +290,7 @@ async def get_full_hierarchy(
                                 subject_id=sub.subject_id,
                                 subject_name=sub.subject_name,
                                 config_id=sub.config_id,
+                                allowed_subject_id=sub.allowed_subject_id,
                                 topics=[
                                     TopicRead(
                                         topic_id=t.topic_id,
@@ -330,6 +333,7 @@ async def get_full_hierarchy(
                                 subject_id=sub.subject_id,
                                 subject_name=sub.subject_name,
                                 config_id=sub.config_id,
+                                allowed_subject_id=sub.allowed_subject_id,
                                 topics=[
                                     TopicRead(
                                         topic_id=t.topic_id,
@@ -362,6 +366,7 @@ async def get_full_hierarchy(
                                 subject_id=sub.subject_id,
                                 subject_name=sub.subject_name,
                                 config_id=sub.config_id,
+                                allowed_subject_id=sub.allowed_subject_id,
                                 topics=[
                                     TopicRead(
                                         topic_id=t.topic_id,
@@ -425,8 +430,8 @@ async def get_all_subjects(
 @router.post("/grades", response_model=GradeRead, status_code=status.HTTP_201_CREATED)
 async def create_grade(data: GradeCreate, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
     """Adds a Grade level. Admin only."""
-    if not current_user.can_manage_grade(data.grade_level): 
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to manage this grade")
+    if not current_user.is_admin: 
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can create grades")
     
     syllabus = await session.get(SyllabusMaster, data.syllabus_id)
     if not syllabus:
@@ -541,9 +546,30 @@ async def update_grade(id: int, data: GradeUpdate, session: AsyncSession = Depen
     item = await session.get(GradeConfig, id)
     if not item: 
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Grade not found")
-    target_grade_level = data.grade_level if data.grade_level is not None else item.grade_level
-    if not current_user.can_manage_grade(target_grade_level): 
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to manage this grade")
+    
+    if not current_user.is_admin:
+        if data.grade_level is not None and data.grade_level != item.grade_level:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Non-admin users cannot modify grade properties other than the PDF")
+        
+        is_coord = any(g.grade_level == item.grade_level for g in current_user.grade_coordinating)
+        is_hod = False
+        allowed_subject_ids = [h.allowed_subject_id for h in current_user.hod_assignments]
+        if allowed_subject_ids:
+            hod_stmt = select(func.count(Subject.subject_id)).where(
+                Subject.config_id == item.config_id,
+                Subject.allowed_subject_id.in_(allowed_subject_ids)
+            )
+            count_res = (await session.exec(hod_stmt)).one()
+            if count_res > 0:
+                is_hod = True
+        
+        if not (is_coord or is_hod):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to manage the PDF for this grade")
+    else:
+        target_grade_level = data.grade_level if data.grade_level is not None else item.grade_level
+        if not current_user.can_manage_grade(target_grade_level): 
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to manage this grade")
+
     for key, val in data.model_dump(exclude_unset=True).items(): 
         setattr(item, key, val)
     await session.commit()
@@ -552,9 +578,9 @@ async def update_grade(id: int, data: GradeUpdate, session: AsyncSession = Depen
 
 @router.delete("/grades/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_grade(id: int, session: AsyncSession = Depends(get_session), current_user: Users = Depends(get_current_user)):
+    if not current_user.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only administrators can delete grades")
     item = await session.get(GradeConfig, id)
-    if item and not current_user.can_manage_grade(item.grade_level):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to manage this grade")
     if item:
         await session.delete(item)
         await session.commit()

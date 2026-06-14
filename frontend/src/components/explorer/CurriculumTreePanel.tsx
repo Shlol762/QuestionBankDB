@@ -2,19 +2,48 @@ import React from 'react';
 import { useResolvedCurriculumSelection } from '../../hooks/useResolvedCurriculumSelection';
 import { useExplorerUrlState } from '../../hooks/useExplorerUrlState';
 import { useUIStore } from '../../store/uiStore';
+import { useMe } from '../../hooks/useAuth';
 import { Plus, Edit2, Trash2, Menu, X, Copy, FileText, FileUp, ChevronRight } from 'lucide-react';
 
 export const CurriculumTreePanel: React.FC = () => {
+  const { data: me } = useMe();
   const { 
     syllabus, grade, subject, topic, 
     selectionLevel, hierarchy, isLoading 
   } = useResolvedCurriculumSelection();
+
+  const isAdmin = me?.is_admin === true;
+  const canGCManageGrade = (gLevel?: number) => gLevel !== undefined && me?.grade_levels?.includes(gLevel) === true;
+  const canHODManageSubject = (allowedSubId?: number) => allowedSubId !== undefined && me?.hod_allowed_subject_ids?.includes(allowedSubId) === true;
+  
+  const canManageGradePdf = (gLevel?: number, subjects?: any[]) => {
+    if (isAdmin) return true;
+    if (gLevel === undefined) return false;
+    const isGC = canGCManageGrade(gLevel);
+    const isHOD = subjects?.some(sub => sub.allowed_subject_id && me?.hod_allowed_subject_ids?.includes(sub.allowed_subject_id));
+    return !!(isGC || isHOD);
+  };
   
   const { 
+    syllabusId, gradeId, subjectId, topicId,
     selectSyllabus, selectGrade, selectSubject, selectTopic, clearSelection 
   } = useExplorerUrlState();
 
   const { isExplorerPanelOpen, toggleExplorerPanel, closeExplorerPanel, openDialog } = useUIStore();
+
+  const [expandedNodes, setExpandedNodes] = React.useState<Set<string>>(new Set());
+
+  const toggleNode = (nodeKey: string) => {
+    setExpandedNodes(prev => {
+      const next = new Set(prev);
+      if (next.has(nodeKey)) {
+        next.delete(nodeKey);
+      } else {
+        next.add(nodeKey);
+      }
+      return next;
+    });
+  };
 
   // Close panel when selecting on mobile
   const handleSelect = (action: () => void) => {
@@ -32,6 +61,26 @@ export const CurriculumTreePanel: React.FC = () => {
       </div>
     );
   }
+
+  const syllabusStyles = {
+    active: "bg-amber-500/20 border border-transparent text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.15)]",
+    inactive: "bg-amber-500/[0.02] border border-white/5 hover:bg-amber-500/10 hover:border-amber-500/20 text-gray-300 hover:text-amber-200"
+  };
+
+  const gradeStyles = {
+    active: "bg-indigo-500/20 border border-transparent text-indigo-300 shadow-[0_0_12px_rgba(99,102,241,0.15)]",
+    inactive: "bg-indigo-500/[0.02] border border-white/5 hover:bg-indigo-500/10 hover:border-indigo-500/20 text-gray-300 hover:text-indigo-200"
+  };
+
+  const subjectStyles = {
+    active: "bg-emerald-500/20 border border-transparent text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]",
+    inactive: "bg-emerald-500/[0.02] border border-white/5 hover:bg-emerald-500/10 hover:border-emerald-500/20 text-gray-300 hover:text-emerald-200"
+  };
+
+  const topicStyles = {
+    active: "bg-fuchsia-500/20 border border-transparent text-fuchsia-300 shadow-[0_0_12px_rgba(217,70,239,0.15)]",
+    inactive: "bg-fuchsia-500/[0.02] border border-white/5 hover:bg-fuchsia-500/10 hover:border-fuchsia-500/20 text-gray-300 hover:text-fuchsia-200"
+  };
 
   return (
     <>
@@ -135,12 +184,12 @@ export const CurriculumTreePanel: React.FC = () => {
 
           {/* Row 2: Controls */}
           <div className="p-3 bg-white/[0.02] flex items-center justify-between w-full min-h-[44px]">
-            {/* Left side: Creation Control (solid color, simple and clean) */}
+            {/* Left side: Creation Control */}
             <div>
-              {selectionLevel === 'none' && (
+              {selectionLevel === 'none' && isAdmin && (
                 <button 
                   onClick={() => openDialog('ADD_SYLLABUS')}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer"
                   title="Add Syllabus"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -148,10 +197,10 @@ export const CurriculumTreePanel: React.FC = () => {
                 </button>
               )}
 
-              {selectionLevel === 'syllabus' && syllabus && (
+              {selectionLevel === 'syllabus' && syllabus && isAdmin && (
                 <button 
                   onClick={() => openDialog('ADD_GRADE', { syllabusId: syllabus.id })}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer"
                   title="Add Grade Level"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -159,10 +208,10 @@ export const CurriculumTreePanel: React.FC = () => {
                 </button>
               )}
 
-              {selectionLevel === 'grade' && grade && (
+              {selectionLevel === 'grade' && grade && (isAdmin || canGCManageGrade(grade.level)) && (
                 <button 
                   onClick={() => openDialog('ADD_SUBJECT', { configId: grade.id, gradeLevel: grade.level })}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer"
                   title="Add Subject"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -170,10 +219,10 @@ export const CurriculumTreePanel: React.FC = () => {
                 </button>
               )}
 
-              {selectionLevel === 'subject' && subject && (
+              {selectionLevel === 'subject' && subject && (isAdmin || canGCManageGrade(grade?.level) || canHODManageSubject(subject.allowed_subject_id)) && (
                 <button 
                   onClick={() => openDialog('ADD_TOPIC', { subjectId: subject.id })}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer"
                   title="Add Topic"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -184,26 +233,29 @@ export const CurriculumTreePanel: React.FC = () => {
 
             {/* Right side: Management Controls for Current Selection */}
             <div className="flex items-center gap-1.5">
-              {selectionLevel === 'syllabus' && syllabus && (
+              {selectionLevel === 'syllabus' && syllabus && isAdmin && (
                 <>
-                  <span className="text-[10px] text-gray-500 uppercase tracking-wider mr-0.5">Manage:</span>
+                  <div className="flex flex-col text-right text-[9px] text-gray-500 font-bold uppercase tracking-wider leading-tight mr-1">
+                    <span>Manage</span>
+                    <span className="text-gray-300 font-semibold uppercase">Syllabus</span>
+                  </div>
                   <button 
                     onClick={() => openDialog('DUPLICATE_SYLLABUS', { syllabusId: syllabus.id, currentName: syllabus.name, currentYear: syllabus.year })}
-                    className="p-1.5 rounded bg-white/5 hover:bg-neon-fuchsia-500/20 text-gray-400 hover:text-neon-fuchsia-400 transition-colors border border-white/10"
+                    className="p-1.5 rounded bg-white/5 hover:bg-neon-fuchsia-500/20 text-gray-400 hover:text-neon-fuchsia-400 transition-colors border border-white/10 cursor-pointer"
                     title="Duplicate Syllabus"
                   >
                     <Copy className="w-3.5 h-3.5" />
                   </button>
                   <button 
                     onClick={() => openDialog('EDIT_SYLLABUS', { syllabusId: syllabus.id, currentName: syllabus.name, currentYear: syllabus.year })}
-                    className="p-1.5 rounded bg-white/5 hover:bg-neon-blue-500/20 text-gray-400 hover:text-neon-blue-400 transition-colors border border-white/10"
+                    className="p-1.5 rounded bg-white/5 hover:bg-neon-blue-500/20 text-gray-400 hover:text-neon-blue-400 transition-colors border border-white/10 cursor-pointer"
                     title="Edit Syllabus"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
                   <button 
                     onClick={() => openDialog('DELETE_SYLLABUS', { syllabusId: syllabus.id, syllabusName: syllabus.name })}
-                    className="p-1.5 rounded bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors border border-white/10"
+                    className="p-1.5 rounded bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors border border-white/10 cursor-pointer"
                     title="Delete Syllabus"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -211,46 +263,56 @@ export const CurriculumTreePanel: React.FC = () => {
                 </>
               )}
 
-              {selectionLevel === 'grade' && grade && (
+              {selectionLevel === 'grade' && grade && canManageGradePdf(grade.level, grade.subjects) && (
                 <>
-                  <span className="text-[10px] text-gray-500 uppercase tracking-wider mr-0.5">Manage:</span>
+                  <div className="flex flex-col text-right text-[9px] text-gray-500 font-bold uppercase tracking-wider leading-tight mr-1">
+                    <span>Manage</span>
+                    <span className="text-gray-300 font-semibold uppercase">Grade</span>
+                  </div>
                   <button 
                     onClick={() => openDialog('MANAGE_GRADE_PDF', { gradeId: grade.id, gradeLevel: grade.level, currentPdfUrl: grade.pdfUrl, syllabusName: syllabus?.name })}
-                    className="p-1.5 rounded bg-white/5 hover:bg-neon-blue-500/20 text-gray-400 hover:text-neon-blue-400 transition-colors border border-white/10"
+                    className="p-1.5 rounded bg-white/5 hover:bg-neon-blue-500/20 text-gray-400 hover:text-neon-blue-400 transition-colors border border-white/10 cursor-pointer"
                     title="Manage PDF"
                   >
                     <FileUp className="w-3.5 h-3.5" />
                   </button>
-                  <button 
-                    onClick={() => openDialog('EDIT_GRADE', { configId: grade.id, currentLevel: grade.level })}
-                    className="p-1.5 rounded bg-white/5 hover:bg-neon-blue-500/20 text-gray-400 hover:text-neon-blue-400 transition-colors border border-white/10"
-                    title="Edit Grade Level"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button 
-                    onClick={() => openDialog('DELETE_GRADE', { configId: grade.id, gradeLevel: grade.level })}
-                    className="p-1.5 rounded bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors border border-white/10"
-                    title="Delete Grade Level"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {isAdmin && (
+                    <>
+                      <button 
+                        onClick={() => openDialog('EDIT_GRADE', { configId: grade.id, currentLevel: grade.level })}
+                        className="p-1.5 rounded bg-white/5 hover:bg-neon-blue-500/20 text-gray-400 hover:text-neon-blue-400 transition-colors border border-white/10 cursor-pointer"
+                        title="Edit Grade Level"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button 
+                        onClick={() => openDialog('DELETE_GRADE', { configId: grade.id, gradeLevel: grade.level })}
+                        className="p-1.5 rounded bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors border border-white/10 cursor-pointer"
+                        title="Delete Grade Level"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  )}
                 </>
               )}
 
-              {selectionLevel === 'subject' && subject && (
+              {selectionLevel === 'subject' && subject && (isAdmin || canGCManageGrade(grade?.level)) && (
                 <>
-                  <span className="text-[10px] text-gray-500 uppercase tracking-wider mr-0.5">Manage:</span>
+                  <div className="flex flex-col text-right text-[9px] text-gray-500 font-bold uppercase tracking-wider leading-tight mr-1">
+                    <span>Manage</span>
+                    <span className="text-gray-300 font-semibold uppercase">Subject</span>
+                  </div>
                   <button 
                     onClick={() => openDialog('EDIT_SUBJECT', { subjectId: subject.id, currentName: subject.name })}
-                    className="p-1.5 rounded bg-white/5 hover:bg-neon-blue-500/20 text-gray-400 hover:text-neon-blue-400 transition-colors border border-white/10"
+                    className="p-1.5 rounded bg-white/5 hover:bg-neon-blue-500/20 text-gray-400 hover:text-neon-blue-400 transition-colors border border-white/10 cursor-pointer"
                     title="Edit Subject"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
                   <button 
                     onClick={() => openDialog('DELETE_SUBJECT', { subjectId: subject.id, subjectName: subject.name })}
-                    className="p-1.5 rounded bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors border border-white/10"
+                    className="p-1.5 rounded bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors border border-white/10 cursor-pointer"
                     title="Delete Subject"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -258,19 +320,22 @@ export const CurriculumTreePanel: React.FC = () => {
                 </>
               )}
 
-              {selectionLevel === 'topic' && topic && (
+              {selectionLevel === 'topic' && topic && (isAdmin || canGCManageGrade(grade?.level) || canHODManageSubject(subject?.allowed_subject_id)) && (
                 <>
-                  <span className="text-[10px] text-gray-500 uppercase tracking-wider mr-0.5">Manage:</span>
+                  <div className="flex flex-col text-right text-[9px] text-gray-500 font-bold uppercase tracking-wider leading-tight mr-1">
+                    <span>Manage</span>
+                    <span className="text-gray-300 font-semibold uppercase">Topic</span>
+                  </div>
                   <button 
                     onClick={() => openDialog('EDIT_TOPIC', { topicId: topic.id, currentName: topic.name })}
-                    className="p-1.5 rounded bg-white/5 hover:bg-neon-blue-500/20 text-gray-400 hover:text-neon-blue-400 transition-colors border border-white/10"
+                    className="p-1.5 rounded bg-white/5 hover:bg-neon-blue-500/20 text-gray-400 hover:text-neon-blue-400 transition-colors border border-white/10 cursor-pointer"
                     title="Edit Topic"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
                   <button 
                     onClick={() => openDialog('DELETE_TOPIC', { topicId: topic.id, topicName: topic.name })}
-                    className="p-1.5 rounded bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors border border-white/10"
+                    className="p-1.5 rounded bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors border border-white/10 cursor-pointer"
                     title="Delete Topic"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -283,195 +348,276 @@ export const CurriculumTreePanel: React.FC = () => {
 
         {/* Drill-down List Area */}
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
-          {/* Level 0: Show all Syllabuses */}
-          {selectionLevel === 'none' && hierarchy.map(s => (
-            <div key={s.id} className="relative group w-full text-left p-3 rounded-lg hover:bg-white/5 transition-all flex items-center justify-between">
-              <button
-                onClick={() => handleSelect(() => selectSyllabus(s.id))}
-                className="flex-1 text-left"
-              >
-                <div className="text-sm font-semibold text-white group-hover:text-neon-blue-300">{s.name}</div>
-                <div className="text-xs text-gray-500">{s.year} • {s.grades.length} Grades</div>
-              </button>
-
-              {/* Admin Actions */}
-              <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); openDialog('ADD_GRADE', { syllabusId: s.id }); }}
-                  className="p-1.5 text-gray-400 hover:text-neon-emerald-400 transition-colors"
-                  title="Add Grade Level"
+          {hierarchy.map(s => {
+            const isSyllabusExpanded = expandedNodes.has(`syllabus-${s.id}`);
+            const isSyllabusActive = (syllabusId === s.id && gradeId === null && subjectId === null && topicId === null);
+            
+            return (
+              <div key={s.id} className="space-y-1">
+                {/* Syllabus Card */}
+                <div 
+                  onClick={() => handleSelect(() => selectSyllabus(s.id))}
+                  onDoubleClick={() => toggleNode(`syllabus-${s.id}`)}
+                  className={`group w-full p-2.5 rounded-lg transition-all flex items-center justify-between cursor-pointer border ${
+                    isSyllabusActive ? syllabusStyles.active : syllabusStyles.inactive
+                  }`}
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); openDialog('DUPLICATE_SYLLABUS', { syllabusId: s.id, currentName: s.name, currentYear: s.year }); }}
-                  className="p-1.5 text-gray-400 hover:text-neon-fuchsia-400 transition-colors"
-                  title="Duplicate Syllabus"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); openDialog('EDIT_SYLLABUS', { syllabusId: s.id, currentName: s.name, currentYear: s.year }); }}
-                  className="p-1.5 text-gray-400 hover:text-neon-blue-400 transition-colors"
-                  title="Edit Syllabus"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); openDialog('DELETE_SYLLABUS', { syllabusId: s.id, syllabusName: s.name }); }}
-                  className="p-1.5 text-gray-400 hover:text-red-400 transition-colors"
-                  title="Delete Syllabus"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-                <svg className="w-4 h-4 text-gray-500 group-hover:text-neon-blue-400 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
-              </div>
-            </div>
-          ))}
-
-          {/* Level 1: Show Grades under selected Syllabus */}
-          {selectionLevel === 'syllabus' && syllabus && syllabus.grades.map(g => (
-            <div 
-              key={g.id} 
-              className="relative group w-full text-left p-3 rounded-lg hover:bg-white/5 transition-all flex items-center justify-between"
-            >
-              <button
-                onClick={() => handleSelect(() => selectGrade(g.id))}
-                className="flex-1 text-left flex items-center gap-2"
-              >
-                <div className="text-sm font-semibold text-white group-hover:text-neon-blue-300">{g.name}</div>
-                {g.pdfUrl && (
-                  <a 
-                    href={`${import.meta.env.VITE_API_BASE_URL || ''}${g.pdfUrl}`} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    onClick={(e) => e.stopPropagation()}
-                    className="p-1 rounded text-neon-blue-400 hover:text-white hover:bg-neon-blue-500/20 transition-all"
-                    title="View PDF"
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                  </a>
-                )}
-              </button>
-
-              {/* Admin Actions */}
-              <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); openDialog('ADD_SUBJECT', { configId: g.id, gradeLevel: g.level }); }}
-                  className="p-1.5 text-gray-400 hover:text-neon-emerald-400 transition-colors"
-                  title="Add Subject"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); openDialog('MANAGE_GRADE_PDF', { gradeId: g.id, gradeLevel: g.level, currentPdfUrl: g.pdfUrl, syllabusName: syllabus.name }); }}
-                  className="p-1.5 text-gray-400 hover:text-neon-blue-400 transition-colors"
-                  title="Manage PDF"
-                >
-                  <FileUp className="w-3.5 h-3.5" />
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); openDialog('EDIT_GRADE', { configId: g.id, currentLevel: g.level }); }}
-                  className="p-1.5 text-gray-400 hover:text-neon-blue-400 transition-colors"
-                  title="Edit Grade Level"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); openDialog('DELETE_GRADE', { configId: g.id, gradeLevel: g.level }); }}
-                  className="p-1.5 text-gray-400 hover:text-red-400 transition-colors"
-                  title="Delete Grade Level"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-                <svg className="w-4 h-4 text-gray-500 group-hover:text-neon-blue-400 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
-              </div>
-            </div>
-          ))}
-
-          {/* Level 2: Show Subjects under selected Grade */}
-          {selectionLevel === 'grade' && grade && (
-            <div className="space-y-0.5">
-              {grade.subjects.map(sub => (
-                <div key={sub.id} className="relative group w-full text-left p-2.5 rounded-lg hover:bg-white/5 transition-all flex items-center justify-between">
-                  <button
-                    onClick={() => handleSelect(() => selectSubject(sub.id))}
-                    className="flex-1 text-left"
-                  >
-                    <span className="text-sm font-medium text-gray-300 group-hover:text-white">{sub.name}</span>
-                  </button>
-
-                  {/* Admin Actions for Subject */}
-                  <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); openDialog('EDIT_SUBJECT', { subjectId: sub.id, currentName: sub.name }); }}
-                      className="p-1 text-gray-400 hover:text-neon-blue-400 transition-colors"
-                      title="Edit Subject"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                    </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); openDialog('DELETE_SUBJECT', { subjectId: sub.id, subjectName: sub.name }); }}
-                      className="p-1 text-gray-400 hover:text-red-400 transition-colors"
-                      title="Delete Subject"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                    <svg className="w-4 h-4 text-gray-600 group-hover:text-neon-blue-400 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <ChevronRight 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleNode(`syllabus-${s.id}`);
+                      }}
+                      className={`w-4 h-4 text-gray-500 hover:text-white transition-transform flex-shrink-0 duration-200 cursor-pointer ${isSyllabusExpanded ? 'rotate-90' : ''}`} 
+                    />
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className={`text-sm font-semibold ${s.name.length > 20 ? 'hover-ticker' : 'truncate'}`}>{s.name}</div>
+                      <div className="text-[10px] text-gray-500 font-medium">{s.year} • {s.grades.length} Grades</div>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Level 2: Show Topics for selected Subject */}
-          {selectionLevel === 'subject' && subject && (
-            <div className="space-y-1">
-              {subject.topics.map(t => {
-                const isSelected = t.id === topic?.id;
-                return (
-                  <div
-                    key={t.id}
-                    className={`relative group w-full p-3 rounded-lg transition-all flex items-center justify-between ${
-                      isSelected 
-                        ? 'bg-neon-blue-500/20 border border-neon-blue-500/40 shadow-[0_0_10px_rgba(14,165,233,0.15)]' 
-                        : 'hover:bg-white/5 border border-transparent'
-                    }`}
-                  >
-                    <button
-                      onClick={() => handleSelect(() => selectTopic(t.id))}
-                      className="flex-1 flex items-center justify-between pr-2"
-                    >
-                      <span className={`text-sm font-medium ${isSelected ? 'text-neon-blue-300' : 'text-gray-300'}`}>
-                        {t.name}
-                      </span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                        isSelected ? 'bg-neon-blue-500/30 text-neon-blue-200' : 'bg-white/10 text-gray-400'
-                      }`}>
-                        {t.questionCount}
-                      </span>
-                    </button>
-
-                    {/* Admin Actions for Topic */}
-                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity bg-surface-800/80 rounded-md shadow-md px-1">
+                  
+                  {/* Admin Actions */}
+                  {isAdmin && (
+                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity" onClick={(e) => e.stopPropagation()}>
                       <button 
-                        onClick={(e) => { e.stopPropagation(); openDialog('EDIT_TOPIC', { topicId: t.id, currentName: t.name }); }}
-                        className="p-1 text-gray-400 hover:text-neon-blue-400 transition-colors"
+                        onClick={() => openDialog('ADD_GRADE', { syllabusId: s.id })}
+                        className="p-1.5 text-gray-400 hover:text-neon-emerald-400 transition-colors cursor-pointer"
+                        title="Add Grade Level"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                      <button 
+                        onClick={() => openDialog('DUPLICATE_SYLLABUS', { syllabusId: s.id, currentName: s.name, currentYear: s.year })}
+                        className="p-1.5 text-gray-400 hover:text-neon-fuchsia-400 transition-colors cursor-pointer"
+                        title="Duplicate Syllabus"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      <button 
+                        onClick={() => openDialog('EDIT_SYLLABUS', { syllabusId: s.id, currentName: s.name, currentYear: s.year })}
+                        className="p-1.5 text-gray-400 hover:text-neon-blue-400 transition-colors cursor-pointer"
+                        title="Edit Syllabus"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       <button 
-                        onClick={(e) => { e.stopPropagation(); openDialog('DELETE_TOPIC', { topicId: t.id, topicName: t.name }); }}
-                        className="p-1 text-gray-400 hover:text-red-400 transition-colors"
+                        onClick={() => openDialog('DELETE_SYLLABUS', { syllabusId: s.id, syllabusName: s.name })}
+                        className="p-1.5 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
+                        title="Delete Syllabus"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
+                  )}
+                </div>
+
+                {/* Grades (Children of Syllabus) */}
+                {isSyllabusExpanded && (
+                  <div className="pl-3 border-l border-white/10 ml-4 space-y-1">
+                    {s.grades.map(g => {
+                      const isGradeExpanded = expandedNodes.has(`grade-${g.id}`);
+                      const isGradeActive = (gradeId === g.id && subjectId === null && topicId === null);
+                      
+                      return (
+                        <div key={g.id} className="space-y-1">
+                          {/* Grade Card */}
+                          <div 
+                            onClick={() => handleSelect(() => selectGrade(g.id))}
+                            onDoubleClick={() => toggleNode(`grade-${g.id}`)}
+                            className={`group w-full p-2.5 rounded-lg transition-all flex items-center justify-between cursor-pointer border ${
+                              isGradeActive ? gradeStyles.active : gradeStyles.inactive
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <ChevronRight 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleNode(`grade-${g.id}`);
+                                }}
+                                className={`w-3.5 h-3.5 text-gray-500 hover:text-white transition-transform flex-shrink-0 duration-200 cursor-pointer ${isGradeExpanded ? 'rotate-90' : ''}`} 
+                              />
+                              <div className="text-sm font-semibold truncate">{g.name}</div>
+                              {g.pdfUrl && (
+                                <a 
+                                  href={`${import.meta.env.VITE_API_BASE_URL || ''}${g.pdfUrl}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="p-1 rounded text-neon-blue-400 hover:text-white hover:bg-neon-blue-500/20 transition-all flex-shrink-0"
+                                  title="View PDF"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
+                                                       {/* Admin Actions */}
+                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                              {(isAdmin || canGCManageGrade(g.level)) && (
+                                <button 
+                                  onClick={() => openDialog('ADD_SUBJECT', { configId: g.id, gradeLevel: g.level })}
+                                  className="p-1.5 text-gray-400 hover:text-neon-emerald-400 transition-colors cursor-pointer"
+                                  title="Add Subject"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {canManageGradePdf(g.level, g.subjects) && (
+                                <button 
+                                  onClick={() => openDialog('MANAGE_GRADE_PDF', { gradeId: g.id, gradeLevel: g.level, currentPdfUrl: g.pdfUrl, syllabusName: s.name })}
+                                  className="p-1.5 text-gray-400 hover:text-neon-blue-400 transition-colors cursor-pointer"
+                                  title="Manage PDF"
+                                >
+                                  <FileUp className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {isAdmin && (
+                                <>
+                                  <button 
+                                    onClick={() => openDialog('EDIT_GRADE', { configId: g.id, currentLevel: g.level })}
+                                    className="p-1.5 text-gray-400 hover:text-neon-blue-400 transition-colors cursor-pointer"
+                                    title="Edit Grade Level"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button 
+                                    onClick={() => openDialog('DELETE_GRADE', { configId: g.id, gradeLevel: g.level })}
+                                    className="p-1.5 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
+                                    title="Delete Grade Level"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Subjects (Children of Grade) */}
+                          {isGradeExpanded && (
+                            <div className="pl-3 border-l border-white/10 ml-4 space-y-1">
+                              {g.subjects.map(sub => {
+                                const isSubjectExpanded = expandedNodes.has(`subject-${sub.id}`);
+                                const isSubjectActive = (subjectId === sub.id && topicId === null);
+                                
+                                return (
+                                  <div key={sub.id} className="space-y-1">
+                                    {/* Subject Card */}
+                                    <div 
+                                      onClick={() => handleSelect(() => selectSubject(sub.id))}
+                                      onDoubleClick={() => toggleNode(`subject-${sub.id}`)}
+                                      className={`group w-full p-2 rounded-lg transition-all flex items-center justify-between cursor-pointer border ${
+                                        isSubjectActive ? subjectStyles.active : subjectStyles.inactive
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                                        <ChevronRight 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleNode(`subject-${sub.id}`);
+                                          }}
+                                          className={`w-3.5 h-3.5 text-gray-500 hover:text-white transition-transform flex-shrink-0 duration-200 cursor-pointer ${isSubjectExpanded ? 'rotate-90' : ''}`} 
+                                        />
+                                        <div className="flex-1 min-w-0 overflow-hidden">
+                                          <div className={`text-sm font-medium ${sub.name.length > 18 ? 'hover-ticker' : 'truncate'}`}>{sub.name}</div>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Admin Actions */}
+                                      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                                        {(isAdmin || canGCManageGrade(g.level) || canHODManageSubject(sub.allowed_subject_id)) && (
+                                          <button 
+                                            onClick={() => openDialog('ADD_TOPIC', { subjectId: sub.id })}
+                                            className="p-1 text-gray-400 hover:text-neon-emerald-400 transition-colors cursor-pointer"
+                                            title="Add Topic"
+                                          >
+                                            <Plus className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                        {(isAdmin || canGCManageGrade(g.level)) && (
+                                          <>
+                                            <button 
+                                              onClick={() => openDialog('EDIT_SUBJECT', { subjectId: sub.id, currentName: sub.name })}
+                                              className="p-1 text-gray-400 hover:text-neon-blue-400 transition-colors cursor-pointer"
+                                              title="Edit Subject"
+                                            >
+                                              <Edit2 className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button 
+                                              onClick={() => openDialog('DELETE_SUBJECT', { subjectId: sub.id, subjectName: sub.name })}
+                                              className="p-1 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
+                                              title="Delete Subject"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Topics (Children of Subject) */}
+                                    {isSubjectExpanded && (
+                                      <div className="pl-3 border-l border-white/10 ml-4 space-y-1">
+                                        {sub.topics.map(t => {
+                                          const isTopicActive = (topicId === t.id);
+                                          
+                                          return (
+                                            <div 
+                                              key={t.id}
+                                              onClick={() => handleSelect(() => selectTopic(t.id))}
+                                              onDoubleClick={() => handleSelect(() => selectTopic(t.id))}
+                                              className={`group w-full p-2 rounded-lg transition-all flex items-center justify-between cursor-pointer border ${
+                                                isTopicActive ? topicStyles.active : topicStyles.inactive
+                                              }`}
+                                            >
+                                              <div className="flex-1 flex items-center justify-between pr-2 min-w-0 gap-2">
+                                                <div className="flex-1 min-w-0 overflow-hidden">
+                                                  <span className={`text-xs font-medium ${t.name.length > 16 ? 'hover-ticker' : 'truncate'}`}>{t.name}</span>
+                                                </div>
+                                                {t.questionCount > 0 && (
+                                                  <span className={`text-[9px] px-1.5 py-0.5 rounded-md flex-shrink-0 ${
+                                                    isTopicActive ? 'bg-fuchsia-500/30 text-fuchsia-200' : 'bg-white/10 text-gray-400'
+                                                  }`}>
+                                                    {t.questionCount}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              
+                                              {/* Admin Actions */}
+                                              {(isAdmin || canGCManageGrade(g.level) || canHODManageSubject(sub.allowed_subject_id)) && (
+                                                <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity bg-surface-800/80 rounded-md shadow-md px-1" onClick={(e) => e.stopPropagation()}>
+                                                  <button 
+                                                    onClick={() => openDialog('EDIT_TOPIC', { topicId: t.id, currentName: t.name })}
+                                                    className="p-1 text-gray-400 hover:text-neon-blue-400 transition-colors cursor-pointer"
+                                                    title="Edit Topic"
+                                                  >
+                                                    <Edit2 className="w-3.5 h-3.5" />
+                                                  </button>
+                                                  <button 
+                                                    onClick={() => openDialog('DELETE_TOPIC', { topicId: t.id, topicName: t.name })}
+                                                    className="p-1 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
+                                                    title="Delete Topic"
+                                                  >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </>

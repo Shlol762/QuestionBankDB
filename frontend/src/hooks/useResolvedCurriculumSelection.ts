@@ -3,7 +3,7 @@ import { useExplorerUrlState } from './useExplorerUrlState';
 import { useCurriculumHierarchy } from './useCurriculum';
 
 export interface TopicNode { id: number; name: string; questionCount: number; }
-export interface SubjectNode { id: number; name: string; topics: TopicNode[]; }
+export interface SubjectNode { id: number; name: string; allowed_subject_id?: number; topics: TopicNode[]; }
 export interface GradeNode { id: number; level: number; name: string; pdfUrl?: string; subjects: SubjectNode[]; }
 export interface SyllabusNode { id: number; name: string; year: string; grades: GradeNode[]; }
 
@@ -35,6 +35,7 @@ export function useResolvedCurriculumSelection(): ResolvedCurriculumSelection {
         subjects: (g.subjects || []).map(sub => ({
           id: sub.subject_id,
           name: sub.subject_name,
+          allowed_subject_id: sub.allowed_subject_id,
           topics: (sub.topics || []).map(t => ({
             id: t.topic_id,
             name: t.topic_name,
@@ -53,7 +54,7 @@ export function useResolvedCurriculumSelection(): ResolvedCurriculumSelection {
         for (const g of s.grades) {
           for (const sub of g.subjects) {
             const t = sub.topics.find(t => t.id === topicId) ?? null;
-            if (t) return { syllabus: s, grade: g, subject: sub, topic: t, selectionLevel: 'subject', hierarchy, isLoading };
+            if (t) return { syllabus: s, grade: g, subject: sub, topic: t, selectionLevel: 'topic', hierarchy, isLoading };
           }
         }
       }

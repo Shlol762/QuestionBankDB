@@ -31,6 +31,7 @@ export interface SubjectHierarchy {
   subject_id: number;
   subject_name: string;
   config_id: number;
+  allowed_subject_id?: number;
   topics: TopicRead[];
 }
 
