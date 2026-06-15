@@ -105,6 +105,15 @@ class GradeConfig(BaseSQLModel, table=True):
     # Cascade: If Grade is deleted, delete all Subjects
     subjects: List["Subject"] = Relationship(back_populates="grade", cascade_delete=True)
 
+    @property
+    def grade_name(self) -> Optional[str]:
+        try:
+            if self.allowed_grade:
+                return self.allowed_grade.grade_name
+        except Exception:
+            pass
+        return f"Grade {self.grade_level}"
+
     def __repr__(self):
         return f"<GradeConfig(id={self.config_id}, level={self.grade_level})>"
 
@@ -165,6 +174,7 @@ class Users(BaseSQLModel, table=True):
     password_hash: str = Field(exclude=True)
     department: str
     is_admin: bool = Field(default=False)
+    is_active: bool = Field(default=True)
     
     subjects: List[Subject] = Relationship(back_populates="teachers", link_model=UserSubjectLink)
     grade_coordinating: List[GradeCoordinatorLink] = Relationship(cascade_delete=True)
@@ -200,6 +210,21 @@ class Users(BaseSQLModel, table=True):
             
         # Assigned Teacher for the specific subject ID
         if any(s.subject_id == subject_id for s in self.subjects):
+            return True
+            
+        return False
+
+    def can_manage_question_in_topic(self, subject_id: int, allowed_subject_id: Optional[int], grade_level: int) -> bool:
+        """Admins, Coordinators, and HODs have management permissions for questions in a topic."""
+        if self.is_admin:
+            return True
+        
+        # HOD check via Master Tag ID
+        if allowed_subject_id and any(h.allowed_subject_id == allowed_subject_id for h in self.hod_assignments):
+            return True
+            
+        # Grade Coordinator for the grade
+        if any(g.grade_level == grade_level for g in self.grade_coordinating):
             return True
             
         return False

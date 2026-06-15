@@ -33,6 +33,7 @@ class UserRead(BaseAuthModel):
     email: EmailStr
     department: str
     is_admin: bool
+    is_active: bool
     subjects: List[SubjectSimple] = []
     grade_levels: List[int] = [] 
     hod_subject_names: List[str] = []
@@ -44,6 +45,7 @@ class UserCreate(BaseAuthModel):
     password: str
     department: str
     is_admin: bool = False
+    is_active: bool = True
     subject_ids: List[int] = [] 
     grade_levels: List[int] = []
     hod_allowed_subject_ids: List[int] = []
@@ -56,6 +58,7 @@ class UserUpdate(BaseAuthModel):
     password: Optional[str] = None
     department: Optional[str] = None
     is_admin: Optional[bool] = None
+    is_active: Optional[bool] = None
     subject_ids: Optional[List[int]] = None
     grade_levels: Optional[List[int]] = None
     hod_allowed_subject_ids: Optional[List[int]] = None
@@ -143,8 +146,7 @@ def map_user_to_read(user: Users) -> dict:
         grade_name = None
         syllabus_name = None
         if s.grade:
-            if s.grade.allowed_grade:
-                grade_name = s.grade.allowed_grade.grade_name
+            grade_name = s.grade.grade_name
             if s.grade.syllabus:
                 syllabus_name = s.grade.syllabus.syllabus_name
         subjects_list.append(
@@ -303,7 +305,8 @@ async def register_user(
         email=normalized_email,
         password_hash=get_password_hash(user_data.password),
         department=user_data.department,
-        is_admin=user_data.is_admin
+        is_admin=user_data.is_admin,
+        is_active=user_data.is_active
     )
     session.add(new_user)
     await session.flush()
@@ -344,6 +347,21 @@ async def update_user(
     )
 
     update_data = data.model_dump(exclude_unset=True)
+    if "is_active" in update_data and update_data["is_active"] is False:
+        if id == current_user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Security Protocol: You cannot disable your own account."
+            )
+        if user.is_admin:
+            admin_count_stmt = select(func.count(Users.user_id)).where(Users.is_admin == True, Users.is_active == True)
+            active_admins = (await session.exec(admin_count_stmt)).first()
+            if active_admins <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Security Lock: This is the system's final active administrator. Disabling is blocked to prevent permanent lockout."
+                )
+
     is_admin_check = update_data.get("is_admin", user.is_admin)
     if "password" in update_data and update_data["password"]:
         validate_password_strength(update_data["password"], is_admin_check)
@@ -390,6 +408,8 @@ async def login_for_access_token(
     user = (await session.exec(select(Users).where(func.lower(Users.email) == normalized_email))).first()
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
+    if not user.is_active:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "User account is disabled")
     return {"access_token": create_access_token(data={"sub": user.email, "id": user.user_id}), "token_type": "bearer"}
 
 @router.delete("/users/{id}", status_code=status.HTTP_204_NO_CONTENT)

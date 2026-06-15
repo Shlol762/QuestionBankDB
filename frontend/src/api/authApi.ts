@@ -6,6 +6,7 @@ export interface UserCreatePayload {
   password: string;
   department: string;
   is_admin?: boolean;
+  is_active?: boolean;
   subject_ids?: number[];
   grade_levels?: number[];
   hod_allowed_subject_ids?: number[];

@@ -42,7 +42,7 @@ export const StepWizard: React.FC<StepWizardProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full space-y-6">
+    <div className="flex flex-col space-y-6">
       {/* Step Progress Header */}
       <div className="relative flex items-center justify-between px-4">
         {/* Connection line background */}
@@ -99,7 +99,7 @@ export const StepWizard: React.FC<StepWizardProps> = ({
       )}
 
       {/* Active Step Content */}
-      <div className="flex-1 min-h-[300px] p-2 pb-48">
+      <div className="flex-1 min-h-[300px] p-2 pb-4">
         {steps[currentStep].content}
       </div>
 

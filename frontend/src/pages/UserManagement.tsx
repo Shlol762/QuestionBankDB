@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { useUIStore } from '../store/uiStore';
-import { UserPlus, Search, Filter, Edit2, Trash2 } from 'lucide-react';
-import { useUsers, type UserRead } from '../hooks/useStaff';
+import { UserPlus, Search, Filter, Edit2, Trash2, Power } from 'lucide-react';
+import { useUsers, useUpdateUser, type UserRead } from '../hooks/useStaff';
+import { useMe } from '../hooks/useAuth';
+import { useAllowedGrades } from '../hooks/useSystemConfig';
+import { toast } from 'react-hot-toast';
 
 
 
@@ -11,6 +14,10 @@ export const UserManagement: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const { data: usersData, isLoading } = useUsers(roleFilter);
+  const { data: allowedGradesPage } = useAllowedGrades(true);
+  const allowedGradesList = allowedGradesPage?.items || [];
+  const updateUserMutation = useUpdateUser();
+  const { data: meData } = useMe();
   const staff = usersData?.items || [];
 
   const handleCreateStaff = () => {
@@ -23,6 +30,18 @@ export const UserManagement: React.FC = () => {
 
   const handleDeleteStaff = (user: UserRead) => {
     openDialog('DELETE_USER', { userId: user.user_id, userName: user.full_name });
+  };
+
+  const handleToggleStatus = (user: UserRead) => {
+    const isSelf = meData?.user_id === user.user_id;
+    if (isSelf) {
+      toast.error('Security Protocol: You cannot disable your own account.');
+      return;
+    }
+    updateUserMutation.mutate({
+      id: user.user_id,
+      payload: { is_active: !user.is_active }
+    });
   };
 
 
@@ -105,6 +124,7 @@ export const UserManagement: React.FC = () => {
                 <th className="px-6 py-4">Email</th>
                 <th className="px-6 py-4">Management Roles</th>
                 <th className="px-6 py-4">Teaching Roles</th>
+                <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -136,11 +156,14 @@ export const UserManagement: React.FC = () => {
                               HOD: {name}
                             </span>
                           ))}
-                          {user.grade_levels && user.grade_levels.map((gl) => (
-                            <span key={gl} className="px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wider bg-neon-blue-500/10 text-neon-blue-400">
-                              Grade {gl} Coord
-                            </span>
-                          ))}
+                          {user.grade_levels && user.grade_levels.map((gl) => {
+                            const gradeObj = allowedGradesList.find(g => g.allowed_grade_id === gl);
+                            return (
+                              <span key={gl} className="px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wider bg-neon-blue-500/10 text-neon-blue-400">
+                                {gradeObj?.grade_name || `Grade ${gl}`} Coord
+                              </span>
+                            );
+                          })}
                           {!user.is_admin && (!user.hod_subject_names || user.hod_subject_names.length === 0) && (!user.grade_levels || user.grade_levels.length === 0) && (
                             <span className="text-gray-500 text-xs italic">None</span>
                           )}
@@ -162,7 +185,7 @@ export const UserManagement: React.FC = () => {
                                   const details = [];
                                   if (s.grade_name) details.push(s.grade_name);
                                   if (cleanSyllabus) details.push(cleanSyllabus);
-
+ 
                                   return details.length > 0
                                     ? `${s.subject_name} (${details.join('-')})`
                                     : s.subject_name;
@@ -177,6 +200,23 @@ export const UserManagement: React.FC = () => {
                             <span className="text-gray-500 text-xs italic">None Assigned</span>
                           )}
                         </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleStatus(user)}
+                          disabled={meData?.user_id === user.user_id}
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-neon-blue-500/50 ${
+                            user.is_active ? 'bg-neon-emerald-500' : 'bg-white/10'
+                          } ${meData?.user_id === user.user_id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          title={meData?.user_id === user.user_id ? "You cannot disable your own account" : `Click to ${user.is_active ? 'disable' : 'enable'} account`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              user.is_active ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -201,7 +241,7 @@ export const UserManagement: React.FC = () => {
                 })
               ) : (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
                     No staff profiles match the selected filters.
                   </td>
                 </tr>

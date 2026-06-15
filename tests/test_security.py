@@ -216,3 +216,110 @@ async def test_invalid_subject_assignments(client: AsyncClient):
     assert response.status_code == 400
     assert "teaching subject assignments do not exist" in response.json()["detail"]
 
+
+@pytest.mark.asyncio
+async def test_deactivated_user_security_constraints(client: AsyncClient):
+    """Scenario: Deactivated users are blocked from logging in or using their session; admins cannot self-deactivate or disable the last admin."""
+    # 1. Setup/Login as Admin
+    try:
+        await client.post("/auth/initial-setup", json={
+            "full_name": "Admin", "email": "admin@test.com", "password": STRONG_PASSWORD, "department": "IT"
+        })
+    except Exception:
+        pass
+    login = await client.post("/auth/login", data={"username": "admin@test.com", "password": STRONG_PASSWORD})
+    admin_token = login.json()["access_token"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # 2. Register faculty user
+    faculty_data = {
+        "full_name": "Faculty User",
+        "email": "faculty@test.com",
+        "password": STRONG_PASSWORD,
+        "department": "Science",
+        "is_active": True
+    }
+    res = await client.post("/auth/register", json=faculty_data, headers=admin_headers)
+    assert res.status_code == 201
+
+    # Get faculty user ID
+    users_res = await client.get("/auth/users", headers=admin_headers)
+    users = users_res.json()["items"]
+    faculty_user = next(u for u in users if u["email"] == "faculty@test.com")
+    faculty_id = faculty_user["user_id"]
+
+    # Verify faculty user can log in
+    fac_login = await client.post("/auth/login", data={"username": "faculty@test.com", "password": STRONG_PASSWORD})
+    assert fac_login.status_code == 200
+    fac_token = fac_login.json()["access_token"]
+    fac_headers = {"Authorization": f"Bearer {fac_token}"}
+
+    # Verify active session works
+    me_res = await client.get("/auth/me", headers=fac_headers)
+    assert me_res.status_code == 200
+
+    # 3. Admin disables faculty user
+    deactivate_res = await client.patch(f"/auth/users/{faculty_id}", json={"is_active": False}, headers=admin_headers)
+    assert deactivate_res.status_code == 200
+    assert deactivate_res.json()["is_active"] is False
+
+    # 4. Verify deactivated user's active session is blocked immediately
+    me_res_blocked = await client.get("/auth/me", headers=fac_headers)
+    assert me_res_blocked.status_code == 403
+    assert "disabled" in me_res_blocked.json()["detail"]
+
+    # 5. Verify deactivated user cannot log in again
+    fac_login_retry = await client.post("/auth/login", data={"username": "faculty@test.com", "password": STRONG_PASSWORD})
+    assert fac_login_retry.status_code == 403
+    assert "disabled" in fac_login_retry.json()["detail"]
+
+    # 6. Admin tries to deactivate themselves
+    # Get Admin user ID
+    admin_user = next(u for u in users if u["email"] == "admin@test.com")
+    admin_id = admin_user["user_id"]
+    self_deactivate_res = await client.patch(f"/auth/users/{admin_id}", json={"is_active": False}, headers=admin_headers)
+    assert self_deactivate_res.status_code == 400
+    assert "cannot disable your own account" in self_deactivate_res.json()["detail"]
+
+    # 7. Admin tries to deactivate the last admin (which is indeed themselves, but we check is_admin target lockout too)
+    # Let's create another admin
+    admin2_data = {
+        "full_name": "Admin Two",
+        "email": "admin2@test.com",
+        "password": STRONG_PASSWORD,
+        "department": "IT",
+        "is_admin": True,
+        "is_active": True
+    }
+    await client.post("/auth/register", json=admin2_data, headers=admin_headers)
+    
+    users_res = await client.get("/auth/users", headers=admin_headers)
+    users = users_res.json()["items"]
+    admin2_user = next(u for u in users if u["email"] == "admin2@test.com")
+    admin2_id = admin2_user["user_id"]
+
+    # Deactivating admin2 should succeed because admin1 is also active
+    deactivate_admin2 = await client.patch(f"/auth/users/{admin2_id}", json={"is_active": False}, headers=admin_headers)
+    assert deactivate_admin2.status_code == 200
+
+    # Try to deactivate admin1 (since admin2 is deactivated, admin1 is the only active admin left)
+    self_deactivate_last_admin = await client.patch(f"/auth/users/{admin_id}", json={"is_active": False}, headers=admin_headers)
+    assert self_deactivate_last_admin.status_code == 400 # blocked by self-deactivation first
+
+    # Wait, let's login as admin2, activate admin2, then admin2 tries to deactivate admin1
+    # But admin2 is deactivated, so admin2 cannot login or make requests! Perfect!
+    # Let's log in as admin1, activate admin2
+    await client.patch(f"/auth/users/{admin2_id}", json={"is_active": True}, headers=admin_headers)
+    # Now log in as admin2
+    login2 = await client.post("/auth/login", data={"username": "admin2@test.com", "password": STRONG_PASSWORD})
+    admin2_token = login2.json()["access_token"]
+    admin2_headers = {"Authorization": f"Bearer {admin2_token}"}
+    # admin2 deactivates admin1 (succeeds because admin2 is active admin)
+    deactivate_admin1 = await client.patch(f"/auth/users/{admin_id}", json={"is_active": False}, headers=admin2_headers)
+    assert deactivate_admin1.status_code == 200
+
+    # Now admin2 is the last active admin. admin2 tries to deactivate admin2 (blocked by self-deactivation)
+    self_deactivate_admin2 = await client.patch(f"/auth/users/{admin2_id}", json={"is_active": False}, headers=admin2_headers)
+    assert self_deactivate_admin2.status_code == 400
+
+

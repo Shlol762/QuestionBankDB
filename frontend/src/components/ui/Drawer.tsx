@@ -5,6 +5,7 @@ import { StepWizard } from './StepWizard';
 import { useCreateQuestion, useQuestionDetails, useUpdateQuestion } from '../../hooks/useQuestions';
 import { useFormAutoAdvance } from '../../hooks/useFormAutoAdvance';
 import { useRegisterStaff, useUpdateUser, useUsers } from '../../hooks/useStaff';
+import { useMe } from '../../hooks/useAuth';
 import { useAllowedSubjects, useAllowedGrades } from '../../hooks/useSystemConfig';
 import { useCurriculumHierarchy } from '../../hooks/useCurriculum';
 import { useResolvedCurriculumSelection } from '../../hooks/useResolvedCurriculumSelection';
@@ -26,10 +27,11 @@ export const Drawer: React.FC = () => {
       (s.grades || []).forEach(g => {
         (g.subjects || []).forEach(sub => {
           (sub.topics || []).forEach(t => {
+            const gradeText = g.grade_name || `Grade ${g.grade_level}`;
             list.push({
               id: t.topic_id,
               name: t.topic_name,
-              info: `Grade ${g.grade_level} • ${sub.subject_name} • ${s.syllabus_name} (${s.academic_year})`
+              info: `${gradeText} • ${sub.subject_name} • ${s.syllabus_name} (${s.academic_year})`
             });
           });
         });
@@ -45,9 +47,10 @@ export const Drawer: React.FC = () => {
     rawHierarchy.forEach(s => {
       (s.grades || []).forEach(g => {
         (g.subjects || []).forEach(sub => {
+          const gradeText = g.grade_name || `Grade ${g.grade_level}`;
           list.push({
             id: sub.subject_id,
-            name: `${sub.subject_name} (Grade ${g.grade_level} • ${s.syllabus_name})`
+            name: `${sub.subject_name} (${gradeText} • ${s.syllabus_name})`
           });
         });
       });
@@ -133,6 +136,7 @@ export const Drawer: React.FC = () => {
 
   // Staff Management Queries & Mutations
   const { data: usersData } = useUsers('all', { enabled: drawerType === 'EDIT_STAFF' });
+  const { data: meData } = useMe();
   const updateUserMutation = useUpdateUser();
   const { data: allowedSubjectsPage } = useAllowedSubjects(true);
   const { data: allowedGradesPage } = useAllowedGrades(true);
@@ -334,6 +338,7 @@ export const Drawer: React.FC = () => {
   const [staffPassword, setStaffPassword] = useState('');
   const [staffDepartment, setStaffDepartment] = useState('');
   const [isSystemAdmin, setIsSystemAdmin] = useState(false);
+  const [isStaffActive, setIsStaffActive] = useState(true);
   const [selectedGradeLevels, setSelectedGradeLevels] = useState<number[]>([]);
   const [selectedHODSubjectIds, setSelectedHODSubjectIds] = useState<number[]>([]);
   const [selectedSubjects, setSelectedSubjects] = useState<number[]>([]);
@@ -384,6 +389,7 @@ export const Drawer: React.FC = () => {
       setStaffPassword('');
       setStaffDepartment(editingUser.department || '');
       setIsSystemAdmin(editingUser.is_admin);
+      setIsStaffActive(editingUser.is_active);
       
       const grades = editingUser.grade_levels || [];
       setSelectedGradeLevels(grades);
@@ -401,6 +407,7 @@ export const Drawer: React.FC = () => {
       setStaffPassword('');
       setStaffDepartment('');
       setIsSystemAdmin(false);
+      setIsStaffActive(true);
       setSelectedGradeLevels([]);
       setIsCoordinator(false);
       setSelectedHODSubjectIds([]);
@@ -426,6 +433,7 @@ export const Drawer: React.FC = () => {
       email: staffEmail,
       department: staffDepartment || 'Academic Faculty',
       is_admin: isSystemAdmin,
+      is_active: isStaffActive,
       subject_ids: selectedSubjects,
       hod_allowed_subject_ids: isHOD ? selectedHODSubjectIds : [],
       grade_levels: isCoordinator ? selectedGradeLevels : []
@@ -906,6 +914,29 @@ export const Drawer: React.FC = () => {
               Minimum {isSystemAdmin ? '12' : '8'} characters required for {isSystemAdmin ? 'Administrator' : 'Faculty/Staff'} accounts.
             </p>
           </div>
+          <div className="flex items-center justify-between p-4 rounded-xl bg-white/[0.01] border border-white/5 mt-4">
+            <div className="text-left">
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-400">Account Status</label>
+              <span className="text-[10px] text-gray-500">Enable or disable access to the platform for this user.</span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isStaffActive}
+                onChange={() => setIsStaffActive(!isStaffActive)}
+                disabled={isEditing && editingUserId === meData?.user_id}
+                className="sr-only peer"
+                title={isEditing && editingUserId === meData?.user_id ? "You cannot disable your own account" : `Click to ${isStaffActive ? 'disable' : 'enable'} account`}
+              />
+              <div className={`w-11 h-6 rounded-full transition-colors duration-200 ease-in-out border-2 border-transparent peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-neon-blue-500/50 bg-white/10 peer-checked:bg-neon-emerald-500 ${
+                isEditing && editingUserId === meData?.user_id ? 'opacity-50 cursor-not-allowed' : ''
+              }`}>
+                <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ease-in-out transform ${
+                  isStaffActive ? 'translate-x-5' : 'translate-x-0'
+                }`} />
+              </div>
+            </label>
+          </div>
         </div>
       )
     });
@@ -1332,11 +1363,11 @@ export const Drawer: React.FC = () => {
 
     return steps;
   }, [
-    staffName, staffEmail, staffPassword, staffDepartment, isSystemAdmin, isHOD, isCoordinator,
+    staffName, staffEmail, staffPassword, staffDepartment, isSystemAdmin, isStaffActive, isHOD, isCoordinator,
     selectedGradeLevels, selectedHODSubjectIds, selectedSubjects,
     hodDropdownOpen, gradeDropdownOpen, hodSearch, gradeSearch,
     filteredGradeOptions, filteredHODOptions, allowedSubjectsList, allowedGradesList,
-    allSubjects, isEditing
+    allSubjects, isEditing, editingUserId, meData
   ]);
 
   // Keep step within bounds if wizard steps count shrinks

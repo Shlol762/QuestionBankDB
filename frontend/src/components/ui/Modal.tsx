@@ -46,7 +46,8 @@ export const Modal: React.FC = () => {
       (s.grades || []).forEach(g => {
         (g.subjects || []).forEach(sub => {
           (sub.topics || []).forEach(t => {
-            paths[t.topic_id] = `${s.syllabus_name} (${s.academic_year}) ➔ Grade ${g.grade_level} ➔ ${sub.subject_name} ➔ ${t.topic_name}`;
+            const gradeText = g.grade_name || `Grade ${g.grade_level}`;
+            paths[t.topic_id] = `${s.syllabus_name} (${s.academic_year}) ➔ ${gradeText} ➔ ${sub.subject_name} ➔ ${t.topic_name}`;
           });
         });
       });
@@ -191,6 +192,7 @@ export const Modal: React.FC = () => {
                  payload.subjectName || 
                  payload.topicName || 
                  payload.userName || 
+                 payload.gradeName ||
                  (payload.gradeLevel !== undefined ? `Grade ${payload.gradeLevel}` : '') ||
                  (payload.questionText ? payload.questionText.slice(0, 25) : '') ||
                  'DELETE';

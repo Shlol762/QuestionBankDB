@@ -18,6 +18,7 @@ export interface UserRead {
   email: string;
   department: string;
   is_admin: boolean;
+  is_active: boolean;
   subjects: SubjectSimple[];
   grade_levels: number[];
   hod_subject_names: string[];
@@ -35,6 +36,7 @@ export interface UserUpdatePayload {
   password?: string;
   department?: string;
   is_admin?: boolean;
+  is_active?: boolean;
   subject_ids?: number[];
   grade_levels?: number[];
   hod_allowed_subject_ids?: number[];
