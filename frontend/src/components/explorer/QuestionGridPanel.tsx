@@ -244,7 +244,7 @@ export const QuestionGridPanel: React.FC = () => {
                     {topic.name}
                   </span>
                   <span className="text-base font-semibold text-gray-400">
-                    in {subject?.name} (Grade {grade?.level} {syllabus?.year})
+                    in {subject?.name} ({grade?.name} {syllabus?.year})
                   </span>
                 </div>
               ) : subject ? (
@@ -256,7 +256,7 @@ export const QuestionGridPanel: React.FC = () => {
                     {subject.name}
                   </span>
                   <span className="text-base font-semibold text-gray-400">
-                    (Grade {grade?.level} {syllabus?.year})
+                    ({grade?.name} {syllabus?.year})
                   </span>
                 </div>
               ) : grade ? (
@@ -265,7 +265,7 @@ export const QuestionGridPanel: React.FC = () => {
                     Showing questions for:
                   </span>
                   <span className="text-lg font-bold text-white">
-                    Grade {grade.level}
+                    {grade.name}
                   </span>
                   <span className="text-base font-semibold text-gray-400">
                     ({syllabus?.name})

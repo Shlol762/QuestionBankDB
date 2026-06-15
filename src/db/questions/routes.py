@@ -280,15 +280,12 @@ async def list_questions(
     base_stmt = select(QuestionBank).group_by(QuestionBank.question_id)
     
     if not current_user.is_admin:
-        teacher_subject_ids = [s.subject_id for s in current_user.subjects]
         hod_subject_names = [h.allowed_subject.subject_name for h in current_user.hod_assignments]
         coordinator_grade_levels = [g.grade_level for g in current_user.grade_coordinating]
         
         base_stmt = base_stmt.outerjoin(QuestionBank.topics).outerjoin(Subject, Topic.subject_id == Subject.subject_id).outerjoin(GradeConfig, Subject.config_id == GradeConfig.config_id)
         
         filters = []
-        if teacher_subject_ids:
-            filters.append(Subject.subject_id.in_(teacher_subject_ids))
         if hod_subject_names:
             filters.append(Subject.subject_name.in_(hod_subject_names))
         if coordinator_grade_levels:
@@ -302,7 +299,7 @@ async def list_questions(
                 )
             )
         else:
-            # If a user has no roles, only show their own questions
+            # If a user has no management roles, only show their own questions
             base_stmt = base_stmt.where(QuestionBank.teacher_id == current_user.user_id)
     
     # Filter by status if specified
@@ -368,7 +365,7 @@ async def get_question(
     if not current_user.is_admin:
         can_view = False
         for t in question.topics:
-            if current_user.can_modify_topic(t.subject_id, t.subject.allowed_subject_id, t.subject.grade.grade_level):
+            if current_user.can_manage_question_in_topic(t.subject_id, t.subject.allowed_subject_id, t.subject.grade.grade_level):
                 can_view = True
                 break
         if question.teacher_id != current_user.user_id and not can_view:
@@ -402,11 +399,11 @@ async def update_question(
         context_topic = next((t for t in question.topics if t.topic_id == data.context_topic_id), None)
         if not context_topic:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "context_topic_id is not linked to this question")
-        can_manage = current_user.can_modify_topic(context_topic.subject_id, context_topic.subject.allowed_subject_id, context_topic.subject.grade.grade_level)
+        can_manage = current_user.can_manage_question_in_topic(context_topic.subject_id, context_topic.subject.allowed_subject_id, context_topic.subject.grade.grade_level)
     else:
         can_manage = False
         for t in question.topics:
-            if current_user.can_modify_topic(t.subject_id, t.subject.allowed_subject_id, t.subject.grade.grade_level):
+            if current_user.can_manage_question_in_topic(t.subject_id, t.subject.allowed_subject_id, t.subject.grade.grade_level):
                 can_manage = True
                 break
 
@@ -492,7 +489,7 @@ async def delete_question(
         context_topic = next((t for t in question.topics if t.topic_id == topic_id), None)
         if not context_topic:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Topic not linked to this question")
-        can_manage = current_user.can_modify_topic(context_topic.subject_id, context_topic.subject.allowed_subject_id, context_topic.subject.grade.grade_level)
+        can_manage = current_user.can_manage_question_in_topic(context_topic.subject_id, context_topic.subject.allowed_subject_id, context_topic.subject.grade.grade_level)
         if question.teacher_id != current_user.user_id and not can_manage:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to unlink this question from this topic")
             
@@ -505,7 +502,7 @@ async def delete_question(
         # Delete everywhere
         can_manage = False
         for t in question.topics:
-            if current_user.can_modify_topic(t.subject_id, t.subject.allowed_subject_id, t.subject.grade.grade_level):
+            if current_user.can_manage_question_in_topic(t.subject_id, t.subject.allowed_subject_id, t.subject.grade.grade_level):
                 can_manage = True
                 break
         if question.teacher_id != current_user.user_id and not can_manage:
