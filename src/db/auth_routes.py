@@ -24,6 +24,8 @@ class BaseAuthModel(BaseModel):
 class SubjectSimple(BaseAuthModel):
     subject_id: int
     subject_name: str
+    grade_name: Optional[str] = None
+    syllabus_name: Optional[str] = None
 
 class UserRead(BaseAuthModel):
     user_id: int
@@ -31,6 +33,7 @@ class UserRead(BaseAuthModel):
     email: EmailStr
     department: str
     is_admin: bool
+    is_active: bool
     subjects: List[SubjectSimple] = []
     grade_levels: List[int] = [] 
     hod_subject_names: List[str] = []
@@ -42,6 +45,7 @@ class UserCreate(BaseAuthModel):
     password: str
     department: str
     is_admin: bool = False
+    is_active: bool = True
     subject_ids: List[int] = [] 
     grade_levels: List[int] = []
     hod_allowed_subject_ids: List[int] = []
@@ -54,6 +58,7 @@ class UserUpdate(BaseAuthModel):
     password: Optional[str] = None
     department: Optional[str] = None
     is_admin: Optional[bool] = None
+    is_active: Optional[bool] = None
     subject_ids: Optional[List[int]] = None
     grade_levels: Optional[List[int]] = None
     hod_allowed_subject_ids: Optional[List[int]] = None
@@ -89,9 +94,14 @@ def validate_password_strength(password: str, is_admin: bool):
             detail=[{"loc": ["body", "password"], "msg": f"Password must be at least {min_len} characters"}]
         )
 
-async def validate_assignments(session: AsyncSession, grade_levels: List[int] = None, hod_allowed_subject_ids: List[int] = None):
+async def validate_assignments(
+    session: AsyncSession, 
+    grade_levels: List[int] = None, 
+    hod_allowed_subject_ids: List[int] = None,
+    subject_ids: List[int] = None
+):
     """
-    Ensures assigned grades and allowed subjects exist.
+    Ensures assigned grades, allowed subjects, and teaching subjects exist.
     """
     if grade_levels:
         grade_stmt = select(func.count(GradeConfig.config_id)).where(
@@ -115,12 +125,39 @@ async def validate_assignments(session: AsyncSession, grade_levels: List[int] = 
                 "One or more assigned HOD subjects are not in the allowed subjects list",
             )
 
+    if subject_ids:
+        subject_stmt = select(func.count(Subject.subject_id)).where(
+            Subject.subject_id.in_(subject_ids)
+        )
+        found = (await session.exec(subject_stmt)).one()
+        if found < len(set(subject_ids)):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "One or more teaching subject assignments do not exist in the curriculum",
+            )
+
 def map_user_to_read(user: Users) -> dict:
     """
     Helper to transform a SQLModel Users object to a UserRead-compatible dictionary.
     """
     d = user.model_dump()
-    d["subjects"] = [SubjectSimple(subject_id=s.subject_id, subject_name=s.subject_name) for s in user.subjects]
+    subjects_list = []
+    for s in user.subjects:
+        grade_name = None
+        syllabus_name = None
+        if s.grade:
+            grade_name = s.grade.grade_name
+            if s.grade.syllabus:
+                syllabus_name = s.grade.syllabus.syllabus_name
+        subjects_list.append(
+            SubjectSimple(
+                subject_id=s.subject_id,
+                subject_name=s.subject_name,
+                grade_name=grade_name,
+                syllabus_name=syllabus_name
+            )
+        )
+    d["subjects"] = subjects_list
     d["grade_levels"] = [g.grade_level for g in user.grade_coordinating]
     
     # Fetch names from the Master List IDs
@@ -191,6 +228,7 @@ async def update_my_password(
 async def list_users(
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user),
+    role: Optional[str] = Query(None, description="Filter by role: admin, coordinator, hod, faculty"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0)
 ):
@@ -201,11 +239,36 @@ async def list_users(
     data_stmt = select(
         Users,
         func.count(Users.user_id).over().label("total_count")
-    ).options(
-        selectinload(Users.subjects),
+    )
+
+    if role == "admin":
+        data_stmt = data_stmt.where(Users.is_admin == True)
+    elif role == "coordinator":
+        data_stmt = data_stmt.where(
+            select(GradeCoordinatorLink.user_id)
+            .where(GradeCoordinatorLink.user_id == Users.user_id)
+            .exists()
+        )
+    elif role == "hod":
+        data_stmt = data_stmt.where(
+            select(HODLink.user_id)
+            .where(HODLink.user_id == Users.user_id)
+            .exists()
+        )
+    elif role == "faculty":
+        data_stmt = data_stmt.where(
+            select(UserSubjectLink.user_id)
+            .where(UserSubjectLink.user_id == Users.user_id)
+            .exists()
+        )
+
+    data_stmt = data_stmt.options(
+        selectinload(Users.subjects).selectinload(Subject.grade).selectinload(GradeConfig.allowed_grade),
+        selectinload(Users.subjects).selectinload(Subject.grade).selectinload(GradeConfig.syllabus),
         selectinload(Users.grade_coordinating),
         selectinload(Users.hod_assignments).selectinload(HODLink.allowed_subject)
     ).order_by(Users.full_name).offset(offset).limit(limit)
+    
     rows = (await session.exec(data_stmt)).all()
     total = rows[0][1] if rows else 0
     items = [map_user_to_read(row[0]) for row in rows]
@@ -228,7 +291,12 @@ async def register_user(
     if (await session.exec(statement)).first():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "User already registered")
     
-    await validate_assignments(session, user_data.grade_levels, user_data.hod_allowed_subject_ids)
+    await validate_assignments(
+        session, 
+        user_data.grade_levels, 
+        user_data.hod_allowed_subject_ids, 
+        user_data.subject_ids
+    )
 
     validate_password_strength(user_data.password, user_data.is_admin)
 
@@ -237,7 +305,8 @@ async def register_user(
         email=normalized_email,
         password_hash=get_password_hash(user_data.password),
         department=user_data.department,
-        is_admin=user_data.is_admin
+        is_admin=user_data.is_admin,
+        is_active=user_data.is_active
     )
     session.add(new_user)
     await session.flush()
@@ -270,9 +339,29 @@ async def update_user(
     if not user: 
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
     
-    await validate_assignments(session, data.grade_levels, data.hod_allowed_subject_ids)
+    await validate_assignments(
+        session, 
+        data.grade_levels, 
+        data.hod_allowed_subject_ids, 
+        data.subject_ids
+    )
 
     update_data = data.model_dump(exclude_unset=True)
+    if "is_active" in update_data and update_data["is_active"] is False:
+        if id == current_user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Security Protocol: You cannot disable your own account."
+            )
+        if user.is_admin:
+            admin_count_stmt = select(func.count(Users.user_id)).where(Users.is_admin == True, Users.is_active == True)
+            active_admins = (await session.exec(admin_count_stmt)).first()
+            if active_admins <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Security Lock: This is the system's final active administrator. Disabling is blocked to prevent permanent lockout."
+                )
+
     is_admin_check = update_data.get("is_admin", user.is_admin)
     if "password" in update_data and update_data["password"]:
         validate_password_strength(update_data["password"], is_admin_check)
@@ -300,7 +389,8 @@ async def update_user(
     await session.commit()
     
     statement = select(Users).options(
-        selectinload(Users.subjects),
+        selectinload(Users.subjects).selectinload(Subject.grade).selectinload(GradeConfig.allowed_grade),
+        selectinload(Users.subjects).selectinload(Subject.grade).selectinload(GradeConfig.syllabus),
         selectinload(Users.grade_coordinating),
         selectinload(Users.hod_assignments).selectinload(HODLink.allowed_subject)
     ).where(Users.user_id == id)
@@ -318,6 +408,8 @@ async def login_for_access_token(
     user = (await session.exec(select(Users).where(func.lower(Users.email) == normalized_email))).first()
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
+    if not user.is_active:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "User account is disabled")
     return {"access_token": create_access_token(data={"sub": user.email, "id": user.user_id}), "token_type": "bearer"}
 
 @router.delete("/users/{id}", status_code=status.HTTP_204_NO_CONTENT)

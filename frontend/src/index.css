@@ -1,69 +1,103 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@config "../tailwind.config.js";
 
-@theme {
-  --color-academy-50: #f0f4f8;
-  --color-academy-100: #d9e2ec;
-  --color-academy-200: #bcccdc;
-  --color-academy-300: #9fb3c8;
-  --color-academy-400: #829ab1;
-  --color-academy-500: #627d98;
-  --color-academy-600: #486581;
-  --color-academy-700: #334e68;
-  --color-academy-800: #243b53;
-  --color-academy-900: #102a43;
+*, *::before, *::after {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-@layer base {
-  body {
-    @apply bg-gray-50 text-gray-900 antialiased;
-    margin: 0;
-    min-height: 100vh;
-  }
-
-  :focus-visible {
-    outline: 2px solid var(--color-academy-600);
-    outline-offset: 2px;
-  }
+body {
+  @apply bg-surface-900 text-white min-h-screen antialiased;
 }
 
-/* Custom transitions for the "Fusion" feel */
-.transition-all {
-  transition-duration: 300ms;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Custom Scrollbar Polish */
-@layer base {
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+@layer utilities {
+  .glass {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 12px;
   }
 
-  /* Chrome, Edge, and Safari */
-  *::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+  .glass-heavy {
+    background: rgba(10,10,15,0.80);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255,255,255,0.12);
   }
 
-  *::-webkit-scrollbar-track {
+  .glass-input {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    color: white;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .glass-input:focus {
+    outline: none;
+    border-color: rgba(14,165,233,0.50);
+    box-shadow: 0 0 0 3px rgba(14,165,233,0.15);
+  }
+
+  .glass-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%230ea5e9' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.75rem center;
+    background-size: 1.25rem 1.25rem;
+    background-repeat: no-repeat;
+    padding-right: 2.5rem !important;
+    cursor: pointer;
+  }
+  .glass-select option {
+    background-color: #1e293b; /* bg-surface-800 */
+    color: #f3f4f6; /* text-gray-100 */
+  }
+
+  .glass-danger {
+    background: rgba(220,38,38,0.15);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(239,68,68,0.30);
+    box-shadow: 0 0 40px rgba(239,68,68,0.20), inset 0 1px 0 rgba(248,113,113,0.10);
+  }
+
+  .neon-glow-blue {
+    box-shadow: 0 0 20px rgba(14,165,233,0.40), 0 0 40px rgba(14,165,233,0.15);
+  }
+
+  .neon-glow-red {
+    animation: redGlow 2s ease-in-out infinite alternate;
+    box-shadow: 0 0 20px rgba(239,68,68,0.50), 0 0 60px rgba(239,68,68,0.20);
+  }
+
+  .hover-ticker {
+    display: inline-block;
+    white-space: nowrap;
+  }
+  .group:hover .hover-ticker {
+    animation: hoverTicker 3.5s ease-in-out infinite alternate;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
     background: transparent;
   }
-
-  *::-webkit-scrollbar-thumb {
-    background-color: rgba(156, 163, 175, 0.3);
-    border-radius: 20px;
-    border: 1px solid transparent;
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 99px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
   }
 
-  *::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(156, 163, 175, 0.5);
-  }
-
-  .dark *::-webkit-scrollbar-thumb {
-    background-color: rgba(75, 85, 99, 0.4);
-  }
-
-  .dark *::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(75, 85, 99, 0.6);
+  @keyframes hoverTicker {
+    0% { transform: translateX(0); }
+    15% { transform: translateX(0); }
+    85% { transform: translateX(-40%); }
+    100% { transform: translateX(-40%); }
   }
 }

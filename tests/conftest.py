@@ -14,6 +14,7 @@ from sqlalchemy import event
 
 from src import app
 from src.db.main import get_session
+from src.db.models import AllowedGrade, AllowedSubject
 
 # Use a file-based SQLite db
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
@@ -43,6 +44,13 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.drop_all)
         await conn.run_sync(SQLModel.metadata.create_all)
+    
+    async with AsyncSession(engine) as session:
+        for i in range(1, 13):
+            session.add(AllowedGrade(allowed_grade_id=i, grade_name=f"Grade {i}"))
+        session.add(AllowedSubject(allowed_subject_id=1, subject_name="Math"))
+        session.add(AllowedSubject(allowed_subject_id=2, subject_name="Physics"))
+        await session.commit()
     yield
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.drop_all)

@@ -1,39 +1,36 @@
 import axios from 'axios';
-import toast from 'react-hot-toast';
 
-const client = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '', // Empty string makes Axios use the current origin (the Vite dev server, which will then proxy to the backend)
-  timeout: 30000,
+export const apiClient = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
-let hasRedirectedFor401 = false;
-
-// Add a request interceptor to include the JWT token in all requests
-client.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('token');
+export const setAuthToken = (token: string | null) => {
   if (token) {
+    localStorage.setItem('jwt_token', token);
+    apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  } else {
+    localStorage.removeItem('jwt_token');
+    delete apiClient.defaults.headers.common['Authorization'];
+  }
+};
+
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('jwt_token');
+  if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-// Add a response interceptor to handle session expiry (401)
-client.interceptors.response.use(
+apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      toast.error('Session expired. Please sign in again.');
-      sessionStorage.removeItem('token');
-      // Redirect to login if not already there
-      if (!hasRedirectedFor401 && !window.location.pathname.includes('/login')) {
-        hasRedirectedFor401 = true;
-        window.location.href = '/login?expired=1';
-      }
+      setAuthToken(null);   
     }
     return Promise.reject(error);
   }
 );
-
-export const getMe = () => client.get('/auth/me');
-
-export default client;

@@ -1,157 +1,186 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { GraduationCap, Lock, Mail, Loader2, ChevronRight, AlertCircle } from 'lucide-react';
-import client from '../api/client';
-import { useAuthStore } from '../store/authStore';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { LogIn, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { useSetupStatus, useLogin } from '../hooks/useAuth';
 
-interface LoginProps {
-  isDarkMode?: boolean;
-}
+const loginSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(1, 'Password is required'),
+});
 
-const formatApiError = (err: unknown, fallback: string): string => {
-  const errorObj = err as { response?: { data?: { detail?: unknown } } };
-  const detail = errorObj?.response?.data?.detail;
-  if (!detail) return fallback;
-  if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail)) {
-    return detail
-      .map((item) => (typeof item?.msg === 'string' ? item.msg : JSON.stringify(item)))
-      .join(' | ');
-  }
-  const detailObj = detail as { msg?: string };
-  if (typeof detailObj?.msg === 'string') return detailObj.msg;
-  return fallback;
-};
+type LoginFormValues = z.infer<typeof loginSchema>;
 
-const Login: React.FC<LoginProps> = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login, fetchMe } = useAuthStore();
+  const [showPassword, setShowPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  const { data: setupData, isLoading: setupLoading } = useSetupStatus();
+  const { mutateAsync: login, isPending: isLoading } = useLogin();
 
+  useEffect(() => {
+    if (setupData?.setup_required) {
+      navigate('/setup', { replace: true });
+    }
+  }, [setupData, navigate]);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+    }
+  });
+
+  const onSubmit = async (data: LoginFormValues) => {
+    setErrorMessage(null);
     try {
-      const formData = new FormData();
-      formData.append('username', email);
-      formData.append('password', password);
+      const formData = new URLSearchParams();
+      formData.append('username', data.email);
+      formData.append('password', data.password);
 
-      const response = await client.post('/auth/login', formData);
-      login(response.data.access_token);
-      await fetchMe();
-      navigate('/dashboard');
-    } catch (err: unknown) {
-      setError(formatApiError(err, 'Login failed. Please check your credentials.'));
-    } finally {
-      setLoading(false);
+      await login(formData);
+      navigate('/dashboard/explorer');
+    } catch (err: any) {
+      setErrorMessage(err.response?.data?.detail || 'Invalid email or password. Please try again.');
     }
   };
 
-  return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-academy-900 dark:bg-black px-4 py-12 transition-colors duration-300">
-      <div className="max-w-4xl w-full bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[500px]">
-        
-        {/* Left Side: Branding / Info */}
-        <div className="md:w-5/12 bg-academy-700 dark:bg-academy-800 p-12 text-white flex flex-col justify-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-full opacity-10">
-            <GraduationCap className="absolute -right-8 -bottom-8 w-64 h-64 rotate-12" />
-          </div>
-          
-          <div className="relative z-10">
-            <div className="bg-white/20 dark:bg-white/10 w-16 h-16 rounded-2xl flex items-center justify-center mb-8 backdrop-blur-md">
-              <GraduationCap className="w-10 h-10 text-white" />
-            </div>
-            <h1 className="text-4xl font-black mb-4 tracking-tight">Question Bank Portal</h1>
-            <p className="text-academy-100 text-lg leading-relaxed">
-              Manage curriculum and assessments with precision.
-            </p>
-          </div>
+  if (setupLoading || setupData?.setup_required) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-900">
+        <div className="w-8 h-8 border-4 border-neon-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
-          <div className="mt-auto relative z-10 pt-12">
-            <div className="flex gap-2 mb-2">
-              {[1, 2, 3].map(i => <div key={i} className="w-2 h-2 rounded-full bg-white/30" />)}
-            </div>
-            <p className="text-xs font-bold uppercase tracking-widest text-academy-200">
-              V1.0.0
-            </p>
+  return (
+    <div className="relative min-h-screen w-full flex items-center justify-center p-4 overflow-hidden bg-surface-900">
+      {/* Animated Vibrant Glassmorphism Background */}
+      <div className="absolute inset-0 overflow-hidden -z-10">
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-neon-blue-500/10 rounded-full blur-[140px] animate-pulse pointer-events-none" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-neon-fuchsia-500/10 rounded-full blur-[140px] animate-pulse pointer-events-none" style={{ animationDelay: '2s' }} />
+        <div className="absolute top-[30%] right-[20%] w-[350px] h-[350px] bg-neon-emerald-500/5 rounded-full blur-[120px] animate-pulse pointer-events-none" style={{ animationDelay: '4s' }} />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_50%,rgba(10,10,15,0.2),rgba(0,0,0,0.8))]" />
+      </div>
+
+      {/* Floating Login Card */}
+      <div className="w-full max-w-md glass bg-surface-800/80 shadow-[0_0_50px_rgba(14,165,233,0.1)] border-white/10 p-8 flex flex-col relative z-10 transition-all duration-300">
+        {/* Upper Glow Border Decoration */}
+        <div className="absolute top-0 left-10 right-10 h-[2px] bg-gradient-to-r from-transparent via-neon-fuchsia-400 to-transparent opacity-80" />
+        
+        {/* Brand/Logo Header */}
+        <div className="flex flex-col items-center mb-6 text-center">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-neon-blue-500 to-neon-fuchsia-500 flex items-center justify-center neon-glow-blue mb-3">
+            <LogIn className="w-5 h-5 text-white" />
           </div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-white mb-1.5 font-sans">
+            Welcome Back
+          </h1>
+          <p className="text-gray-400 text-xs max-w-xs leading-relaxed">
+            Enter your credentials to access the Question Bank Portal.
+          </p>
         </div>
 
-        {/* Right Side: Login Form */}
-        <div className="md:w-7/12 p-8 md:p-16 flex flex-col justify-center bg-white dark:bg-gray-900">
-          <div className="max-w-sm mx-auto w-full">
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Staff Sign In</h2>
-            <p className="text-gray-500 dark:text-gray-400 mb-10 text-sm">Access your workspace using school credentials.</p>
-
-            {error && (
-              <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 mb-8 rounded-r flex items-start gap-3 animate-in fade-in duration-300">
-                <div className="mt-0.5"><AlertCircle className="w-4 h-4 text-red-500" /></div>
-                <p className="text-sm text-red-700 dark:text-red-400 font-medium">{error}</p>
-              </div>
-            )}
-
-            <form onSubmit={handleLogin} className="space-y-6">
-              <div>
-                <label htmlFor="login-email" className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2 ml-1 tracking-widest">Work Email</label>
-                <div className="relative group">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-academy-600 transition-colors" />
-                  <input
-                    id="login-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 focus:border-academy-500 dark:focus:border-academy-400 focus:bg-white dark:focus:bg-gray-800 outline-none transition-all dark:text-white"
-                    placeholder="name@school.edu"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="login-password" className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2 ml-1 tracking-widest">Secure Password</label>
-                <div className="relative group">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-academy-600 transition-colors" />
-                  <input
-                    id="login-password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-12 pr-16 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-academy-500/10 focus:border-academy-500 dark:focus:border-academy-400 focus:bg-white dark:focus:bg-gray-800 outline-none transition-all dark:text-white"
-                    placeholder="••••••••"
-                    required
-                  />
-                  <button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(v => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-gray-500">{showPassword ? 'Hide' : 'Show'}</button>
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-academy-700 hover:bg-academy-800 text-white font-bold py-4 rounded-2xl shadow-xl shadow-academy-700/20 transition-all flex items-center justify-center gap-3 disabled:opacity-70 active:scale-[0.98]"
-                >
-                  {loading ? (
-                    <Loader2 className="w-6 h-6 animate-spin" />
-                  ) : (
-                    <>
-                      <span>Sign Into Portal</span>
-                      <ChevronRight className="w-5 h-5" />
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
+        {errorMessage && (
+          <div className="mb-4 p-3 rounded-lg bg-neon-red-500/10 border border-neon-red-500/30 text-neon-red-400 text-xs font-medium text-center animate-fade-in">
+            {errorMessage}
           </div>
+        )}
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* Email Address */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+              Email Address
+            </label>
+            <div className="relative">
+              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input
+                type="email"
+                {...register('email')}
+                placeholder="teacher@school.edu"
+                className={`w-full glass-input pl-10 pr-4 py-2.5 text-sm ${
+                  errors.email ? 'border-neon-red-500/50 focus:border-neon-red-500' : ''
+                }`}
+              />
+            </div>
+            {errors.email && (
+              <span className="text-[10px] text-neon-red-400 mt-1 block font-medium">
+                {errors.email.message}
+              </span>
+            )}
+          </div>
+
+          {/* Password */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                Password
+              </label>
+              <a href="#" className="text-[10px] text-neon-blue-400 hover:text-neon-blue-300 font-semibold transition-colors">
+                Forgot Password?
+              </a>
+            </div>
+            <div className="relative">
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                {...register('password')}
+                placeholder="••••••••"
+                className={`w-full glass-input pl-10 pr-10 py-2.5 text-sm ${
+                  errors.password ? 'border-neon-red-500/50 focus:border-neon-red-500' : ''
+                }`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            {errors.password && (
+              <span className="text-[10px] text-neon-red-400 mt-1 block font-medium">
+                {errors.password.message}
+              </span>
+            )}
+          </div>
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full mt-2 py-3 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-neon-blue-600 to-neon-fuchsia-600 hover:from-neon-blue-500 hover:to-neon-fuchsia-500 shadow-[0_0_20px_rgba(14,165,233,0.3)] hover:shadow-[0_0_25px_rgba(14,165,233,0.5)] transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Signing in...
+              </>
+            ) : (
+              'Sign In'
+            )}
+          </button>
+        </form>
+
+        {/* Footer links */}
+        <div className="mt-6 text-center text-xs text-gray-400">
+          First time here?{' '}
+          <Link to="/setup" className="text-neon-blue-400 hover:text-neon-blue-300 font-semibold transition-colors">
+            Configure server
+          </Link>
         </div>
       </div>
     </div>
   );
 };
 
-export default Login;
+export default LoginPage;

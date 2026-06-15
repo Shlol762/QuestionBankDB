@@ -26,7 +26,6 @@ class QuestionType(str, Enum):
     COMPREHENSION_PASSAGE = "Comprehension Passage"
 
 class QuestionStatus(str, Enum):
-    DRAFT = "draft"
     PUBLISHED = "published"
     ARCHIVED = "archived"
 
@@ -52,7 +51,9 @@ class GradeCoordinatorLink(BaseSQLModel, table=True):
     __tablename__ = "grade_coordinator_link"
     
     user_id: int = Field(foreign_key="users.user_id", primary_key=True, ondelete="CASCADE")
-    grade_level: int = Field(primary_key=True)
+    grade_level: int = Field(foreign_key="allowed_grades.allowed_grade_id", primary_key=True, ondelete="CASCADE")
+    
+    allowed_grade: Optional["AllowedGrade"] = Relationship()
 
 # ==========================================
 # LINK TABLE: HOD <-> ALLOWED SUBJECT ID
@@ -93,11 +94,25 @@ class GradeConfig(BaseSQLModel, table=True):
     syllabus_id: int = Field(foreign_key="syllabus_master.syllabus_id", ondelete="CASCADE")
     syllabus: SyllabusMaster = Relationship(back_populates="grades")
     
-    grade_level: int
+    grade_level: int = Field(foreign_key="allowed_grades.allowed_grade_id", ondelete="RESTRICT")
+    allowed_grade: Optional["AllowedGrade"] = Relationship()
     pdf_url: Optional[str] = None
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
     
     # Cascade: If Grade is deleted, delete all Subjects
     subjects: List["Subject"] = Relationship(back_populates="grade", cascade_delete=True)
+
+    @property
+    def grade_name(self) -> Optional[str]:
+        try:
+            if self.allowed_grade:
+                return self.allowed_grade.grade_name
+        except Exception:
+            pass
+        return f"Grade {self.grade_level}"
 
     def __repr__(self):
         return f"<GradeConfig(id={self.config_id}, level={self.grade_level})>"
@@ -123,6 +138,15 @@ class Subject(BaseSQLModel, table=True):
         return f"<Subject(id={self.subject_id}, name='{self.subject_name}')>"
 
 # ==========================================
+# LINK TABLE: QUESTION <-> TOPIC
+# ==========================================
+class QuestionTopicLink(BaseSQLModel, table=True):
+    __tablename__ = "question_topic_link"
+    
+    question_id: int = Field(foreign_key="question_bank.question_id", primary_key=True, ondelete="CASCADE")
+    topic_id: int = Field(foreign_key="topics.topic_id", primary_key=True, ondelete="CASCADE")
+
+# ==========================================
 # LEVEL 4: THE TOPIC
 # ==========================================
 class Topic(BaseSQLModel, table=True):
@@ -133,8 +157,7 @@ class Topic(BaseSQLModel, table=True):
     subject_id: int = Field(foreign_key="subjects.subject_id", ondelete="CASCADE")
     subject: Subject = Relationship(back_populates="topics")
     
-    # Cascade: If Topic is deleted, delete all Questions
-    questions: List["QuestionBank"] = Relationship(back_populates="topic", cascade_delete=True)
+    questions: List["QuestionBank"] = Relationship(back_populates="topics", link_model=QuestionTopicLink)
 
     def __repr__(self):
         return f"<Topic(id={self.topic_id}, name='{self.topic_name}')>"
@@ -151,6 +174,7 @@ class Users(BaseSQLModel, table=True):
     password_hash: str = Field(exclude=True)
     department: str
     is_admin: bool = Field(default=False)
+    is_active: bool = Field(default=True)
     
     subjects: List[Subject] = Relationship(back_populates="teachers", link_model=UserSubjectLink)
     grade_coordinating: List[GradeCoordinatorLink] = Relationship(cascade_delete=True)
@@ -190,6 +214,21 @@ class Users(BaseSQLModel, table=True):
             
         return False
 
+    def can_manage_question_in_topic(self, subject_id: int, allowed_subject_id: Optional[int], grade_level: int) -> bool:
+        """Admins, Coordinators, and HODs have management permissions for questions in a topic."""
+        if self.is_admin:
+            return True
+        
+        # HOD check via Master Tag ID
+        if allowed_subject_id and any(h.allowed_subject_id == allowed_subject_id for h in self.hod_assignments):
+            return True
+            
+        # Grade Coordinator for the grade
+        if any(g.grade_level == grade_level for g in self.grade_coordinating):
+            return True
+            
+        return False
+
     def __repr__(self):
         return f"<User(id={self.user_id}, name='{self.full_name}')>"
 
@@ -213,6 +252,25 @@ class AllowedSubject(BaseSQLModel, table=True):
     def __repr__(self):
         return f"<AllowedSubject(id={self.allowed_subject_id}, subject_name='{self.subject_name}')>"
 
+class AllowedGrade(BaseSQLModel, table=True):
+    __tablename__ = "allowed_grades"
+
+    allowed_grade_id: Optional[int] = Field(default=None, primary_key=True)
+    grade_name: str = Field(unique=True, index=True)
+    recommendation_note: Optional[str] = None
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+    def __repr__(self):
+        return f"<AllowedGrade(id={self.allowed_grade_id}, grade_name='{self.grade_name}')>"
+
 # ==========================================
 # LEVEL 6: THE CONTENT (Questions)
 # ==========================================
@@ -220,8 +278,7 @@ class QuestionBank(BaseSQLModel, table=True):
     __tablename__ = "question_bank"
 
     question_id: Optional[int] = Field(default=None, primary_key=True)
-    topic_id: int = Field(foreign_key="topics.topic_id", ondelete="CASCADE")
-    topic: Topic = Relationship(back_populates="questions")
+    topics: List[Topic] = Relationship(back_populates="questions", link_model=QuestionTopicLink)
     
     teacher_id: int = Field(foreign_key="users.user_id", ondelete="CASCADE")
     teacher: Users = Relationship(back_populates="questions")
@@ -236,7 +293,7 @@ class QuestionBank(BaseSQLModel, table=True):
     q_type: QuestionType = Field(default=QuestionType.MCQ)
     is_active: bool = Field(default=True)
     status: QuestionStatus = Field(
-        default=QuestionStatus.DRAFT,
+        default=QuestionStatus.PUBLISHED,
         sa_column=Column(
             String(20),
             nullable=False,

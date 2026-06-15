@@ -10,7 +10,7 @@ from src.db.main import get_session
 from src.db.models import QuestionBank, Users, Topic, DifficultyLevel, QuestionType, QuestionStatus, Subject, Page
 from src.db.auth_utils import get_current_user
 from src.limiter import limiter
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/questions", tags=["Question Management"])
@@ -29,7 +29,7 @@ class TopicSimple(BaseModel):
 class QuestionCreate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     
-    topic_id: int
+    topic_ids: List[int] = Field(min_length=1)
     question_text: str
     answer_text: str
     options: Optional[dict] = None
@@ -37,7 +37,27 @@ class QuestionCreate(BaseModel):
     marks: int = Field(ge=0)  # ge=0 allows grace marks (0)
     difficulty: DifficultyLevel = DifficultyLevel.MEDIUM
     q_type: QuestionType = QuestionType.MCQ
-    status: QuestionStatus = QuestionStatus.DRAFT
+    status: QuestionStatus = QuestionStatus.PUBLISHED
+
+    @field_validator('difficulty', mode='before')
+    @classmethod
+    def normalize_difficulty(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            val = v.strip().capitalize()
+            for member in DifficultyLevel:
+                if member.value == val or member.name.capitalize() == val:
+                    return member
+        return v
+
+    @field_validator('status', mode='before')
+    @classmethod
+    def normalize_status(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            val = v.strip().lower()
+            for member in QuestionStatus:
+                if member.value == val or member.name.lower() == val:
+                    return member
+        return v
 
     @model_validator(mode='after')
     def verify_mcq_integrity(self) -> 'QuestionCreate':
@@ -57,18 +77,31 @@ class QuestionCreate(BaseModel):
                 raise ValueError(f"The answer '{self.answer_text}' is not a valid option key. Available: {valid_keys}")
         return self
 
-class QuestionRead(QuestionCreate):
+class QuestionRead(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
     question_id: int
+    question_text: str
+    answer_text: str
+    options: Optional[dict] = None
+    image_url: Optional[str] = None
+    marks: int
+    difficulty: DifficultyLevel
+    q_type: QuestionType
+    status: QuestionStatus
     teacher_id: int
     created_at: datetime
     updated_at: datetime
     teacher: Optional[UserSimple] = None
-    topic: Optional[TopicSimple] = None
+    topics: List[TopicSimple] = []
 
 class QuestionUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     
+    update_mode: str = "everywhere" # "everywhere" or "copy"
+    context_topic_id: Optional[int] = None # Which topic the user is editing from
+    
     topic_id: Optional[int] = None
+    topic_ids: Optional[List[int]] = None
     question_text: Optional[str] = None
     answer_text: Optional[str] = None
     options: Optional[dict] = None
@@ -78,6 +111,26 @@ class QuestionUpdate(BaseModel):
     q_type: Optional[QuestionType] = None
     is_active: Optional[bool] = None
     status: Optional[QuestionStatus] = None
+
+    @field_validator('difficulty', mode='before')
+    @classmethod
+    def normalize_difficulty(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            val = v.strip().capitalize()
+            for member in DifficultyLevel:
+                if member.value == val or member.name.capitalize() == val:
+                    return member
+        return v
+
+    @field_validator('status', mode='before')
+    @classmethod
+    def normalize_status(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            val = v.strip().lower()
+            for member in QuestionStatus:
+                if member.value == val or member.name.lower() == val:
+                    return member
+        return v
 
 # --- CONSTANTS ---
 UPLOAD_DIR = "uploads"
@@ -173,21 +226,25 @@ async def create_question(
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
-    """Creates a new question. Verifies management rights for the topic."""
-    stmt = select(Topic).where(Topic.topic_id == data.topic_id).options(
+    """Creates a new question linked to multiple topics. Verifies management rights for all topics."""
+    stmt = select(Topic).where(Topic.topic_id.in_(data.topic_ids)).options(
         selectinload(Topic.subject).selectinload(Subject.grade)
     )
     result = await session.exec(stmt)
-    topic = result.first()
-    if not topic:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Target topic not found")
+    topics = result.all()
     
-    if not current_user.can_modify_topic(topic.subject_id, topic.subject.allowed_subject_id, topic.subject.grade.grade_level):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to add questions to this topic")
+    if len(topics) != len(set(data.topic_ids)):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "One or more target topics not found")
     
+    for topic in topics:
+        if not current_user.can_modify_topic(topic.subject_id, topic.subject.allowed_subject_id, topic.subject.grade.grade_level):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"You do not have permission to add questions to topic '{topic.topic_name}'")
+    
+    create_data = data.model_dump(exclude={'topic_ids'})
     new_question = QuestionBank(
-        **data.model_dump(),
-        teacher_id=current_user.user_id
+        **create_data,
+        teacher_id=current_user.user_id,
+        topics=topics
     )
     
     session.add(new_question)
@@ -195,7 +252,7 @@ async def create_question(
     
     stmt = select(QuestionBank).where(QuestionBank.question_id == new_question.question_id).options(
         selectinload(QuestionBank.teacher),
-        selectinload(QuestionBank.topic)
+        selectinload(QuestionBank.topics)
     )
     result = await session.exec(stmt)
     return result.first()
@@ -207,49 +264,43 @@ async def list_questions(
     q_type: Optional[QuestionType] = None,
     status_filter: Optional[QuestionStatus] = Query(None, alias="status"),
     search: Optional[str] = None,
-    include_drafts: bool = Query(default=False),
+    marks: Optional[int] = None,
+    teacher_id: Optional[int] = None,
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0)
 ):
-    """Lists questions with pagination. Admins see all, others see based on permissions. Drafts only visible to author."""
+    """Lists questions with pagination. Admins see all, others see based on permissions."""
     
     from src.db.models import GradeConfig
     from sqlalchemy import or_, func
 
     # Base statement for both count and data fetching
-    base_stmt = select(QuestionBank)
+    base_stmt = select(QuestionBank).group_by(QuestionBank.question_id)
     
     if not current_user.is_admin:
-        teacher_subject_ids = [s.subject_id for s in current_user.subjects]
         hod_subject_names = [h.allowed_subject.subject_name for h in current_user.hod_assignments]
         coordinator_grade_levels = [g.grade_level for g in current_user.grade_coordinating]
         
-        base_stmt = base_stmt.join(Topic).join(Subject).join(GradeConfig)
+        base_stmt = base_stmt.outerjoin(QuestionBank.topics).outerjoin(Subject, Topic.subject_id == Subject.subject_id).outerjoin(GradeConfig, Subject.config_id == GradeConfig.config_id)
         
         filters = []
-        if teacher_subject_ids:
-            filters.append(Subject.subject_id.in_(teacher_subject_ids))
         if hod_subject_names:
             filters.append(Subject.subject_name.in_(hod_subject_names))
         if coordinator_grade_levels:
             filters.append(GradeConfig.grade_level.in_(coordinator_grade_levels))
         
         if filters:
-            base_stmt = base_stmt.where(or_(*filters))
-        else:
-            # If a user has no roles, only show their own questions
-            base_stmt = base_stmt.where(QuestionBank.teacher_id == current_user.user_id)
-    
-    # Draft visibility: non-admins only see their own drafts
-    if not current_user.is_admin:
-        base_stmt = base_stmt.where(
-            or_(
-                QuestionBank.status != QuestionStatus.DRAFT,
-                QuestionBank.teacher_id == current_user.user_id
+            base_stmt = base_stmt.where(
+                or_(
+                    or_(*filters),
+                    QuestionBank.teacher_id == current_user.user_id
+                )
             )
-        )
+        else:
+            # If a user has no management roles, only show their own questions
+            base_stmt = base_stmt.where(QuestionBank.teacher_id == current_user.user_id)
     
     # Filter by status if specified
     if status_filter:
@@ -260,13 +311,17 @@ async def list_questions(
     
     # Apply standard filters
     if topic_id:
-        base_stmt = base_stmt.where(QuestionBank.topic_id == topic_id)
+        base_stmt = base_stmt.where(QuestionBank.topics.any(Topic.topic_id == topic_id))
     if difficulty:
         base_stmt = base_stmt.where(QuestionBank.difficulty == difficulty)
     if q_type:
         base_stmt = base_stmt.where(QuestionBank.q_type == q_type)
     if search:
         base_stmt = base_stmt.where(func.lower(QuestionBank.question_text).contains(search.lower()))
+    if marks is not None:
+        base_stmt = base_stmt.where(QuestionBank.marks == marks)
+    if teacher_id is not None:
+        base_stmt = base_stmt.where(QuestionBank.teacher_id == teacher_id)
 
     # Keep is_active for backward compatibility, but it's now supplemented by status
     base_stmt = base_stmt.where(QuestionBank.is_active == True)
@@ -278,7 +333,7 @@ async def list_questions(
     # Get the paginated data
     data_stmt = base_stmt.options(
         selectinload(QuestionBank.teacher),
-        selectinload(QuestionBank.topic)
+        selectinload(QuestionBank.topics)
     ).order_by(
         QuestionBank.created_at.desc(),
         QuestionBank.question_id.desc(),
@@ -297,7 +352,7 @@ async def get_question(
     """Retrieves a specific question by its ID. Enforces permission boundaries."""
     statement = select(QuestionBank).where(QuestionBank.question_id == question_id).options(
         selectinload(QuestionBank.teacher),
-        selectinload(QuestionBank.topic).selectinload(Topic.subject).selectinload(Subject.grade)
+        selectinload(QuestionBank.topics).selectinload(Topic.subject).selectinload(Subject.grade)
     )
     result = await session.exec(statement)
     question = result.first()
@@ -308,11 +363,11 @@ async def get_question(
     
     # Permission Check
     if not current_user.is_admin:
-        can_view = current_user.can_modify_topic(
-            question.topic.subject_id,
-            question.topic.subject.allowed_subject_id,
-            question.topic.subject.grade.grade_level
-        )
+        can_view = False
+        for t in question.topics:
+            if current_user.can_manage_question_in_topic(t.subject_id, t.subject.allowed_subject_id, t.subject.grade.grade_level):
+                can_view = True
+                break
         if question.teacher_id != current_user.user_id and not can_view:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not authorized to view this question")
 
@@ -331,9 +386,8 @@ async def update_question(
     Validates logical integrity of the final object state (BT-03).
     Automatically updates the updated_at timestamp.
     """
-    # Use with_for_update() to lock the row for the duration of this transaction
     stmt = select(QuestionBank).where(QuestionBank.question_id == question_id).with_for_update().options(
-        selectinload(QuestionBank.topic).selectinload(Topic.subject).selectinload(Subject.grade)
+        selectinload(QuestionBank.topics).selectinload(Topic.subject).selectinload(Subject.grade)
     )
     result = await session.exec(stmt)
     question = result.first()
@@ -341,33 +395,74 @@ async def update_question(
     if not question:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Question not found")
     
-    can_manage = current_user.can_modify_topic(
-        question.topic.subject_id, 
-        question.topic.subject.allowed_subject_id, 
-        question.topic.subject.grade.grade_level
-    )
-    
+    if data.context_topic_id:
+        context_topic = next((t for t in question.topics if t.topic_id == data.context_topic_id), None)
+        if not context_topic:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "context_topic_id is not linked to this question")
+        can_manage = current_user.can_manage_question_in_topic(context_topic.subject_id, context_topic.subject.allowed_subject_id, context_topic.subject.grade.grade_level)
+    else:
+        can_manage = False
+        for t in question.topics:
+            if current_user.can_manage_question_in_topic(t.subject_id, t.subject.allowed_subject_id, t.subject.grade.grade_level):
+                can_manage = True
+                break
+
     if question.teacher_id != current_user.user_id and not can_manage:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to update this question")
     
-    # Apply updates
-    update_data = data.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(question, key, value)
+    update_data = data.model_dump(exclude_unset=True, exclude={"update_mode", "context_topic_id", "topic_id", "topic_ids"})
     
-    # Always update the updated_at timestamp
-    question.updated_at = datetime.now(timezone.utc)
+    if data.update_mode == "copy" and len(question.topics) > 1 and data.context_topic_id:
+        new_q_data = {
+            "question_text": question.question_text,
+            "answer_text": question.answer_text,
+            "options": question.options,
+            "image_url": question.image_url,
+            "marks": question.marks,
+            "difficulty": question.difficulty,
+            "q_type": question.q_type,
+            "status": question.status,
+            "teacher_id": current_user.user_id,
+            "is_active": question.is_active
+        }
+        new_q_data.update(update_data)
+        
+        new_question = QuestionBank(**new_q_data)
+        new_question.topics = [context_topic]
+        
+        question.topics = [t for t in question.topics if t.topic_id != data.context_topic_id]
+        
+        validate_question_logic(new_question)
+        session.add(question)
+        session.add(new_question)
+        await session.commit()
+        return_id = new_question.question_id
+    else:
+        for key, value in update_data.items():
+            setattr(question, key, value)
+            
+        if data.topic_ids is not None:
+            stmt = select(Topic).where(Topic.topic_id.in_(data.topic_ids)).options(
+                selectinload(Topic.subject).selectinload(Subject.grade)
+            )
+            result = await session.exec(stmt)
+            topics = result.all()
+            if len(topics) != len(set(data.topic_ids)):
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "One or more target topics not found")
+            for topic in topics:
+                if not current_user.can_modify_topic(topic.subject_id, topic.subject.allowed_subject_id, topic.subject.grade.grade_level):
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, f"You do not have permission to add questions to topic '{topic.topic_name}'")
+            question.topics = topics
+        
+        question.updated_at = datetime.now(timezone.utc)
+        validate_question_logic(question)
+        session.add(question)
+        await session.commit()
+        return_id = question.question_id
     
-    # Logic Validation (ensure integrity of the NEW state)
-    validate_question_logic(question)
-    
-    session.add(question)
-    await session.commit()
-    
-    # Refresh logic for response
-    stmt = select(QuestionBank).where(QuestionBank.question_id == question_id).options(
+    stmt = select(QuestionBank).where(QuestionBank.question_id == return_id).options(
         selectinload(QuestionBank.teacher),
-        selectinload(QuestionBank.topic)
+        selectinload(QuestionBank.topics)
     )
     result = await session.exec(stmt)
     return result.first()
@@ -375,13 +470,14 @@ async def update_question(
 @router.delete("/{question_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_question(
     question_id: int,
+    delete_mode: str = Query("unlink"),
+    topic_id: Optional[int] = Query(None),
     session: AsyncSession = Depends(get_session),
     current_user: Users = Depends(get_current_user)
 ):
-    """Deletes a question. Author, Admin, HOD, or Grade Coordinator."""
-    # Use with_for_update() to prevent race conditions during deletion check
+    """Deletes or unlinks a question based on delete_mode."""
     stmt = select(QuestionBank).where(QuestionBank.question_id == question_id).with_for_update().options(
-        selectinload(QuestionBank.topic).selectinload(Topic.subject).selectinload(Subject.grade)
+        selectinload(QuestionBank.topics).selectinload(Topic.subject).selectinload(Subject.grade)
     )
     result = await session.exec(stmt)
     question = result.first()
@@ -389,15 +485,30 @@ async def delete_question(
     if not question:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Question not found")
     
-    can_manage = current_user.can_modify_topic(
-        question.topic.subject_id, 
-        question.topic.subject.allowed_subject_id, 
-        question.topic.subject.grade.grade_level
-    )
-    
-    if question.teacher_id != current_user.user_id and not can_manage:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to delete this question")
-    
-    await session.delete(question)
+    if delete_mode == "unlink" and topic_id:
+        context_topic = next((t for t in question.topics if t.topic_id == topic_id), None)
+        if not context_topic:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Topic not linked to this question")
+        can_manage = current_user.can_manage_question_in_topic(context_topic.subject_id, context_topic.subject.allowed_subject_id, context_topic.subject.grade.grade_level)
+        if question.teacher_id != current_user.user_id and not can_manage:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to unlink this question from this topic")
+            
+        question.topics = [t for t in question.topics if t.topic_id != topic_id]
+        if len(question.topics) == 0:
+            await session.delete(question)
+        else:
+            session.add(question)
+    else:
+        # Delete everywhere
+        can_manage = False
+        for t in question.topics:
+            if current_user.can_manage_question_in_topic(t.subject_id, t.subject.allowed_subject_id, t.subject.grade.grade_level):
+                can_manage = True
+                break
+        if question.teacher_id != current_user.user_id and not can_manage:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to delete this question entirely")
+        
+        await session.delete(question)
+        
     await session.commit()
     return None
