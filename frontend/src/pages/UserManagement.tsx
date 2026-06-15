@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useUIStore } from '../store/uiStore';
-import { UserPlus, Search, Filter, Edit2, Trash2, Power } from 'lucide-react';
+import { UserPlus, Search, Filter, Edit2, Trash2 } from 'lucide-react';
 import { useUsers, useUpdateUser, type UserRead } from '../hooks/useStaff';
 import { useMe } from '../hooks/useAuth';
 import { useAllowedGrades } from '../hooks/useSystemConfig';
