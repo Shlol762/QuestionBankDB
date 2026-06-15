@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query, Request
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 import os
 import uuid
@@ -34,6 +35,7 @@ class GradeRead(BaseCurriculumModel):
     syllabus_id: int
     grade_level: int
     pdf_url: Optional[str] = None
+    grade_name: Optional[str] = None
 
 class SyllabusRead(BaseCurriculumModel):
     syllabus_id: int
@@ -263,9 +265,8 @@ async def get_full_hierarchy(
     from sqlalchemy.orm import selectinload
     
     statement = select(SyllabusMaster).options(
-        selectinload(SyllabusMaster.grades)
-        .selectinload(GradeConfig.subjects)
-        .selectinload(Subject.topics)
+        selectinload(SyllabusMaster.grades).selectinload(GradeConfig.allowed_grade),
+        selectinload(SyllabusMaster.grades).selectinload(GradeConfig.subjects).selectinload(Subject.topics)
     ).order_by(SyllabusMaster.syllabus_id)
     if syllabus_id:
         statement = statement.where(SyllabusMaster.syllabus_id == syllabus_id)
@@ -285,6 +286,7 @@ async def get_full_hierarchy(
                         syllabus_id=g.syllabus_id,
                         grade_level=g.grade_level,
                         pdf_url=g.pdf_url,
+                        grade_name=g.grade_name,
                         subjects=[
                             SubjectHierarchy(
                                 subject_id=sub.subject_id,
@@ -328,6 +330,7 @@ async def get_full_hierarchy(
                         syllabus_id=grade.syllabus_id,
                         grade_level=grade.grade_level,
                         pdf_url=grade.pdf_url,
+                        grade_name=grade.grade_name,
                         subjects=[
                             SubjectHierarchy(
                                 subject_id=sub.subject_id,
@@ -361,6 +364,7 @@ async def get_full_hierarchy(
                         syllabus_id=grade.syllabus_id,
                         grade_level=grade.grade_level,
                         pdf_url=grade.pdf_url,
+                        grade_name=grade.grade_name,
                         subjects=[
                             SubjectHierarchy(
                                 subject_id=sub.subject_id,
@@ -448,7 +452,8 @@ async def create_grade(data: GradeCreate, session: AsyncSession = Depends(get_se
     new_item = GradeConfig(**data.model_dump())
     session.add(new_item)
     await session.commit()
-    await session.refresh(new_item)
+    stmt = select(GradeConfig).where(GradeConfig.config_id == new_item.config_id).options(selectinload(GradeConfig.allowed_grade))
+    new_item = (await session.exec(stmt)).one()
     return new_item
 
 @router.get("/grades/{syllabus_id}", response_model=Page[GradeRead])
@@ -459,7 +464,7 @@ async def get_grades_by_syllabus(
     offset: int = Query(default=0, ge=0)
 ):
     """Lists all grades within a specific syllabus with pagination."""
-    base_stmt = select(GradeConfig).where(GradeConfig.syllabus_id == syllabus_id).order_by(GradeConfig.created_at)
+    base_stmt = select(GradeConfig).where(GradeConfig.syllabus_id == syllabus_id).options(selectinload(GradeConfig.allowed_grade)).order_by(GradeConfig.created_at)
     
     count_stmt = select(func.count()).select_from(base_stmt.subquery())
     total = (await session.exec(count_stmt)).one()
@@ -573,7 +578,8 @@ async def update_grade(id: int, data: GradeUpdate, session: AsyncSession = Depen
     for key, val in data.model_dump(exclude_unset=True).items(): 
         setattr(item, key, val)
     await session.commit()
-    await session.refresh(item)
+    stmt = select(GradeConfig).where(GradeConfig.config_id == id).options(selectinload(GradeConfig.allowed_grade))
+    item = (await session.exec(stmt)).one()
     return item
 
 @router.delete("/grades/{id}", status_code=status.HTTP_204_NO_CONTENT)

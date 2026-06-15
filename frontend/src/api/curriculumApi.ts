@@ -18,6 +18,7 @@ export interface GradeRead {
   syllabus_id: number;
   grade_level: number;
   pdf_url?: string;
+  grade_name?: string;
 }
 
 export interface SyllabusRead {
@@ -40,6 +41,7 @@ export interface GradeHierarchy {
   syllabus_id: number;
   grade_level: number;
   pdf_url?: string;
+  grade_name?: string;
   subjects: SubjectHierarchy[];
 }
 

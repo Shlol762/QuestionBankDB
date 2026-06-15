@@ -30,7 +30,7 @@ export function useResolvedCurriculumSelection(): ResolvedCurriculumSelection {
       grades: (s.grades || []).map(g => ({
         id: g.config_id,
         level: g.grade_level,
-        name: `Grade ${g.grade_level}`,
+        name: g.grade_name || `Grade ${g.grade_level}`,
         pdfUrl: g.pdf_url,
         subjects: (g.subjects || []).map(sub => ({
           id: sub.subject_id,
