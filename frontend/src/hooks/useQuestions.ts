@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchQuestions, createQuestion, fetchQuestionById, updateQuestion, deleteQuestion } from '../api/questionApi';
+import { fetchQuestions, createQuestion, fetchQuestionById, updateQuestion, deleteQuestion, uploadQuestionImage } from '../api/questionApi';
 import type { QuestionCreatePayload, QuestionUpdatePayload } from '../api/questionApi';
 import { toast } from 'react-hot-toast';
 import { formatError } from '../utils/error';
@@ -68,6 +68,15 @@ export const useDeleteQuestion = () => {
     },
     onError: (err: unknown) => {
       toast.error(formatError(err, 'Failed to delete/unlink question'));
+    }
+  });
+};
+
+export const useUploadQuestionImage = () => {
+  return useMutation({
+    mutationFn: (file: File) => uploadQuestionImage(file),
+    onError: (err: unknown) => {
+      toast.error(formatError(err, 'Failed to upload question image'));
     }
   });
 };

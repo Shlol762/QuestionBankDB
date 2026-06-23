@@ -33,6 +33,7 @@ export interface QuestionCreatePayload {
   question_text: string;
   answer_text: string;
   options?: Record<string, string> | null;
+  image_url?: string;
   marks: number;
   difficulty: string;
   q_type: string;
@@ -46,6 +47,7 @@ export interface QuestionUpdatePayload {
   question_text?: string;
   answer_text?: string;
   options?: Record<string, string> | null;
+  image_url?: string;
   marks?: number;
   difficulty?: string;
   q_type?: string;
@@ -73,5 +75,16 @@ export const deleteQuestion = async (
   params: { delete_mode?: "unlink" | "delete"; topic_id?: number } = {}
 ) => {
   const response = await apiClient.delete(`/questions/${id}`, { params });
+  return response.data;
+};
+
+export const uploadQuestionImage = async (file: File): Promise<{ image_url: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await apiClient.post('/questions/upload-image', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
   return response.data;
 };

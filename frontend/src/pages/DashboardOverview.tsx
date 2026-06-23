@@ -206,7 +206,7 @@ export const DashboardOverview: React.FC = () => {
                                 </p>
                               </div>
                               <div className="text-right text-[10px] whitespace-nowrap text-gray-500">
-                                {new Date(item.created_at).toLocaleDateString(undefined, {
+                                {new Date(item.created_at).toLocaleDateString('en-IN', {
                                   month: 'short',
                                   day: 'numeric'
                                 })}
