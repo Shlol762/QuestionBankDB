@@ -5,7 +5,7 @@ set -e
 
 # Configuration
 COMPOSE_FILE="docker-compose.yml"
-ENV_EXAMPLE=".env.production.example"
+ENV_EXAMPLE=".env.example"
 ENV_FILE=".env"
 
 # Display help menu

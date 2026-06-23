@@ -70,6 +70,9 @@ QuestionBankDB/
 
 ## Setup & Installation Guide
 
+> [!NOTE]
+> For a detailed explanation of the configuration files, environment variables, adaptive production URL setup, and automated deployment script details, please refer to the [Deployment and Configuration Guide](file:///home/shlok/QDBDev/DEPLOYMENT.md).
+
 Choose one of the two setup pathways below depending on your environment.
 
 ### Pathway 1: Local Development Setup
