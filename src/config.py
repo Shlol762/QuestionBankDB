@@ -1,8 +1,18 @@
+from typing import Any, Optional
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    POSTGRES_URL: str
+    POSTGRES_URL: Optional[str] = None
+    
+    # DB connection parameters (used if POSTGRES_URL is not set)
+    POSTGRES_USER: str = "questionbank"
+    POSTGRES_PASSWORD: str = "replace_me_with_strong_password"
+    POSTGRES_DB: str = "questionbank"
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
@@ -10,6 +20,19 @@ class Settings(BaseSettings):
     FORCE_HTTPS: bool = False
     TRUST_PROXY_HEADERS: bool = False
     CORS_ALLOW_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    @model_validator(mode="before")
+    @classmethod
+    def assemble_postgres_url(cls, values: Any) -> Any:
+        if isinstance(values, dict):
+            if not values.get("POSTGRES_URL"):
+                user = values.get("POSTGRES_USER", "questionbank")
+                password = values.get("POSTGRES_PASSWORD", "replace_me_with_strong_password")
+                host = values.get("POSTGRES_HOST", "localhost")
+                port = values.get("POSTGRES_PORT", 5432)
+                db = values.get("POSTGRES_DB", "questionbank")
+                values["POSTGRES_URL"] = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{db}"
+        return values
 
     model_config = SettingsConfigDict(
         env_file=".env",

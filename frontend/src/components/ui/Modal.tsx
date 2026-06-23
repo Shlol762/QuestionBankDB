@@ -28,6 +28,7 @@ import {
 import { useDeleteUser } from '../../hooks/useStaff';
 import { useDeleteQuestion } from '../../hooks/useQuestions';
 import { useExplorerUrlState } from '../../hooks/useExplorerUrlState';
+import { LatexRenderer } from './LatexRenderer';
 import { useFormAutoAdvance } from '../../hooks/useFormAutoAdvance';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
@@ -678,9 +679,20 @@ export const Modal: React.FC = () => {
                 </div>
               </div>
               <p className="text-sm text-white leading-relaxed select-text font-semibold whitespace-pre-wrap">
-                {question.question_text}
+                <LatexRenderer text={question.question_text} />
               </p>
             </div>
+
+            {/* Supporting Image rendering */}
+            {question.image_url && (
+              <div className="rounded-xl overflow-hidden border border-white/10 bg-black/20 p-2 flex items-center justify-center !mt-3">
+                <img
+                  src={question.image_url.startsWith('/static/') ? `${import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '')}${question.image_url}` : question.image_url}
+                  alt="Question illustration"
+                  className="max-h-48 rounded-lg object-contain w-full"
+                />
+              </div>
+            )}
 
             {/* Divider Line 1 */}
             <div className="border-t border-white/5 !mt-3" />
@@ -707,7 +719,7 @@ export const Modal: React.FC = () => {
                           {key}
                         </span>
                         <span className={`text-sm leading-normal ${isCorrect ? 'text-neon-emerald-400 font-semibold' : 'text-gray-300'}`}>
-                          {value as string}
+                          <LatexRenderer text={value as string} />
                         </span>
                       </div>
                     );
@@ -720,9 +732,9 @@ export const Modal: React.FC = () => {
                 <div className="grid grid-cols-1 gap-2 max-w-lg">
                   {(question.options.pairs as { left: string; right: string }[]).map((pair, idx) => (
                     <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.01] border border-white/5 text-xs text-gray-300">
-                      <div className="font-semibold text-white truncate max-w-[45%]">{pair.left}</div>
+                      <div className="font-semibold text-white max-w-[45%] overflow-x-auto"><LatexRenderer text={pair.left} /></div>
                       <div className="text-neon-blue-400 font-bold shrink-0">➔</div>
-                      <div className="text-gray-300 truncate max-w-[45%]">{pair.right}</div>
+                      <div className="text-gray-300 max-w-[45%] overflow-x-auto"><LatexRenderer text={pair.right} /></div>
                     </div>
                   ))}
                 </div>
@@ -732,7 +744,7 @@ export const Modal: React.FC = () => {
                 <div className="rounded-xl bg-neon-emerald-500/10 border border-neon-emerald-500/30 p-4 !mt-3">
                   <span className="block text-[8px] font-bold uppercase tracking-widest text-neon-emerald-400 mb-1">Correct Answer</span>
                   <p className="text-sm text-white font-medium leading-relaxed select-text font-semibold">
-                    {question.answer_text}
+                    <LatexRenderer text={question.answer_text} />
                   </p>
                 </div>
               )
@@ -780,8 +792,8 @@ export const Modal: React.FC = () => {
             {/* Audit Info Footer */}
             <div className="flex justify-between items-center text-xs text-gray-500 pt-1 !mt-3">
               <span>Authored by: <span className="text-gray-300 font-medium">{question.teacher?.full_name || `Teacher #${question.teacher_id}`}</span></span>
-              <span>Created: <span className="text-gray-300 font-medium">{new Date(question.created_at).toLocaleDateString()}</span></span>
-              <span>Last Updated: <span className="text-gray-300 font-medium">{new Date(question.updated_at).toLocaleDateString()}</span></span>
+              <span>Created: <span className="text-gray-300 font-medium">{new Date(question.created_at).toLocaleDateString('en-IN')}</span></span>
+              <span>Last Updated: <span className="text-gray-300 font-medium">{new Date(question.updated_at).toLocaleDateString('en-IN')}</span></span>
             </div>
           </div>
         );

@@ -140,7 +140,7 @@ async def upload_syllabus_pdf(
             is_pdf = True
             detected_str = "Manual %PDF- match"
         else:
-            exts = puremagic.from_string(content)
+            exts = puremagic.magic_string(content)
             detected_mimes = [m.mime_type for m in exts]
             detected_str = ", ".join(detected_mimes)
             is_pdf = any(mime in ALLOWED_MIME_TYPES for mime in detected_mimes)

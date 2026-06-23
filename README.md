@@ -29,10 +29,14 @@ A full-stack web application designed to manage an educational question bank. It
 ```
 QuestionBankDB/
 ├── runserver.py                    # Entry point — starts Uvicorn
-├── seed_admin.py                   # CLI helper to seed the first admin account
-├── generate_dummy_data.py          # Script to populate the DB with sample data
 ├── requirements.txt                # Python dependencies
 ├── .env.example                    # Environment variable template
+├── docs/
+│   └── DEPLOYMENT.md               # Setup and configuration guide
+├── scripts/
+│   ├── seed_admin.py               # CLI helper to seed the first admin account
+│   ├── generate_dummy_data.py      # Script to populate DB with sample data
+│   └── reset_db.py                 # Drops and recreates database tables
 │
 ├── src/
 │   ├── __init__.py                 # FastAPI app creation, middleware, router registration
@@ -69,6 +73,9 @@ QuestionBankDB/
 ---
 
 ## Setup & Installation Guide
+
+> [!NOTE]
+> For a detailed explanation of the configuration files, environment variables, and adaptive production URL setups, please refer to the [Deployment and Configuration Guide](file:///home/shlok/QDBDev/docs/DEPLOYMENT.md).
 
 Choose one of the two setup pathways below depending on your environment.
 
@@ -167,24 +174,20 @@ If you prefer not to use the Web Setup Wizard, bootstrap the primary administrat
 
 * **Local Development**:
   ```bash
-  PYTHONPATH=. python seed_admin.py
+  python scripts/seed_admin.py
   ```
 * **Docker Compose**:
-  ```bash
-  docker compose exec backend python seed_admin.py
-  ```
+  Refer to the [Deployment and Configuration Guide](file:///home/shlok/QDBDev/docs/DEPLOYMENT.md#3-seeding-the-database-in-docker-compose) on exposing Postgres and executing the seeding scripts from your host terminal.
 
 ### 2. Generating Dummy Data
 To populate the database with a pre-configured syllabus structure and mock questions:
 
 * **Local Development**:
   ```bash
-  PYTHONPATH=. python generate_dummy_data.py
+  python scripts/generate_dummy_data.py
   ```
 * **Docker Compose**:
-  ```bash
-  docker compose exec backend python generate_dummy_data.py
-  ```
+  Refer to the [Deployment and Configuration Guide](file:///home/shlok/QDBDev/docs/DEPLOYMENT.md#3-seeding-the-database-in-docker-compose) on exposing Postgres and executing the seeding scripts from your host terminal.
 
 ---
 

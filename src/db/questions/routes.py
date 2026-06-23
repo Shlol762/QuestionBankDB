@@ -191,7 +191,7 @@ async def upload_question_image(
     # 2. MIME Type Validation (Deep Check)
     exts = []
     try:
-        exts = puremagic.from_string(content)
+        exts = puremagic.magic_string(content)
         # puremagic returns a list of possibilities; check if any match allowed images
         is_valid = any(m.mime_type in ALLOWED_IMAGE_MIMES for m in exts)
         if not is_valid:
@@ -199,10 +199,12 @@ async def upload_question_image(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_IMAGE_MIMES)}"
             )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Could not verify file type"
+            detail=f"Could not verify file type: {str(e)}"
         )
 
     detected_mime = next((m.mime_type for m in exts if m.mime_type in MIME_EXTENSION_MAP), None)
@@ -260,6 +262,7 @@ async def create_question(
 @router.get("/", response_model=Page[QuestionRead])
 async def list_questions(
     topic_id: Optional[int] = None,
+    subject_id: Optional[int] = None,
     difficulty: Optional[DifficultyLevel] = None,
     q_type: Optional[QuestionType] = None,
     status_filter: Optional[QuestionStatus] = Query(None, alias="status"),
@@ -312,6 +315,8 @@ async def list_questions(
     # Apply standard filters
     if topic_id:
         base_stmt = base_stmt.where(QuestionBank.topics.any(Topic.topic_id == topic_id))
+    elif subject_id:
+        base_stmt = base_stmt.where(QuestionBank.topics.any(Topic.subject_id == subject_id))
     if difficulty:
         base_stmt = base_stmt.where(QuestionBank.difficulty == difficulty)
     if q_type:

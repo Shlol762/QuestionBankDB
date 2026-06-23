@@ -3,6 +3,7 @@ import { useResolvedCurriculumSelection } from '../../hooks/useResolvedCurriculu
 import { useUIStore } from '../../store/uiStore';
 import { useQuestions, useUpdateQuestion } from '../../hooks/useQuestions';
 import { toast } from 'react-hot-toast';
+import { LatexRenderer } from '../ui/LatexRenderer';
 
 const QUESTION_TYPES = [
   "MCQ",
@@ -147,6 +148,7 @@ export const QuestionGridPanel: React.FC = () => {
   // Fetch up to 100 questions from the backend to filter client-side
   const { data: questionsData, isLoading } = useQuestions({
     topic_id: topic?.id || undefined,
+    subject_id: (!topic && subject?.id) ? subject.id : undefined,
     search: searchQuery || undefined,
     status: showArchived ? 'archived' : undefined,
     limit: 100,
@@ -487,7 +489,7 @@ export const QuestionGridPanel: React.FC = () => {
                 {/* Content Area */}
                 <div className="flex-1 flex flex-col justify-between min-h-0">
                   <h4 className="text-sm font-medium text-white mb-3 leading-relaxed line-clamp-3">
-                    {q.question_text}
+                    <LatexRenderer text={q.question_text} />
                   </h4>
                   
                   {/* Metadata */}
@@ -498,7 +500,7 @@ export const QuestionGridPanel: React.FC = () => {
                     </span>
                     <span className="flex items-center gap-1.5">
                       <svg className="w-3.5 h-3.5 text-neon-blue-400/70 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5M12 7v5l4 2" /></svg>
-                      <span>{new Date(q.updated_at).toLocaleDateString()}</span>
+                      <span>{new Date(q.updated_at).toLocaleDateString('en-IN')}</span>
                     </span>
                   </div>
                 </div>
@@ -510,6 +512,16 @@ export const QuestionGridPanel: React.FC = () => {
                     <div className={`px-2.5 h-7 flex items-center justify-center rounded-md text-[10px] font-bold uppercase tracking-wider shrink-0 bg-neon-emerald-500/10 text-neon-emerald-400`}>
                       {q.status}
                     </div>
+
+                    {/* Image Attachment Badge */}
+                    {q.image_url && (
+                      <div className="px-2.5 h-7 flex items-center justify-center rounded-md bg-neon-blue-500/10 text-neon-blue-400 text-[10px] font-bold uppercase tracking-wider shrink-0" title="Has image attachment">
+                        <svg className="w-3.5 h-3.5 mr-1 text-neon-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        Image
+                      </div>
+                    )}
 
                     {/* Quick Archive/Unarchive Action */}
                     <button
