@@ -1,6 +1,10 @@
 import asyncio
 import getpass
 from sqlmodel import select
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from src.db.main import async_engine
 from src.db.models import Users
 from src.db.auth_utils import get_password_hash

@@ -9,6 +9,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from src.db.main import async_engine
 from src.db.models import (
     Users, SyllabusMaster, GradeConfig, Subject, Topic, QuestionBank,
