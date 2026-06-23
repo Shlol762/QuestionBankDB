@@ -524,7 +524,7 @@ export const Drawer: React.FC = () => {
             {questionImageUrl ? (
               <div className="relative group rounded-xl overflow-hidden border border-white/10 bg-white/[0.01] p-2 flex flex-col items-center justify-center">
                 <img
-                  src={questionImageUrl.startsWith('/static/') ? `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}${questionImageUrl}` : questionImageUrl}
+                  src={questionImageUrl.startsWith('/static/') ? `${import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '')}${questionImageUrl}` : questionImageUrl}
                   alt="Uploaded preview"
                   className="max-h-40 rounded-lg object-contain w-full backdrop-blur-sm bg-black/10"
                 />

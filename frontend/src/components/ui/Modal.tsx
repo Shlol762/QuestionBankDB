@@ -687,7 +687,7 @@ export const Modal: React.FC = () => {
             {question.image_url && (
               <div className="rounded-xl overflow-hidden border border-white/10 bg-black/20 p-2 flex items-center justify-center !mt-3">
                 <img
-                  src={question.image_url.startsWith('/static/') ? `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}${question.image_url}` : question.image_url}
+                  src={question.image_url.startsWith('/static/') ? `${import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '')}${question.image_url}` : question.image_url}
                   alt="Question illustration"
                   className="max-h-48 rounded-lg object-contain w-full"
                 />
