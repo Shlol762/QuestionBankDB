@@ -23,11 +23,7 @@ When deploying the platform via Docker, the containers configure themselves dyna
 1. **Environment File Load:**
    Docker Compose automatically searches for a `/.env` file in the root repository directory. This file is fed into the services defined in `docker-compose.yml`.
 2. **Dynamic Database Mapping:**
-   Inside `docker-compose.yml`, the backend's `POSTGRES_URL` is mapped using internal Docker DNS references:
-   ```yaml
-   POSTGRES_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-   ```
-   This ensures that the backend container automatically links to the Postgres container, regardless of host-level parameters.
+   Inside `docker-compose.yml`, the database credentials and connection parameters are mapped directly to the backend service, specifying `POSTGRES_HOST=postgres`. The backend's config module dynamically constructs the `POSTGRES_URL` connection string on startup using these variables. This eliminates the need to hardcode a database URL in any configuration file.
 
 ---
 
