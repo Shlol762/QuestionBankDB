@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useUIStore } from '../../store/uiStore';
 import { Accordion } from './Accordion';
 import { StepWizard } from './StepWizard';
-import { useCreateQuestion, useQuestionDetails, useUpdateQuestion } from '../../hooks/useQuestions';
+import { useCreateQuestion, useQuestionDetails, useUpdateQuestion, useUploadQuestionImage } from '../../hooks/useQuestions';
 import { useFormAutoAdvance } from '../../hooks/useFormAutoAdvance';
 import { useRegisterStaff, useUpdateUser, useUsers } from '../../hooks/useStaff';
 import { useMe } from '../../hooks/useAuth';
@@ -10,12 +10,14 @@ import { useAllowedSubjects, useAllowedGrades } from '../../hooks/useSystemConfi
 import { useCurriculumHierarchy } from '../../hooks/useCurriculum';
 import { useResolvedCurriculumSelection } from '../../hooks/useResolvedCurriculumSelection';
 import { toast } from 'react-hot-toast';
+import { LatexRenderer } from './LatexRenderer';
 
 export const Drawer: React.FC = () => {
   const { drawerType, drawerPayload, closeDrawer, openDialog } = useUIStore();
   const drawerRef = useRef<HTMLDivElement>(null);
 
   const createQuestionMutation = useCreateQuestion();
+  const uploadImageMutation = useUploadQuestionImage();
   const registerStaffMutation = useRegisterStaff();
   const { data: rawHierarchy } = useCurriculumHierarchy();
 
@@ -96,6 +98,7 @@ export const Drawer: React.FC = () => {
   const [topicSearchQuery, setTopicSearchQuery] = useState('');
   const [questionMarks, setQuestionMarks] = useState('5');
   const [questionText, setQuestionText] = useState('');
+  const [questionImageUrl, setQuestionImageUrl] = useState('');
   const [questionType, setQuestionType] = useState<string>('MCQ');
   const [freeFormAnswer, setFreeFormAnswer] = useState('');
   const [matchPairs, setMatchPairs] = useState<{ id: number; left: string; right: string }[]>([
@@ -162,6 +165,7 @@ export const Drawer: React.FC = () => {
       setQuestionStatus('published');
       setQuestionMarks('5');
       setQuestionText('');
+      setQuestionImageUrl('');
       setQuestionType('MCQ');
       setFreeFormAnswer('');
       setMatchPairs([{ id: 1, left: '', right: '' }]);
@@ -184,6 +188,7 @@ export const Drawer: React.FC = () => {
       setQuestionStatus((questionDetails.status as 'published' | 'archived') || 'published');
       setQuestionMarks(String(questionDetails.marks));
       setQuestionText(questionDetails.question_text);
+      setQuestionImageUrl(questionDetails.image_url || '');
       setQuestionType(questionDetails.q_type || 'MCQ');
       
       const selectedIds = questionDetails.topics.map(t => t.topic_id);
@@ -259,6 +264,7 @@ export const Drawer: React.FC = () => {
         question_text: questionText,
         answer_text: answerTextVal,
         options: optionsVal,
+        image_url: questionImageUrl || undefined,
         marks: parseInt(questionMarks, 10),
         difficulty: questionDifficulty.charAt(0).toUpperCase() + questionDifficulty.slice(1),
         q_type: questionType,
@@ -321,6 +327,7 @@ export const Drawer: React.FC = () => {
         question_text: questionText,
         answer_text: answerTextVal,
         options: optionsVal,
+        image_url: questionImageUrl || undefined,
         marks: parseInt(questionMarks, 10),
         difficulty: questionDifficulty.charAt(0).toUpperCase() + questionDifficulty.slice(1),
         q_type: questionType,
@@ -485,17 +492,76 @@ export const Drawer: React.FC = () => {
               className="w-full glass-input px-4 py-3 text-sm min-h-[120px]"
               placeholder="Type your question prompt here. LaTeX math notation is supported (e.g. $$x^2 + y^2 = r^2$$)..."
             />
+            {questionText && (
+              <div className="mt-3 rounded-lg border border-white/5 bg-white/[0.01] p-3">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-neon-blue-400 mb-1.5">Live Math/Text Preview</span>
+                <div className="text-sm text-gray-200 select-text font-medium leading-relaxed break-words">
+                  <LatexRenderer text={questionText} />
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Supporting Images / Reference (Optional)</label>
-            <div className="border border-dashed border-white/10 hover:border-neon-blue-500/50 transition-colors duration-300 rounded-xl p-6 flex flex-col items-center justify-center bg-white/[0.01] cursor-pointer">
-              <svg className="w-8 h-8 text-gray-400 mb-2 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <span className="text-xs text-gray-300 font-medium">Click to upload or drag & drop</span>
-              <span className="text-[10px] text-gray-500 mt-1">PNG, JPG or PDF up to 5MB</span>
-            </div>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              id="question-image-upload"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const res = await uploadImageMutation.mutateAsync(file);
+                  setQuestionImageUrl(res.image_url);
+                  toast.success('Image uploaded successfully!');
+                } catch (err) {
+                  // Error handled by query hook
+                }
+              }}
+            />
+            {questionImageUrl ? (
+              <div className="relative group rounded-xl overflow-hidden border border-white/10 bg-white/[0.01] p-2 flex flex-col items-center justify-center">
+                <img
+                  src={questionImageUrl.startsWith('/static/') ? `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}${questionImageUrl}` : questionImageUrl}
+                  alt="Uploaded preview"
+                  className="max-h-40 rounded-lg object-contain w-full backdrop-blur-sm bg-black/10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setQuestionImageUrl('')}
+                  className="absolute top-2 right-2 p-1.5 rounded-full bg-red-500/80 hover:bg-red-600 transition-colors text-white cursor-pointer shadow-lg opacity-0 group-hover:opacity-100 duration-300"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <label
+                htmlFor="question-image-upload"
+                className="border border-dashed border-white/10 hover:border-neon-blue-500/50 transition-colors duration-300 rounded-xl p-6 flex flex-col items-center justify-center bg-white/[0.01] cursor-pointer"
+              >
+                {uploadImageMutation.isPending ? (
+                  <div className="flex flex-col items-center justify-center">
+                    <svg className="animate-spin h-8 w-8 text-neon-blue-500 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="text-xs text-neon-blue-400 font-medium">Uploading image...</span>
+                  </div>
+                ) : (
+                  <>
+                    <svg className="w-8 h-8 text-gray-400 mb-2 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-xs text-gray-300 font-medium">Click to upload or drag & drop</span>
+                    <span className="text-[10px] text-gray-500 mt-1">PNG, JPG, GIF or WEBP up to 5MB</span>
+                  </>
+                )}
+              </label>
+            )}
           </div>
 
           <div className="pt-4 border-t border-white/5 flex justify-end items-center">
@@ -579,13 +645,21 @@ export const Drawer: React.FC = () => {
 
                     <div className="text-sm font-semibold text-gray-400 w-4">{opt.id}</div>
 
-                    <input
-                      type="text"
-                      value={opt.text}
-                      onChange={(e) => handleOptionTextChange(opt.id, e.target.value)}
-                      placeholder={`Option ${opt.id} value...`}
-                      className="flex-1 glass-input px-3 py-2 text-sm"
-                    />
+                    <div className="flex-1 flex flex-col gap-1.5">
+                      <input
+                        type="text"
+                        value={opt.text}
+                        onChange={(e) => handleOptionTextChange(opt.id, e.target.value)}
+                        placeholder={`Option ${opt.id} value...`}
+                        className="w-full glass-input px-3 py-2 text-sm"
+                      />
+                      {opt.text && (
+                        <div className="text-[11px] text-gray-400 pl-1 select-text leading-relaxed">
+                          <span className="text-[9px] text-neon-blue-400 font-bold uppercase mr-1">Preview:</span>
+                          <LatexRenderer text={opt.text} />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -625,23 +699,37 @@ export const Drawer: React.FC = () => {
                   <div key={pair.id} className="flex items-center gap-2 bg-white/[0.01] p-3 rounded-xl border border-white/5 relative group">
                     <div className="text-xs font-bold text-gray-500 select-none w-5">{index + 1}</div>
                     
-                    <input
-                      type="text"
-                      value={pair.left}
-                      onChange={(e) => handleMatchPairChange(pair.id, 'left', e.target.value)}
-                      placeholder="Left side item..."
-                      className="flex-1 glass-input px-3 py-2 text-xs"
-                    />
+                    <div className="flex-1 flex flex-col gap-1">
+                      <input
+                        type="text"
+                        value={pair.left}
+                        onChange={(e) => handleMatchPairChange(pair.id, 'left', e.target.value)}
+                        placeholder="Left side item..."
+                        className="w-full glass-input px-3 py-2 text-xs"
+                      />
+                      {pair.left && (
+                        <div className="text-[10px] text-gray-400 pl-1 select-text leading-relaxed">
+                          <LatexRenderer text={pair.left} />
+                        </div>
+                      )}
+                    </div>
 
                     <span className="text-neon-blue-400 text-sm select-none">➔</span>
 
-                    <input
-                      type="text"
-                      value={pair.right}
-                      onChange={(e) => handleMatchPairChange(pair.id, 'right', e.target.value)}
-                      placeholder="Right side definition..."
-                      className="flex-1 glass-input px-3 py-2 text-xs"
-                    />
+                    <div className="flex-1 flex flex-col gap-1">
+                      <input
+                        type="text"
+                        value={pair.right}
+                        onChange={(e) => handleMatchPairChange(pair.id, 'right', e.target.value)}
+                        placeholder="Right side definition..."
+                        className="w-full glass-input px-3 py-2 text-xs"
+                      />
+                      {pair.right && (
+                        <div className="text-[10px] text-gray-400 pl-1 select-text leading-relaxed">
+                          <LatexRenderer text={pair.right} />
+                        </div>
+                      )}
+                    </div>
 
                     <button
                       type="button"
@@ -673,6 +761,14 @@ export const Drawer: React.FC = () => {
                 className="w-full glass-input px-4 py-3 text-sm min-h-[100px]"
                 placeholder="Enter correct answer, solution steps or reference schema..."
               />
+              {freeFormAnswer && (
+                <div className="mt-2 rounded-lg border border-white/5 bg-white/[0.01] p-3">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-neon-blue-400 mb-1">Answer Preview</span>
+                  <div className="text-xs text-gray-300 font-medium select-text leading-relaxed break-words">
+                    <LatexRenderer text={freeFormAnswer} />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
