@@ -1,87 +1,132 @@
-# Deployment and Configuration Guide
+# Setup & Deployment Guide
 
-This guide explains the environment configuration architecture of the Question Bank Platform, detailing how variables flow through both local development and Docker container setups.
-
----
-
-## 1. Environment Configuration Files Overview
-
-There are several configuration files designed for different operational stages:
-
-| File Location | Target Mode | Description |
-|---|---|---|
-| **`/.env`** | Unified Active Config | Read by the FastAPI backend (local dev) and by Docker Compose (container deployment). Created by copying `/.env.example`. |
-| **`/.env.example`** | Unified Template | The single template file containing configuration variables for both local bare-metal execution and Docker Compose deployments. |
-| **`/frontend/.env.example`** | Frontend Dev Server | Reference configuration for Vite local development server overrides. (Not required in Docker/production builds). |
+This guide explains the step-by-step instructions to configure and run the Question Bank Platform in different environments.
 
 ---
 
-## 2. Docker Compose Configuration Workflow
+## 1. Local Development Setup (WSL / Ubuntu / Linux Host)
 
-When deploying the platform via Docker, the containers configure themselves dynamically. Here is how the environment variable hierarchy behaves:
+Follow these steps to run the application directly on your host machine for development.
 
-1. **Environment File Load:**
-   Docker Compose automatically searches for a `/.env` file in the root repository directory. This file is fed into the services defined in `docker-compose.yml`.
-2. **Dynamic Database Mapping:**
-   Inside `docker-compose.yml`, the database credentials and connection parameters are mapped directly to the backend service, specifying `POSTGRES_HOST=postgres`. The backend's config module dynamically constructs the `POSTGRES_URL` connection string on startup using these variables. This eliminates the need to hardcode a database URL in any configuration file.
+### Prerequisites
+* **Python 3.12+**
+* **Node.js 20+** and **npm**
+* **PostgreSQL** installed and running on your host machine (or WSL instance).
 
----
+### Step-by-Step Local Setup
 
-## 3. Zero-Configuration Production Containers (Relative URLs)
-
-In traditional React SPA container builds, hardcoding the backend API address (`VITE_API_BASE_URL`) at build time is a common pain point: it forces you to rebuild the container image whenever the target host domain changes.
-
-To solve this, the application implements a **Zero-Configuration Adaptive Base URL** pattern:
-
-* **In Development Mode:** Axios requests default to `http://localhost:8000`.
-* **In Production Mode:** Axios requests default to an empty string (`""`), which tells the browser to make **relative URL requests** (e.g. `GET /questions`).
-* **Nginx Reverse Proxy:** The Nginx server running inside the frontend container intercepts these relative requests (e.g., `/auth`, `/questions`, `/curriculum`, `/static`) and proxies them internally inside the Docker network directly to the `backend` container on port `8000`.
-
-This configuration allows you to build the frontend container once and deploy it on any domain or port without rebuilding it.
-
----
-
-## 4. Simplified Launcher Command Reference
-
-A orchestration script `launcher.sh` is provided in the repository root for streamlined automation.
-
-### Commands
-
-#### A. Setup Environment Files
-```bash
-./launcher.sh setup
+#### 1. Setup the Local Database
+Log into your PostgreSQL console and create a new database:
+```sql
+CREATE DATABASE questionbank;
 ```
-Checks if the local `/.env` file is present. If missing, it copies the settings template from `.env.example`.
 
-#### B. Start Services
-```bash
-./launcher.sh start
-```
-Starts `postgres`, `backend`, and `frontend` services in background detached mode, building the local source if needed.
-
-#### C. Tail Container Logs
-```bash
-./launcher.sh logs
-```
-Tails live logging output for both the backend and frontend application servers.
-
-#### D. Seed Core & Mock Data
-Run these once the database container is online and healthy:
-* **Initial Setup Wizard Admin:**
+#### 2. Configure Environment Variables
+* Copy the environment template in the repository root:
   ```bash
-  ./launcher.sh seed-admin
+  cp .env.example .env
   ```
-* **Full Indian Syllabus & Questions (700+ entries):**
-  ```bash
-  ./launcher.sh seed-dummy
+* Open the root `/.env` file and configure your local Postgres settings:
+  ```ini
+  POSTGRES_DB=questionbank
+  POSTGRES_USER=your_postgres_user
+  POSTGRES_PASSWORD=your_postgres_password
+  POSTGRES_HOST=localhost
+  POSTGRES_PORT=5432
+  SECRET_KEY=generate_a_secure_jwt_secret_key
   ```
+  *(Note: The backend automatically constructs its database connection URL from these individual parameters on boot).*
 
-#### E. Check Health & Tear Down
-* **Check Port Maps and health status:**
+#### 3. Run the Backend Server
+From the root directory, create a virtual environment, install dependencies, and launch:
+```bash
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows/WSL: .venv\Scripts\activate
+
+# Install Python requirements
+pip install -r requirements.txt
+
+# Run the FastAPI server in hot-reload mode
+python runserver.py
+```
+* The API docs will load at: `http://localhost:8000/docs`
+
+#### 4. Run the Frontend Dev Server
+In a separate terminal, compile the frontend application:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+* Open your browser to `http://localhost:5173`.
+* *(Optional)*: If you run the backend on a port other than `8000`, copy `/frontend/.env.example` to `/frontend/.env` and update the `VITE_API_BASE_URL` value.
+
+---
+
+## 2. Docker & Containerized Environment Setup (For Testers / Local Compose)
+
+To package and share development updates with testers on different operating systems, use the multi-container Docker setup.
+
+### Prerequisites
+* **Docker Engine 24+**
+* **Docker Compose v2+**
+
+### Step-by-Step Docker Setup
+
+#### 1. Prepare the Environment
+* Copy the unified template to the root `/.env`:
+  ```bash
+  cp .env.example .env
+  ```
+* Change the database host variable in `/.env` to point to the Postgres container rather than localhost:
+  ```ini
+  POSTGRES_HOST=postgres
+  ```
+* Configure credentials (`POSTGRES_PASSWORD`, `SECRET_KEY`) and preferred host port mappings (e.g., `FRONTEND_PORT=80`).
+
+#### 2. Service Orchestration Helper (`launcher.sh`)
+Use the automated launcher shell script in the repository root to control your containers:
+
+* **Build & Start all containers in background:**
+  ```bash
+  ./launcher.sh start
+  ```
+  This runs `docker compose up --build -d`. Once online, the frontend is available at `http://localhost` (port 80) and the backend API docs are at `http://localhost:8000/docs`.
+
+* **Verify Container Health status:**
   ```bash
   ./launcher.sh status
   ```
-* **Stop all containers safely:**
+
+* **Tail Container Logs:**
+  ```bash
+  ./launcher.sh logs
+  ```
+
+* **Seed Initial Data:**
+  To populate the Docker database with the syllabus curriculum and mock questions, execute:
+  ```bash
+  ./launcher.sh seed-dummy
+  ```
+  To bootstrap the Root Administrator login account:
+  ```bash
+  ./launcher.sh seed-admin
+  ```
+
+* **Shutdown services safely:**
   ```bash
   ./launcher.sh stop
   ```
+
+#### 3. How Docker Handles Network Mapping & Base URLs
+* **Adaptive Base URLs:** In production container builds, the React frontend Axios client defaults to relative paths (e.g. `GET /questions`). This prevents hardcoding the API server IP or hostname during image builds.
+* **Nginx Reverse Proxy:** The Nginx server inside the frontend container intercepts these relative endpoints and proxies them inside the virtual network directly to the backend container (`http://backend:8000`), allowing host-agnostic, zero-configuration deployments.
+
+---
+
+## 3. Production Deployment Guide
+
+*This section is a work-in-progress.*
+
+Deploying production-ready builds at scale (e.g., via cloud engines, managed Kubernetes, or serverless infrastructure) has not yet been finalized. This section will be updated once the remote deployment target architecture, deployment pipelines, and SSL/HTTPS policies are defined.
