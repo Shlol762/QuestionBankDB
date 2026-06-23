@@ -85,38 +85,28 @@ To package and share development updates with testers on different operating sys
   ```
 * Configure credentials (`POSTGRES_PASSWORD`, `SECRET_KEY`) and preferred host port mappings (e.g., `FRONTEND_PORT=80`).
 
-#### 2. Service Orchestration Helper (`launcher.sh`)
-Use the automated launcher shell script in the repository root to control your containers:
+#### 2. Service Management Commands
+Use the standard Docker Compose CLI to control the containers:
 
 * **Build & Start all containers in background:**
   ```bash
-  ./launcher.sh start
+  docker compose up --build -d
   ```
-  This runs `docker compose up --build -d`. Once online, the frontend is available at `http://localhost` (port 80) and the backend API docs are at `http://localhost:8000/docs`.
+  Once running, the React frontend is available at `http://localhost` (port 80) and the backend API docs are at `http://localhost:8000/docs`.
 
-* **Verify Container Health status:**
+* **Check container health and run status:**
   ```bash
-  ./launcher.sh status
-  ```
-
-* **Tail Container Logs:**
-  ```bash
-  ./launcher.sh logs
+  docker compose ps
   ```
 
-* **Seed Initial Data:**
-  To populate the Docker database with the syllabus curriculum and mock questions, execute:
+* **Tail container logs:**
   ```bash
-  ./launcher.sh seed-dummy
-  ```
-  To bootstrap the Root Administrator login account:
-  ```bash
-  ./launcher.sh seed-admin
+  docker compose logs -f
   ```
 
-* **Shutdown services safely:**
+* **Stop and tear down containers:**
   ```bash
-  ./launcher.sh stop
+  docker compose down
   ```
 
 #### 3. How Docker Handles Network Mapping & Base URLs
